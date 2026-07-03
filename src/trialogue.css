@@ -472,6 +472,153 @@ a {
 	border-radius: 0;
 }
 
+/* Voice memos ============================================================= */
+
+.chat-passage--voice {
+	min-width: min(13.5rem, 100%);
+}
+
+.chat-voice {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+}
+
+.chat-voice audio {
+	display: none;
+}
+
+.chat-voice-play {
+	appearance: none;
+	flex: 0 0 2rem;
+	width: 2rem;
+	height: 2rem;
+	border: 0;
+	border-radius: 50%;
+	background: color-mix(in srgb, currentColor 14%, transparent);
+	color: inherit;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.chat-voice-play:hover {
+	background: color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.chat-voice-play svg {
+	display: block;
+}
+
+.chat-voice-bars {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	height: 1.7rem;
+	flex: 1;
+	min-width: 5.5rem;
+}
+
+.chat-voice-bars span {
+	flex: 1;
+	max-width: 4px;
+	min-width: 2px;
+	height: var(--h, 50%);
+	border-radius: 2px;
+	background: currentColor;
+	opacity: 0.35;
+	transition: opacity 0.2s ease;
+}
+
+.chat-voice-bars span.played {
+	opacity: 0.95;
+}
+
+.chat-voice.playing .chat-voice-play {
+	background: color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.chat-voice-time {
+	font-size: 0.7rem;
+	opacity: 0.8;
+	font-variant-numeric: tabular-nums;
+	flex: none;
+}
+
+/* Location cards ========================================================== */
+
+.chat-passage--location {
+	padding: 0;
+	overflow: hidden;
+	width: min(16rem, 100%);
+	line-height: 1.3;
+}
+
+.chat-location-card {
+	display: block;
+	text-decoration: none !important;
+	color: inherit !important;
+}
+
+.chat-location-map {
+	height: 6.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #e0342f;
+	background-color: #dce7d8;
+	background-image:
+		linear-gradient(rgba(163, 201, 226, 0.55), rgba(163, 201, 226, 0.55)),
+		repeating-linear-gradient(
+			105deg,
+			transparent 0 34px,
+			rgba(255, 255, 255, 0.85) 34px 40px
+		),
+		repeating-linear-gradient(
+			15deg,
+			transparent 0 48px,
+			rgba(255, 255, 255, 0.65) 48px 53px
+		);
+	background-size: 100% 35%, auto, auto;
+	background-position: bottom left, 0 0, 0 0;
+	background-repeat: no-repeat, repeat, repeat;
+}
+
+.chat-location-map svg {
+	width: 30px;
+	height: 30px;
+	filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
+.chat-location-info {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	padding: 0.45rem 0.75rem 0.5rem;
+}
+
+.chat-location-info strong {
+	font-size: 0.85rem;
+}
+
+.chat-location-info span {
+	font-size: 0.7rem;
+	opacity: 0.75;
+	font-variant-numeric: tabular-nums;
+}
+
+.user-response--location {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.user-response--location svg {
+	flex: none;
+}
+
 /* Read receipts =========================================================== */
 
 /* every outgoing message carries its receipt, but only the most recent

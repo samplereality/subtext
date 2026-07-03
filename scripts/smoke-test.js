@@ -32,7 +32,11 @@ async function run() {
 		// Playwright-managed download is unavailable
 		executablePath: process.env.CHROMIUM_PATH || undefined
 	});
-	const page = await browser.newPage({ viewport: { width: 420, height: 780 } });
+	const page = await browser.newPage({
+		viewport: { width: 420, height: 780 },
+		geolocation: { latitude: 35.4993, longitude: -80.8487 },
+		permissions: ['geolocation']
+	});
 	const errors = [];
 
 	page.on('pageerror', (err) => errors.push(err.message));
@@ -287,6 +291,70 @@ async function run() {
 		'title resets when the tab becomes visible',
 		(await page.title()) === 'Trialogue Demo'
 	);
+
+	console.log('location sharing');
+	await page.click('.user-response:has-text("whatsup")');
+	await page.waitForSelector('.user-response:has-text("where are you from?")', {
+		timeout: 15000
+	});
+	await page.click('.user-response:has-text("where are you from?")');
+	await page.waitForSelector('.user-response--location', { timeout: 15000 });
+	check(
+		'location share button offered with custom label',
+		(await page.locator('.user-response--location').textContent()).indexOf(
+			'share my location'
+		) !== -1
+	);
+	await page.click('.user-response--location');
+	await page.waitForSelector('.chat-passage--location[data-speaker="you"]', {
+		timeout: 15000
+	});
+	check('player location sent as an outgoing map card', true);
+	check(
+		'real coordinates stored in story state',
+		await page.evaluate(
+			() => Math.abs(window.story.state.playerLocation.lat - 35.4993) < 0.001
+		)
+	);
+	await page.waitForSelector('.chat-passage:has-text("35.499")', {
+		timeout: 15000
+	});
+	check('story branched on the shared coordinates', true);
+	check(
+		'speaker location card links to OpenStreetMap',
+		(await page
+			.locator('.chat-passage:not([data-speaker="you"]) .chat-location-card')
+			.first()
+			.getAttribute('href')).indexOf('openstreetmap.org') !== -1
+	);
+
+	console.log('voice memo');
+	await page.waitForSelector('.chat-voice .chat-voice-play', { timeout: 15000 });
+	check(
+		'voice memo renders a custom player with waveform',
+		(await page.locator('.chat-voice-bars span').count()) >= 20
+	);
+	await page.waitForFunction(
+		() => /[1-9]?\d:\d\d/.test(document.querySelector('.chat-voice-time').textContent),
+		null,
+		{ timeout: 10000 }
+	);
+	check(
+		'voice memo duration loaded from audio metadata',
+		(await page.locator('.chat-voice-time').textContent()) === '0:01'
+	);
+	await page.click('.chat-voice-play');
+	await page.waitForTimeout(400);
+	check(
+		'voice memo plays on tap',
+		await page.evaluate(() =>
+			document.querySelector('.chat-voice').classList.contains('playing')
+		)
+	);
+
+	if (SHOT_DIR) {
+		await page.screenshot({ path: path.join(SHOT_DIR, 'voice-location.png') });
+	}
 
 	console.log('notification-style narration');
 	await page.evaluate(() => {

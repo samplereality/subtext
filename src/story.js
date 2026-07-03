@@ -10,6 +10,7 @@ var template = require('./template');
 
 var SPEAKER_TAG_PREFIX = 'speaker-';
 var PHOTO_LINK_PREFIX = 'photo:';
+var LOCATION_LINK_PREFIX = 'location:';
 
 /* Feather Icons camera (MIT) */
 var CAMERA_SVG =
@@ -19,6 +20,25 @@ var CAMERA_SVG =
 	'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 ' +
 	'2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>' +
 	'<circle cx="12" cy="13" r="4"></circle></svg>';
+
+/* Feather Icons map-pin (MIT) */
+var PIN_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>' +
+	'<circle cx="12" cy="10" r="3"></circle></svg>';
+
+var PLAY_SVG =
+	'<svg viewBox="0 0 24 24" width="16" height="16" ' +
+	'fill="currentColor" aria-hidden="true">' +
+	'<path d="M7 4.5v15l13-7.5z"></path></svg>';
+
+var PAUSE_SVG =
+	'<svg viewBox="0 0 24 24" width="16" height="16" ' +
+	'fill="currentColor" aria-hidden="true">' +
+	'<rect x="6" y="4.5" width="4" height="15" rx="1"></rect>' +
+	'<rect x="14" y="4.5" width="4" height="15" rx="1"></rect></svg>';
 
 function byId(id) {
 	return document.getElementById(id);
@@ -168,7 +188,11 @@ var Story = function() {
 		metaStyle: 'chat',
 		/* app-name label on notification-style narration
 		   (defaults to the story name) */
-		metaNotificationLabel: ''
+		metaNotificationLabel: '',
+		/* default label on a location-share response button */
+		locationButtonLabel: 'Share my location',
+		/* label under the map card of a shared player location */
+		locationBubbleLabel: 'My location'
 	};
 
 	/**
@@ -182,6 +206,7 @@ var Story = function() {
 	this.unseen = 0;
 
 	this._audioCtx = null;
+	this._playingAudio = null;
 
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
@@ -271,10 +296,13 @@ Object.assign(Story.prototype, {
 			rightSidebar: document.querySelector('.right-sidebar')
 		};
 
-		// tapping a notification banner dismisses it
+		// tapping a notification banner dismisses it (but interactive
+		// content inside it, like a voice memo, stays usable)
 
-		this.dom.metaNotification.addEventListener('click', function() {
-			story.dom.metaNotification.hidden = true;
+		this.dom.metaNotification.addEventListener('click', function(event) {
+			if (!event.target.closest('button, a')) {
+				story.dom.metaNotification.hidden = true;
+			}
 		});
 
 		this.gallery = this.parseGallery();
@@ -731,6 +759,7 @@ Object.assign(Story.prototype, {
 			blocks.forEach(function(node) {
 				meta.appendChild(node);
 			});
+			this.buildRichContent(meta);
 
 			nodes.push(meta);
 			return nodes;
@@ -815,6 +844,16 @@ Object.assign(Story.prototype, {
 				bubble.classList.add('chat-passage--media');
 			}
 
+			story.buildRichContent(bubble);
+
+			if (bubble.querySelector('.chat-voice')) {
+				bubble.classList.add('chat-passage--voice');
+			}
+
+			if (bubble.querySelector('.chat-location')) {
+				bubble.classList.add('chat-passage--location');
+			}
+
 			bubble.style.animationDelay =
 				(index * story.config.bubbleStagger) + 'ms';
 			index += 1;
@@ -824,6 +863,197 @@ Object.assign(Story.prototype, {
 
 		nodes.push(wrapper);
 		return nodes;
+	},
+
+	/**
+	 Upgrades rich-content placeholders inside rendered passage HTML:
+	 .chat-voice divs become voice-memo players and .chat-location divs
+	 become map cards.
+	**/
+
+	buildRichContent: function(root) {
+		var story = this;
+
+		root.querySelectorAll('.chat-voice').forEach(function(el) {
+			story.buildVoicePlayer(el);
+		});
+		root.querySelectorAll('.chat-location').forEach(function(el) {
+			story.buildLocationCard(el);
+		});
+	},
+
+	/**
+	 Builds a WhatsApp-style voice-memo player: play/pause button,
+	 waveform bars that fill as the audio plays, and a duration label.
+	**/
+
+	buildVoicePlayer: function(el) {
+		var story = this;
+		var src = el.getAttribute('data-src');
+
+		if (!src || el.getAttribute('data-built')) {
+			return;
+		}
+
+		el.setAttribute('data-built', '1');
+
+		var audio = document.createElement('audio');
+
+		audio.preload = 'metadata';
+		audio.src = src;
+
+		var button = document.createElement('button');
+
+		button.type = 'button';
+		button.className = 'chat-voice-play';
+		button.setAttribute('aria-label', 'Play voice message');
+		button.innerHTML = PLAY_SVG;
+
+		var bars = document.createElement('div');
+		var BAR_COUNT = 24;
+		var barEls = [];
+
+		bars.className = 'chat-voice-bars';
+		bars.setAttribute('aria-hidden', 'true');
+
+		// a decorative waveform, deterministic per source
+
+		var seed = 0;
+
+		for (var i = 0; i < src.length; i++) {
+			seed = (seed * 31 + src.charCodeAt(i)) % 9973;
+		}
+
+		for (var b = 0; b < BAR_COUNT; b++) {
+			var bar = document.createElement('span');
+
+			seed = (seed * 137 + 71) % 9973;
+			bar.style.setProperty('--h', (30 + (seed % 65)) + '%');
+			bars.appendChild(bar);
+			barEls.push(bar);
+		}
+
+		var time = document.createElement('span');
+
+		time.className = 'chat-voice-time';
+		time.textContent = '0:00';
+
+		var format = function(seconds) {
+			var m = Math.floor(seconds / 60);
+			var s = Math.round(seconds % 60);
+
+			return m + ':' + (s < 10 ? '0' : '') + s;
+		};
+
+		audio.addEventListener('loadedmetadata', function() {
+			if (isFinite(audio.duration)) {
+				time.textContent = format(audio.duration);
+			}
+		});
+
+		button.addEventListener('click', function() {
+			if (audio.paused) {
+				if (story._playingAudio && story._playingAudio !== audio) {
+					story._playingAudio.pause();
+				}
+
+				story._playingAudio = audio;
+				audio.play().catch(function() { /* autoplay policy */ });
+			}
+			else {
+				audio.pause();
+			}
+		});
+
+		audio.addEventListener('play', function() {
+			el.classList.add('playing');
+			button.innerHTML = PAUSE_SVG;
+			button.setAttribute('aria-label', 'Pause voice message');
+		});
+
+		audio.addEventListener('pause', function() {
+			el.classList.remove('playing');
+			button.innerHTML = PLAY_SVG;
+			button.setAttribute('aria-label', 'Play voice message');
+		});
+
+		audio.addEventListener('timeupdate', function() {
+			if (!isFinite(audio.duration) || audio.duration === 0) {
+				return;
+			}
+
+			time.textContent = format(audio.currentTime);
+
+			var played = Math.floor(
+				(audio.currentTime / audio.duration) * BAR_COUNT
+			);
+
+			barEls.forEach(function(bar, index) {
+				bar.classList.toggle('played', index < played);
+			});
+		});
+
+		audio.addEventListener('ended', function() {
+			audio.currentTime = 0;
+			time.textContent = format(audio.duration);
+			barEls.forEach(function(bar) {
+				bar.classList.remove('played');
+			});
+		});
+
+		el.textContent = '';
+		el.appendChild(button);
+		el.appendChild(bars);
+		el.appendChild(time);
+		el.appendChild(audio);
+	},
+
+	/**
+	 Builds a location map card that links out to OpenStreetMap.
+	**/
+
+	buildLocationCard: function(el) {
+		var lat = parseFloat(el.getAttribute('data-lat'));
+		var lon = parseFloat(el.getAttribute('data-lon'));
+
+		if (isNaN(lat) || isNaN(lon) || el.getAttribute('data-built')) {
+			return;
+		}
+
+		el.setAttribute('data-built', '1');
+
+		var label = el.getAttribute('data-label') || 'Location';
+		var card = document.createElement('a');
+
+		card.className = 'chat-location-card';
+		card.href =
+			'https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lon +
+			'#map=16/' + lat + '/' + lon;
+		card.target = '_blank';
+		card.rel = 'noopener';
+
+		var map = document.createElement('div');
+
+		map.className = 'chat-location-map';
+		map.innerHTML = PIN_SVG;
+
+		var info = document.createElement('div');
+
+		info.className = 'chat-location-info';
+
+		var name = document.createElement('strong');
+
+		name.textContent = label;
+
+		var coords = document.createElement('span');
+
+		coords.textContent = lat.toFixed(4) + ', ' + lon.toFixed(4);
+		info.appendChild(name);
+		info.appendChild(coords);
+		card.appendChild(map);
+		card.appendChild(info);
+		el.textContent = '';
+		el.appendChild(card);
 	},
 
 	buildTimestamp: function(text) {
@@ -951,8 +1181,15 @@ Object.assign(Story.prototype, {
 
 		var links = window.passage.links;
 		var photoOffers = this.getPhotoOffers(links);
+		var locationOffers = this.getLocationOffers(links);
 		var textLinks = links.filter(function(link) {
-			return link.display.trim().indexOf(PHOTO_LINK_PREFIX) !== 0;
+			var display = link.display.trim();
+
+			return (
+				display.indexOf(PHOTO_LINK_PREFIX) !== 0 &&
+				display !== 'location' &&
+				display.indexOf(LOCATION_LINK_PREFIX) !== 0
+			);
 		});
 
 		textLinks.forEach(function(link, index) {
@@ -980,6 +1217,182 @@ Object.assign(Story.prototype, {
 			});
 			this.dom.responses.appendChild(photoButton);
 		}
+
+		locationOffers.forEach(function(offer, index) {
+			var button = document.createElement('button');
+
+			button.type = 'button';
+			button.className = 'user-response user-response--location';
+			button.innerHTML =
+				PIN_SVG + '<span></span>';
+			button.querySelector('span').textContent =
+				offer.label || story.config.locationButtonLabel;
+			button.style.animationDelay =
+				((textLinks.length + (photoOffers.length ? 1 : 0) + index) * 60) +
+				'ms';
+			button.addEventListener('click', function() {
+				story.sendLocation(offer.target, offer.label);
+			});
+			story.dom.responses.appendChild(button);
+		});
+	},
+
+	/**
+	 Extracts location-share offers from a passage's links:
+
+	   [[location->Target]]                  default button label
+	   [[location:Drop them a pin->Target]]  custom button label
+
+	 Choosing one asks the browser for the player's real coordinates
+	 (with their permission), sends them as a map card, and stores them
+	 in s.playerLocation before showing the target passage. If the
+	 player declines (or geolocation is unavailable), s.playerLocation
+	 is null and the story continues to the same target.
+	**/
+
+	getLocationOffers: function(links) {
+		var offers = [];
+
+		links.forEach(function(link) {
+			var display = link.display.trim();
+
+			if (display === 'location') {
+				offers.push({ label: '', target: link.target });
+			}
+			else if (display.indexOf(LOCATION_LINK_PREFIX) === 0) {
+				offers.push({
+					label: display.substring(LOCATION_LINK_PREFIX.length).trim(),
+					target: link.target
+				});
+			}
+		});
+
+		return offers;
+	},
+
+	/**
+	 Requests the player's real location and sends it as an outgoing
+	 map card, then continues to the target passage either way.
+	**/
+
+	sendLocation: function(targetName) {
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+
+		var story = this;
+
+		var proceed = function(position) {
+			if (position) {
+				var lat = position.coords.latitude;
+				var lon = position.coords.longitude;
+
+				story.state.playerLocation = {
+					lat: lat,
+					lon: lon,
+					accuracy: position.coords.accuracy
+				};
+				story.showLocationBubble(
+					lat,
+					lon,
+					story.config.locationBubbleLabel
+				);
+				story.playSound('send');
+
+				/**
+				 Triggered when the player shares their location.
+				**/
+
+				dispatch('locationshared', {
+					lat: lat,
+					lon: lon,
+					story: story
+				});
+			}
+			else {
+				story.state.playerLocation = null;
+			}
+
+			story.showDelayed(targetName, { noMove: true });
+		};
+
+		if (!navigator.geolocation) {
+			proceed(null);
+			return;
+		}
+
+		navigator.geolocation.getCurrentPosition(
+			function(position) { proceed(position); },
+			function() { proceed(null); },
+			{ timeout: 8000, maximumAge: 60000 }
+		);
+	},
+
+	/**
+	 Renders a shared location as an outgoing map-card message.
+	**/
+
+	showLocationBubble: function(lat, lon, label, opts) {
+		opts = opts || {};
+
+		var wrapper = document.createElement('div');
+
+		wrapper.className = 'chat-passage-wrapper';
+		wrapper.setAttribute('data-speaker', 'you');
+
+		var bubbles = document.createElement('div');
+
+		bubbles.className = 'chat-bubbles';
+
+		var bubble = document.createElement('div');
+
+		bubble.className = 'chat-passage chat-passage--location phistory';
+		bubble.setAttribute('data-speaker', 'you');
+
+		var card = document.createElement('div');
+
+		card.className = 'chat-location';
+		card.setAttribute('data-lat', lat);
+		card.setAttribute('data-lon', lon);
+		card.setAttribute('data-label', label || '');
+		bubble.appendChild(card);
+		this.buildLocationCard(card);
+		bubbles.appendChild(bubble);
+		wrapper.appendChild(bubbles);
+		this.applyUserProfile(wrapper);
+
+		var status = this.attachReceipt(wrapper, bubbles, opts.receipt);
+
+		if (opts.instant) {
+			wrapper.classList.add('no-anim');
+		}
+
+		this.applyGrouping(wrapper);
+		this.dom.history.appendChild(wrapper);
+
+		var entry = { t: 'l', lat: lat, lon: lon, label: label };
+
+		if (status) {
+			entry.r = status;
+
+			if (opts.receipt && opts.receipt.label) {
+				entry.rl = opts.receipt.label;
+			}
+		}
+
+		this.timeline.push(entry);
+		this.scrollChatIntoView();
 	},
 
 	/**
@@ -1321,7 +1734,7 @@ Object.assign(Story.prototype, {
 		for (var i = this.timeline.length - 1; i >= 0; i--) {
 			var entry = this.timeline[i];
 
-			if (entry.t === 'u' || entry.t === 'i') {
+			if (entry.t === 'u' || entry.t === 'i' || entry.t === 'l') {
 				entry.r = status;
 
 				if (label) {
@@ -1478,7 +1891,7 @@ Object.assign(Story.prototype, {
 
 		if (
 			probe.textContent.trim() === '' &&
-			!probe.querySelector('img, video, iframe, svg')
+			!probe.querySelector('img, video, iframe, svg, .chat-voice, .chat-location')
 		) {
 			return;
 		}
@@ -1487,10 +1900,12 @@ Object.assign(Story.prototype, {
 			this.dom.metaNotificationLabel.textContent =
 				this.config.metaNotificationLabel || this.name;
 			this.dom.metaNotificationBody.innerHTML = html;
+			this.buildRichContent(this.dom.metaNotificationBody);
 			this.dom.metaNotification.hidden = false;
 		}
 		else {
 			this.dom.metaOverlayContent.innerHTML = html;
+			this.buildRichContent(this.dom.metaOverlayContent);
 			this.dom.metaOverlay.hidden = false;
 		}
 	},
@@ -1534,7 +1949,7 @@ Object.assign(Story.prototype, {
 		for (var i = this.timeline.length - 1; i >= 0; i--) {
 			var entry = this.timeline[i];
 
-			if (entry.t === 'u' || entry.t === 'i') {
+			if (entry.t === 'u' || entry.t === 'i' || entry.t === 'l') {
 				if (entry.r) {
 					lastReceipt = { status: entry.r, label: entry.rl };
 				}
@@ -1812,7 +2227,9 @@ Object.assign(Story.prototype, {
 
 		var probe = document.createElement('div');
 
-		probe.innerHTML = target.source.replace(/\[\[.*?\]\]/g, '');
+		probe.innerHTML = target.source
+			.replace(/\[\[.*?\]\]/g, '')
+			.replace(/\[(voice|location|timestamp)[^\]]*\]/gi, '');
 
 		var length = probe.textContent.trim().length;
 
@@ -1981,6 +2398,16 @@ Object.assign(Story.prototype, {
 					story.state.sentPhotos =
 						(story.state.sentPhotos || []).concat(entry.name);
 					story.showPhotoBubble(entry.name, {
+						instant: true,
+						receipt: receipt
+					});
+				}
+				else if (entry.t === 'l') {
+					story.state.playerLocation = {
+						lat: entry.lat,
+						lon: entry.lon
+					};
+					story.showLocationBubble(entry.lat, entry.lon, entry.label, {
 						instant: true,
 						receipt: receipt
 					});

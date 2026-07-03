@@ -14,6 +14,8 @@ This is a modernized fork of [phivk/trialogue](https://github.com/phivk/trialogu
 - Outgoing (player) messages render as accent-colored bubbles on the right; choices appear as quick-reply pill buttons.
 - Passages containing only an image render frameless, like a photo message.
 - Players can send photos from a picker; stories can branch on which image was sent.
+- Voice-memo bubbles with a real player (waveform, play/pause, duration) via `[voice file.mp3]`.
+- Location map cards via `[location lat,lon Label]`, and players can share their *real* coordinates for the story to react to.
 - Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect.
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode.
@@ -112,6 +114,49 @@ you've sent <%= s.sentPhotos.length %> photo(s)
 ```
 
 `s.lastPhoto` is the most recently sent image name; `s.sentPhotos` is an array of every image sent. Both participate in undo and save/restore like any other state, and a `photosent` event (`window.addEventListener('photosent', e => …)`, with `e.detail.name` and `e.detail.target`) fires on every send. Related config: `story.config.photoButtonLabel`, `story.config.photoPickerTitle`, and `story.config.preloadImages` (warms the browser cache for gallery images at startup, on by default).
+
+### Voice memos
+
+Put a `[voice …]` line in any passage to send an audio message with a proper voice-note player — play/pause button, waveform, and duration read from the file:
+
+```
+:: reply [speaker-sam]
+I can explain everything
+
+[voice audio/explanation.mp3]
+
+[[go on]]
+```
+
+Any audio URL works, including data URIs for self-contained stories. Each memo is its own bubble; only one plays at a time. (A raw `<audio>` tag still works too — this just looks like a text exchange instead of a browser control.)
+
+### Location sharing
+
+Send a place as a map card with a `[location lat,lon Label]` line — it renders with a pin and opens OpenStreetMap when tapped:
+
+```
+:: meet [speaker-sam]
+meet me here at midnight
+
+[location 52.3676,4.9041 Amsterdam Centraal]
+
+[[i'll be there]]
+```
+
+And the player can share their **real** location. A `location` link renders a pin button with the other choices; tapping it asks the browser for the player's coordinates (with the standard permission prompt):
+
+```
+:: where [speaker-sam]
+where are you right now?
+
+[[location:share my location->got-it]]
+[[none of your business->got-it]]
+
+:: got-it [speaker-sam]
+<% if (s.playerLocation) { %>huh, <%= s.playerLocation.lat.toFixed(3) %>, <%= s.playerLocation.lon.toFixed(3) %>… that explains a lot<% } else { %>fine, keep your secrets<% } %>
+```
+
+If the player consents, their position is sent as an outgoing map card and stored in `s.playerLocation` (`{ lat, lon, accuracy }`); if they decline — or geolocation is unavailable — `s.playerLocation` is `null` and the story continues to the same target, so always write both branches. A `locationshared` event fires on success. This opens the door to site-specific storytelling: distance-gated scenes, stories that only unlock in a particular place, or characters who react to where the reader actually is. (Browsers require HTTPS for geolocation; label defaults live in `story.config.locationButtonLabel` / `locationBubbleLabel`.)
 
 ### Narration
 

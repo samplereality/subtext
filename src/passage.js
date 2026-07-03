@@ -51,6 +51,30 @@ function render(source) {
 		}
 	);
 
+	// [voice some.mp3] on its own line becomes a voice-memo bubble
+	// (any audio URL or data URI)
+
+	result = result.replace(
+		/^[ \t]*\[voice[ \t]+([^\]\s]+)[ \t]*\][ \t]*$/gim,
+		function(match, src) {
+			return '<div class="chat-voice" data-src="' + template.escapeHtml(src) + '"></div>';
+		}
+	);
+
+	// [location 52.3676,4.9041 Amsterdam] on its own line becomes a
+	// map-card bubble linking to OpenStreetMap
+
+	result = result.replace(
+		/^[ \t]*\[location[ \t]+(-?[\d.]+)[ \t]*,[ \t]*(-?[\d.]+)(?:[ \t]+([^\]]+))?\][ \t]*$/gim,
+		function(match, lat, lon, label) {
+			return (
+				'<div class="chat-location" data-lat="' + lat +
+				'" data-lon="' + lon + '" data-label="' +
+				template.escapeHtml((label || '').trim()) + '"></div>'
+			);
+		}
+	);
+
 	// [\ndiv\n]{.withClass#andID}
 
 	var divRegexp = /\[([\r\n+])([^\]]*?)([\r\n+])\]\{(.*?)\}/g;
