@@ -387,6 +387,90 @@ async function run() {
 		(await page.locator('#meta-notification[hidden]').count()) === 1
 	);
 
+	console.log('clear thread (flashback)');
+	await page.evaluate(() => {
+		window.story.config.metaStyle = 'overlay';
+		window.story.show('Start');
+	});
+	await page.click('.user-response:has-text("whatsup")');
+	await page.waitForSelector('.user-response:has-text("what is your name?")', {
+		timeout: 15000
+	});
+	await page.click('.user-response:has-text("what is your name?")');
+	await page.waitForSelector('.user-response:has-text("tell me")', {
+		timeout: 15000
+	});
+
+	const bubblesBeforeClear = await page.locator('.chat-passage').count();
+
+	await page.click('.user-response:has-text("tell me")');
+	await page.waitForSelector('.chat-timestamp:has-text("Three years earlier")', {
+		timeout: 15000
+	});
+	check(
+		'clear tag wiped the thread for the flashback',
+		(await page.locator('.chat-passage').count()) < bubblesBeforeClear &&
+		(await page.locator('.chat-passage-wrapper[data-speaker="you"]').count()) === 0
+	);
+	check(
+		'undo unavailable across a cleared thread',
+		(await page.locator('#nav-link-undo[hidden]').count()) === 1
+	);
+
+	console.log('failed to send');
+	await page.click('.user-response:has-text("who is this??")');
+	await page.waitForSelector('.chat-passage-wrapper[data-receipt="failed"]', {
+		timeout: 15000
+	});
+	check(
+		'failed tag marks the message Not Delivered',
+		(await page
+			.locator('[data-receipt="failed"] .chat-receipt')
+			.textContent()) === 'Not Delivered'
+	);
+
+	if (SHOT_DIR) {
+		await page.waitForTimeout(600);
+		await page.screenshot({ path: path.join(SHOT_DIR, 'failed-send.png') });
+	}
+
+	console.log('reactions');
+	await page.click('.user-response:has-text("back to the present")');
+	await page.waitForSelector('.chat-timestamp:has-text("Today 9:44 AM")', {
+		timeout: 15000
+	});
+	check(
+		'second clear returned to the present',
+		(await page.locator('.chat-passage-wrapper[data-receipt="failed"]').count()) === 0
+	);
+	await page.click('.user-response:has-text("good to know you")');
+	await page.waitForSelector('.chat-reaction', { timeout: 15000 });
+	check(
+		'speaker reacted to the player message',
+		(await page
+			.locator('.chat-passage-wrapper[data-speaker="you"] .chat-reaction')
+			.textContent()) === '❤️'
+	);
+	await page.click('.user-response--react');
+	await page.waitForSelector('.chat-passage:has-text("all I need")', {
+		timeout: 15000
+	});
+	check(
+		'player reaction landed on the speaker message',
+		(await page
+			.locator('.chat-passage-wrapper:not([data-speaker="you"]) .chat-reaction')
+			.count()) === 1
+	);
+	check(
+		'player reaction tracked in state',
+		(await page.evaluate(() => window.story.state.lastReaction)) === '👍'
+	);
+
+	if (SHOT_DIR) {
+		await page.waitForTimeout(600);
+		await page.screenshot({ path: path.join(SHOT_DIR, 'reactions.png') });
+	}
+
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);
 
 	await browser.close();

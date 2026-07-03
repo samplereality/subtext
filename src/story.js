@@ -11,6 +11,7 @@ var template = require('./template');
 var SPEAKER_TAG_PREFIX = 'speaker-';
 var PHOTO_LINK_PREFIX = 'photo:';
 var LOCATION_LINK_PREFIX = 'location:';
+var REACT_LINK_PREFIX = 'react:';
 
 /* Feather Icons camera (MIT) */
 var CAMERA_SVG =
@@ -174,7 +175,11 @@ var Story = function() {
 		/* a speaker's reply automatically marks the last message read */
 		autoRead: true,
 		/* receipt wording (localize or restyle here) */
-		receiptLabels: { delivered: 'Delivered', read: 'Read' },
+		receiptLabels: {
+			delivered: 'Delivered',
+			read: 'Read',
+			failed: 'Not Delivered'
+		},
 		/* subtle send/receive sounds (opt-in; requires a user gesture) */
 		sounds: false,
 		/* show "(2) Story Name" in the tab title while it is hidden */
@@ -207,6 +212,9 @@ var Story = function() {
 
 	this._audioCtx = null;
 	this._playingAudio = null;
+
+	/** Applied reactions, so undo can revert them. **/
+	this._reactionLog = [];
 
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
@@ -634,6 +642,23 @@ Object.assign(Story.prototype, {
 
 		this.hideMeta();
 
+		// a passage tagged `clear` wipes the visible thread first
+		// (flashbacks, scene changes)
+
+		if (passage.tags.indexOf('clear') > -1) {
+			this.clearThread();
+		}
+
+		// apply [react …] directives to the player's last message
+
+		html = html.replace(
+			/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
+			function(match, emoji) {
+				story.react(template.unescapeHtml(emoji), 'out');
+				return '';
+			}
+		);
+
 		if (metaMode !== 'chat') {
 			this.showMeta(html, metaMode);
 		}
@@ -666,13 +691,24 @@ Object.assign(Story.prototype, {
 		// marks the player's last message as read
 
 		if (this.config.readReceipts) {
-			if (passage.tags.indexOf('unread') > -1) {
+			var lastOutgoing = this.lastOutgoingWrapper();
+
+			if (passage.tags.indexOf('failed') > -1) {
+				this.markFailed();
+			}
+			else if (passage.tags.indexOf('unread') > -1) {
 				this.markUnread();
 			}
 			else if (passage.tags.indexOf('read') > -1) {
 				this.markRead();
 			}
-			else if (this.config.autoRead && speaker && speaker !== 'you') {
+			else if (
+				this.config.autoRead &&
+				speaker &&
+				speaker !== 'you' &&
+				(!lastOutgoing ||
+					lastOutgoing.getAttribute('data-receipt') !== 'failed')
+			) {
 				this.markRead();
 			}
 		}
@@ -1182,13 +1218,27 @@ Object.assign(Story.prototype, {
 		var links = window.passage.links;
 		var photoOffers = this.getPhotoOffers(links);
 		var locationOffers = this.getLocationOffers(links);
+		var reactionOffers = [];
+
+		links.forEach(function(link) {
+			var display = link.display.trim();
+
+			if (display.indexOf(REACT_LINK_PREFIX) === 0) {
+				reactionOffers.push({
+					emoji: display.substring(REACT_LINK_PREFIX.length).trim(),
+					target: link.target
+				});
+			}
+		});
+
 		var textLinks = links.filter(function(link) {
 			var display = link.display.trim();
 
 			return (
 				display.indexOf(PHOTO_LINK_PREFIX) !== 0 &&
 				display !== 'location' &&
-				display.indexOf(LOCATION_LINK_PREFIX) !== 0
+				display.indexOf(LOCATION_LINK_PREFIX) !== 0 &&
+				display.indexOf(REACT_LINK_PREFIX) !== 0
 			);
 		});
 
@@ -1232,6 +1282,25 @@ Object.assign(Story.prototype, {
 				'ms';
 			button.addEventListener('click', function() {
 				story.sendLocation(offer.target, offer.label);
+			});
+			story.dom.responses.appendChild(button);
+		});
+
+		reactionOffers.forEach(function(offer, index) {
+			var button = document.createElement('button');
+
+			button.type = 'button';
+			button.className = 'user-response user-response--react';
+			button.setAttribute(
+				'aria-label',
+				'React with ' + offer.emoji
+			);
+			button.textContent = offer.emoji;
+			button.style.animationDelay =
+				((textLinks.length + locationOffers.length +
+					(photoOffers.length ? 1 : 0) + index) * 60) + 'ms';
+			button.addEventListener('click', function() {
+				story.sendReaction(offer.emoji, offer.target);
 			});
 			story.dom.responses.appendChild(button);
 		});
@@ -1708,15 +1777,12 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
-		var wrappers = this.dom.history.querySelectorAll(
-			'.chat-passage-wrapper[data-speaker="you"]'
-		);
+		var wrapper = this.lastOutgoingWrapper();
 
-		if (wrappers.length === 0) {
+		if (!wrapper) {
 			return;
 		}
 
-		var wrapper = wrappers[wrappers.length - 1];
 		var text = label || this.config.receiptLabels[status] || '';
 
 		wrapper.setAttribute('data-receipt', status);
@@ -1752,6 +1818,18 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 The player's most recent message wrapper, or null.
+	**/
+
+	lastOutgoingWrapper: function() {
+		var wrappers = this.dom.history.querySelectorAll(
+			'.chat-passage-wrapper[data-speaker="you"]'
+		);
+
+		return wrappers.length ? wrappers[wrappers.length - 1] : null;
+	},
+
+	/**
 	 Marks the player's last message as read. Called automatically when
 	 a speaker replies (config.autoRead) or by a passage tagged `read`;
 	 call it yourself for finer control.
@@ -1762,6 +1840,17 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Marks the player's last message as failed ("Not Delivered", shown
+	 in red and — unlike other receipts — displayed permanently on that
+	 message). Also triggered by a passage tagged `failed`. Automatic
+	 read receipts will not override a failed message.
+	**/
+
+	markFailed: function(label) {
+		this.setReceipt('failed', label);
+	},
+
+	/**
 	 Flips the player's last message back to Delivered — useful for
 	 dramatic tension (the reply that never comes). Also triggered by a
 	 passage tagged `unread`.
@@ -1769,6 +1858,110 @@ Object.assign(Story.prototype, {
 
 	markUnread: function(label) {
 		this.setReceipt('delivered', label);
+	},
+
+	/**
+	 Attaches an emoji tapback badge to the most recent message.
+	 `which` is 'out' (the player's last message — the default, used by
+	 [react …] directives) or 'in' (the last speaker message, used when
+	 the player reacts). One reaction per message; a new one replaces it.
+	**/
+
+	react: function(emoji, which) {
+		var selector =
+			'.chat-passage-wrapper' +
+			(which === 'in'
+				? ':not([data-speaker="you"])'
+				: '[data-speaker="you"]');
+		var wrappers = [].concat(
+			Array.prototype.slice.call(
+				this.dom.history.querySelectorAll(selector)
+			),
+			Array.prototype.slice.call(
+				this.dom.passage.querySelectorAll(selector)
+			)
+		);
+
+		var wrapper = wrappers[wrappers.length - 1];
+
+		if (!wrapper) {
+			return;
+		}
+
+		var bubbles = wrapper.querySelector('.chat-bubbles');
+
+		if (!bubbles) {
+			return;
+		}
+
+		var badge = bubbles.querySelector('.chat-reaction');
+
+		this._reactionLog.push({
+			bubbles: bubbles,
+			prev: badge ? badge.textContent : null
+		});
+
+		if (!badge) {
+			badge = document.createElement('span');
+			badge.className = 'chat-reaction';
+			bubbles.appendChild(badge);
+		}
+
+		badge.textContent = emoji;
+		wrapper.classList.add('has-reaction');
+		this.persist();
+	},
+
+	/**
+	 Handles the player reacting to the speaker's last message via a
+	 [[react:👍->Target]] response: no bubble is sent, the tapback
+	 lands on their message, and the story continues to the target.
+	 The choice is tracked in s.lastReaction.
+	**/
+
+	sendReaction: function(emoji, targetName) {
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+
+		this.state.lastReaction = emoji;
+		this.react(emoji, 'in');
+		this.timeline.push({ t: 'r', emoji: emoji });
+		this.playSound('send');
+
+		/**
+		 Triggered when the player reacts to a message.
+		**/
+
+		dispatch('reaction', { emoji: emoji, story: this });
+
+		this.showDelayed(targetName, { noMove: true });
+	},
+
+	/**
+	 Wipes the visible conversation — for flashbacks and scene changes.
+	 Also triggered by showing a passage tagged `clear`. Story state and
+	 the save timeline are untouched, but undo cannot reach back across
+	 a cleared thread.
+	**/
+
+	clearThread: function() {
+		this.dom.history.textContent = '';
+		this.dom.passage.textContent = '';
+		this.checkpoints = [];
+		this._reactionLog = [];
+		this.dom.undo.hidden = true;
 	},
 
 	/**
@@ -1979,7 +2172,8 @@ Object.assign(Story.prototype, {
 			passageId: window.passage ? window.passage.id : null,
 			links: window.passage ? window.passage.links.slice() : [],
 			lastReceipt: lastReceipt,
-			meta: meta
+			meta: meta,
+			reactionLogLength: this._reactionLog.length
 		});
 
 		this.dom.undo.hidden = false;
@@ -2005,6 +2199,30 @@ Object.assign(Story.prototype, {
 		// everything since the checkpoint is discarded
 
 		this.dom.passage.textContent = '';
+
+		// revert reactions applied since the checkpoint
+
+		while (this._reactionLog.length > (checkpoint.reactionLogLength || 0)) {
+			var reaction = this._reactionLog.pop();
+			var badge = reaction.bubbles.querySelector('.chat-reaction');
+
+			if (reaction.prev) {
+				if (badge) {
+					badge.textContent = reaction.prev;
+				}
+			}
+			else if (badge) {
+				badge.remove();
+
+				var reactedWrapper = reaction.bubbles.closest(
+					'.chat-passage-wrapper'
+				);
+
+				if (reactedWrapper) {
+					reactedWrapper.classList.remove('has-reaction');
+				}
+			}
+		}
 
 		var history = this.dom.history;
 
@@ -2376,6 +2594,7 @@ Object.assign(Story.prototype, {
 			this.timeline = [];
 			this.history = [];
 			this.checkpoints = [];
+			this._reactionLog = [];
 			this.dom.history.textContent = '';
 			this.dom.passage.textContent = '';
 			this.dom.undo.hidden = true;
@@ -2411,6 +2630,10 @@ Object.assign(Story.prototype, {
 						instant: true,
 						receipt: receipt
 					});
+				}
+				else if (entry.t === 'r') {
+					story.state.lastReaction = entry.emoji;
+					story.react(entry.emoji, 'in');
 				}
 				else {
 					story.show(entry.id, {

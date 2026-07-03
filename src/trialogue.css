@@ -641,6 +641,62 @@ a {
 	display: block;
 }
 
+/* a failed message keeps its "Not Delivered" notice forever */
+
+.chat-passage-wrapper[data-receipt="failed"] .chat-receipt {
+	display: block;
+	color: var(--t-error);
+	font-weight: 600;
+}
+
+/* Reactions (tapback badges) ============================================== */
+
+.chat-passage-wrapper.has-reaction {
+	margin-top: 1.5rem;
+}
+
+.chat-passage-wrapper.has-reaction .chat-bubbles {
+	position: relative;
+}
+
+.chat-reaction {
+	position: absolute;
+	top: -0.95rem;
+	z-index: 2;
+	background: var(--t-elevated);
+	border: 2px solid var(--t-bg);
+	border-radius: 999px;
+	padding: 0.12rem 0.4rem;
+	font-size: 0.85rem;
+	line-height: 1.2;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+	animation: t-react-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+	pointer-events: none;
+}
+
+/* the reaction sits on the corner facing its sender */
+
+.chat-passage-wrapper:not([data-speaker="you"]) .chat-reaction {
+	right: -0.4rem;
+}
+
+.chat-passage-wrapper[data-speaker="you"] .chat-reaction {
+	left: -0.4rem;
+}
+
+@keyframes t-react-pop {
+	from {
+		opacity: 0;
+		transform: scale(0.3);
+	}
+}
+
+.user-response--react {
+	font-size: 1.15rem;
+	line-height: 1;
+	padding: 0.4rem 0.7rem;
+}
+
 /* Timestamps ============================================================== */
 
 .chat-timestamp {

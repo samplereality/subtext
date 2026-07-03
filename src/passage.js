@@ -61,6 +61,16 @@ function render(source) {
 		}
 	);
 
+	// [react ❤️] on its own line reacts to the player's last message
+	// with a tapback badge (extracted and applied when the passage shows)
+
+	result = result.replace(
+		/^[ \t]*\[react[ \t]+([^\]]+)\][ \t]*$/gim,
+		function(match, emoji) {
+			return '<div class="chat-react" data-emoji="' + template.escapeHtml(emoji.trim()) + '"></div>';
+		}
+	);
+
 	// [location 52.3676,4.9041 Amsterdam] on its own line becomes a
 	// map-card bubble linking to OpenStreetMap
 

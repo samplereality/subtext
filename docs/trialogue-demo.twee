@@ -117,6 +117,44 @@ and this is how I sound:
 [[start over?->Start]]
 
 :: what is your name? [speaker-2]
-My name is Speaker 2
+funny you should ask…
+
+let me take you back
+
+[[tell me->flashback]]
+
+:: flashback [speaker-2 clear]
+[timestamp Three years earlier]
+
+hey. you don't know me yet
+
+but you will 🤝
+
+[[who is this??->no-answer]]
+
+:: no-answer [failed]
+Your message hangs there, unanswered. It was never delivered — this number won't exist for another three years.
+
+[[back to the present->present]]
+
+:: present [speaker-2 clear]
+[timestamp Today 9:44 AM]
+
+see? we go way back 😄
+
+anyway — my name is Sam
+
+[[good to know you, Sam->sam-reacts]]
+
+:: sam-reacts [speaker-2]
+[react ❤️]
+
+right back at you
+
+[[react:👍->reaction-reply]]
+[[see you around->reaction-reply]]
+
+:: reaction-reply [speaker-2]
+<% if (s.lastReaction === '👍') { %>a 👍 from you is all I need<% } else { %>see you around 👋<% } %>
 
 [[start over?->Start]]

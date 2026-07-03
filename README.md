@@ -16,7 +16,9 @@ This is a modernized fork of [phivk/trialogue](https://github.com/phivk/trialogu
 - Players can send photos from a picker; stories can branch on which image was sent.
 - Voice-memo bubbles with a real player (waveform, play/pause, duration) via `[voice file.mp3]`.
 - Location map cards via `[location lat,lon Label]`, and players can share their *real* coordinates for the story to react to.
-- Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect.
+- Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect — including a permanent, red "Not Delivered" failed state.
+- Message reactions: speakers can tapback the player's messages, and players can react as a choice.
+- Thread clearing for flashbacks and scene changes (`clear` tag + timestamp chips).
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode.
 
@@ -201,6 +203,50 @@ Silence can be louder than a reply — so you control the receipt:
 - Tag a passage `read` to force the flip — even from a meta passage. Read with no reply coming is peak dramatic tension.
 - From JavaScript or inside a passage template: `<% story.markRead() %>`, `<% story.markUnread() %>`, or with a custom label, `<% story.markRead('Read 11:58 PM') %>`.
 - Set `story.config.autoRead = false` to take full manual control, or `story.config.readReceipts = false` to turn receipts off entirely. Labels are configurable via `story.config.receiptLabels`.
+
+**Failed to send.** Tag a passage `failed` (or call `story.markFailed()`) and the player's last message shows **Not Delivered** in red. Unlike other receipts, it stays visible on that message forever — a bounced message sits in the scrollback like a small wound — and automatic read receipts will never quietly override it. Good for dead numbers, no signal, blocked contacts, and messages sent to people who no longer exist.
+
+### Reactions
+
+Tapback badges, in both directions:
+
+- **A speaker reacts to the player.** Put `[react ❤️]` on its own line in a passage and the emoji pops onto the corner of the player's last message when that passage shows. (From code: `story.react('❤️')`, or `story.react('😂', 'in')` to react to the speaker's own last message.)
+- **The player reacts as a choice.** A `[[react:👍->Target]]` link renders as an emoji chip with the other responses. Choosing it sends *no bubble* — the tapback lands on the speaker's message, `s.lastReaction` records the emoji for branching, a `reaction` event fires, and the story continues to the target:
+
+```
+:: sam-reacts [speaker-sam]
+[react ❤️]
+
+right back at you
+
+[[react:👍->reply]]
+[[see you around->reply]]
+
+:: reply [speaker-sam]
+<% if (s.lastReaction === '👍') { %>a 👍 from you is all I need<% } else { %>see you around 👋<% } %>
+```
+
+One reaction per message; a newer one replaces it. Reactions participate in undo and save/restore.
+
+### Clearing the thread
+
+For flashbacks, scene changes, or switching who the player is texting, tag a passage `clear` and the visible conversation wipes before it renders. Pair it with a timestamp for a clean cut:
+
+```
+:: flashback [speaker-sam clear]
+[timestamp Three years earlier]
+
+hey. you don't know me yet
+
+[[who is this?->no-answer]]
+
+:: back-to-now [speaker-sam clear]
+[timestamp Today]
+
+see? we go way back
+```
+
+`story.clearThread()` does the same from code. Story state and the save timeline are untouched (saves replay the whole route, clears included) — but undo deliberately cannot reach back across a cleared thread, so each scene's history is self-contained.
 
 ### Timestamps
 
