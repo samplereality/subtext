@@ -1,373 +1,284 @@
 /**
  An object representing the entire story. After the document has completed
- loading, an instance of this class will be available at `window.story`.
-
- @class Story
- @constructor
+ loading, an instance of this class is available at `window.story`.
 **/
 
 'use strict';
-var $ = require('jquery');
-var _ = require('underscore');
 var LZString = require('lz-string');
+var Passage = require('./passage');
+var template = require('./template');
+
+var SPEAKER_TAG_PREFIX = 'speaker-';
+
+function byId(id) {
+	return document.getElementById(id);
+}
+
+function deepClone(value) {
+	try {
+		return JSON.parse(JSON.stringify(value));
+	}
+	catch (e) {
+		return value;
+	}
+}
+
+function dispatch(name, detail) {
+	window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+}
 
 var Story = function() {
-	//Find the story and infer the Twine version.
+	var el = document.querySelector('tw-storydata');
 
-	var el, twVersion, selectorAuthor, selectorCSS, selectorScript, selectorSubtitle;
-
-	if ($('tw-storydata').length > 0) {
-		el = $('tw-storydata');
-		twVersion = 2;
-		selectorAuthor = 'tw-passagedata[name=StoryAuthor]';
-		selectorCSS = '*[type="text/twine-css"]';
-		selectorScript = '*[type="text/twine-javascript"]';
-		selectorSubtitle = 'tw-passagedata[name=StorySubtitle]';
-	} else {
-		el = $('#storeArea');
-		twVersion = 1;
-		selectorAuthor = 'div[tiddler=StoryAuthor]';
-		selectorCSS = '*[tags*="stylesheet"]';
-		selectorScript = '*[tags*="script"]';
-		selectorSubtitle = 'div[tiddler=StorySubtitle]';
+	if (!el) {
+		throw new Error(
+			'Trialogue could not find a <tw-storydata> element. ' +
+			'(Twine 1 documents are no longer supported.)'
+		);
 	}
-
-	// set up basic properties
 
 	this.el = el;
 
-	/**
-	 The name of the story.
-	 @property name
-	 @type String
-	 @readonly
-	**/
+	/** The name of the story. **/
+	this.name = el.getAttribute('name') || '';
 
-	this.name = twVersion == 2 ? el.attr('name') : el.find("div[tiddler=StoryTitle]").text();
+	/** The story's IFID, used to key autosaves. **/
+	this.ifid = el.getAttribute('ifid') || '';
 
-	/**
-	 The subtitle of the story.
-	 @property subtitle
-	 @type String
-	 @readonly
-	**/
+	/** The ID of the first passage to be displayed. **/
+	this.startPassage = parseInt(el.getAttribute('startnode'), 10);
 
-	this.subtitle = el.find(selectorSubtitle).html();
-
-	/**
-	 The name of the author.
-	 @property author
-	 @type String
-	 @readonly
-	**/
-
-	this.author = el.find(selectorAuthor).text();
-
-	/**
-	 The ID of the first passage to be displayed.
-	 @property startPassage
-	 @type Number
-	 @readonly
-	**/
-
-	this.startPassage = twVersion == 2 ? parseInt(el.attr('startnode')) : $('[tiddler=Start]').index();
-
-	/**
-	 The program that created this story.
-
-	 @property creator
-	 @type String
-	 @readonly
-	**/
-
-	this.creator = el.attr('creator');
-
-	/**
-	 The version of the program used to create this story.
-
-	 @property creatorVersion
-	 @type String
-	 @readOnly
-	**/
-
-	this.creatorVersion = el.attr('creator-version');
-	
-	// initialize history and state
-
-	/**
-	 An array of passage IDs, one for each passage viewed during the current
-	 session.
-
-	 @property history
-	 @type Array
-	 @readOnly
-	**/
-
-	this.history = [];
-
-	/**
-	 An array of passages as jq objects, one for each passage viewed 
-	 during the current
-	 session.
-
-	 @property history_dom
-	 @type Array
-	 @readOnly
-	**/
-
-	this.history_dom = [];
-
-	/**
-	 An array of passages (jQ objects), one for each passage viewed 
-	 since the last response.
-
-	 @property recent_dom
-	 @type Array
-	**/
-
-	this.recent_dom = [];
-
-	/**
-   An array of passage IDs, one for each passage viewed since 
-	 the last response.
-
-   @property recent
-   @type Array
-  **/
-
-  this.recent = [];
+	/** The program that created this story, and its version. **/
+	this.creator = el.getAttribute('creator');
+	this.creatorVersion = el.getAttribute('creator-version');
 
 	/**
 	 An object that stores data that persists across a single user session.
-	 Any other variables will not survive the user pressing back or forward.
-
-	 @property state
-	 @type Object
 	**/
-
 	this.state = {};
 
 	/**
-	 An array of {history, history_dom, state} pairs for use in the
-	 undo history.
-
-	 @property undoHistory
-	 @type Array
+	 An ordered record of everything rendered in the chat: passages the
+	 speakers sent and responses the user chose. This is what gets saved
+	 and what restore() replays.
+	 Entries: { t: 'p', id: <passage id> } or { t: 'u', text: <string> }
 	**/
-
-	this.undoHistory = [];
+	this.timeline = [];
 
 	/**
-	 If set to true, then any JavaScript errors are ignored -- normally, play
-	 would end with a message shown to the user. 
-
-	 @property ignoreErrors
-	 @type Boolean
+	 An array of passage IDs viewed this session (kept for compatibility
+	 with Trialogue 1.x scripts that read story.history).
 	**/
+	this.history = [];
 
+	/**
+	 Undo checkpoints, one pushed per user choice.
+	**/
+	this.checkpoints = [];
+
+	/**
+	 If true, JavaScript errors are ignored instead of shown in the chat.
+	**/
 	this.ignoreErrors = false;
 
 	/**
-	 The message shown to users when there is an error and ignoreErrors is not
-	 true. Any %s in the message will be interpolated as the actual error
-	 messsage.
-
-	 @property errorMessage
-	 @type String
+	 Message shown when an error occurs; %s is replaced by the error text.
 	**/
-
-	this.errorMessage = '\u26a0 %s';
-
-	// create passage objects
+	this.errorMessage = '⚠ %s';
 
 	/**
-	 An array of all passages, indexed by ID.
-
-	 @property passages
-	 @type Array
+	 Tunable behavior. Adjust from your story's JavaScript, e.g.:
+	   story.config.maxTypingDelay = 2500;
+	   story.config.splitBubbles = false;
+	   story.config.autosave = true;
 	**/
+	this.config = {
+		/* show the typing indicator before speaker passages */
+		typing: true,
+		/* simulated typing speed */
+		msPerChar: 20,
+		minTypingDelay: 500,
+		maxTypingDelay: 4000,
+		/* delay before meta (speakerless) passages appear */
+		metaDelay: 800,
+		/* render each paragraph of a passage as its own bubble */
+		splitBubbles: true,
+		/* stagger between bubbles of the same passage, in ms */
+		bubbleStagger: 140,
+		/* persist progress to localStorage after every message */
+		autosave: false
+	};
 
+	/** Pending setTimeout ids for the current delayed passage. **/
+	this.timers = [];
+
+	this._speakerHues = {};
+
+	/** An array of all passages, indexed by ID. **/
 	this.passages = [];
-
-	/**
-	 A number representing the ID of the setTimeout() timer for a
-	 typing event.
-
-	 @property delayedTypingEvent
-	 @type Number
-	**/
-
-	this.delayedTypingEvent = null;
-
-	/**
-	 A number representing the ID of the setTimeout() timer for
-	 a passage display event.
-
-	 @property delayedPassageEvent
-	 @type Number
-	**/
-
-	this.delayedPassageEvent = null;
-
-	/**
-	 The maximum amount of time in milliseconds that a passage will be delayed
-
-	 @property maxPassageDelay
-	 @type Number
-	**/
-
-	this.maxPassageDelay = 10000;
 
 	var p = this.passages;
 
-	if (twVersion == 2) {
-		el.children('tw-passagedata').each(function(el) {
-			var $t = $(this);
-			var id = parseInt($t.attr('pid'));
-			var tags = $t.attr('tags');
-			
-			p[id] = new Passage(
-				id,
-				$t.attr('name'),
-				(tags !== '' && tags !== undefined) ? tags.split(' ') : [],
-				$t.html()
-			);
-		});
-	} else {
-		el.children('*[tiddler]').each(function (index,el) {
-			var $t = $(el);
-			var id = index;
-			var tags = $.trim($t.attr('tags'));
+	el.querySelectorAll('tw-passagedata').forEach(function(pEl) {
+		var id = parseInt(pEl.getAttribute('pid'), 10);
+		var tags = (pEl.getAttribute('tags') || '').trim();
 
-			p[id] = new Passage(
-				id,
-				$t.attr('tiddler'),
-				(tags !== '' && tags !== undefined) ? tags.split(' ') : [],
-				$t.html().replace(/\\n/g, '\n')
-			);
+		p[id] = new Passage(
+			id,
+			pEl.getAttribute('name'),
+			tags !== '' ? tags.split(/\s+/) : [],
+			pEl.innerHTML
+		);
+	});
 
-		});
+	/** User-provided scripts and styles, run/added at start. **/
 
-		$('title').html(this.name);
-		$('#ptitle').html(this.name);
-
-	}
-
-	/**
-	 An array of user-specific scripts to run when the story is begun.
-
-	 @property userScripts
-	 @type Array
-	**/
-
-	this.userScripts = _.map(
-		el.children(selectorScript),
-		function(el) {
-			return $(el).html();
-		}
+	this.userScripts = Array.prototype.map.call(
+		el.querySelectorAll('*[type="text/twine-javascript"]'),
+		function(n) { return n.textContent; }
 	);
 
-	/**
-	 An array of user-specific style declarations to add when the story is begun.
-
-	 @property userStyles
-	 @type Array
-	**/
-
-	this.userStyles = _.map(
-		el.children(selectorCSS),
-		function(el) {
-			return $(el).html();
-		}
+	this.userStyles = Array.prototype.map.call(
+		el.querySelectorAll('*[type="text/twine-css"]'),
+		function(n) { return n.textContent; }
 	);
 };
 
-_.extend(Story.prototype, {
+/**
+ Legacy alias for config.maxTypingDelay (Trialogue 1.x exposed
+ story.maxPassageDelay).
+**/
+
+Object.defineProperty(Story.prototype, 'maxPassageDelay', {
+	get: function() {
+		return this.config.maxTypingDelay;
+	},
+	set: function(value) {
+		this.config.maxTypingDelay = value;
+	}
+});
+
+Object.assign(Story.prototype, {
 	/**
 	 Begins playing this story.
-
-	 @method start
 	**/
 
 	start: function() {
-		// Initialize special passages.
-		$('#psubtitle').html(this.subtitle);
-		if (this.author)
-			$('#pauthor').html(' by ' + this.author);
+		this.dom = {
+			panel: byId('chat-panel'),
+			history: byId('phistory'),
+			passage: byId('passage'),
+			typing: byId('animation-container'),
+			responses: byId('user-response-panel'),
+			hint: byId('user-response-hint'),
+			title: byId('ptitle'),
+			subtitle: byId('psubtitle'),
+			author: byId('pauthor'),
+			undo: byId('nav-link-undo'),
+			restart: byId('nav-link-restart'),
+			back: byId('nav-link-back'),
+			menu: byId('nav-link-menu'),
+			dialog: byId('exit-dialog'),
+			rightSidebar: document.querySelector('.right-sidebar')
+		};
 
-		// set up history event handler
+		// header: title, subtitle, author
 
-		$('#nav-link-undo').on('click', function(event) {
-			var undoState = this.undoHistory.pop();
+		if (this.dom.title) {
+			this.dom.title.textContent = this.name;
+		}
 
-			if (undoState) {
-				this.state = undoState.state;
-				this.history_dom = undoState.history_dom;
-				this.history = undoState.history;
+		var subtitle = this.passage('StorySubtitle');
 
-				/* undoHistory is only pushed to after a 
-				 * user response. To undo the visual history,
-				 * we need to remove elements not in
-				 * history_dom, then remove the previous 
-				 * element and show it again, to update the 
-				 * internal state and display user responses.
-				 */
+		if (subtitle && this.dom.subtitle) {
+			this.dom.subtitle.innerHTML = subtitle.source;
+		}
 
-				this.clearUserResponses();
-				if (this.delayedTypingEvent !== null) {
-					clearTimeout(this.delayedTypingEvent);
-					this.delayedTypingEvent = null;
-				}
-				this.hideTyping();
-				if (this.delayedPassageEvent !== null) {
-					clearTimeout(this.delayedPassageEvent);
-					this.delayedPassageEvent = null;
-				}
-				$('#phistory').children()
-					.not(this.history_dom)
-					.remove();
-				$('#passage').children()
-					.not(this.history_dom)
-					.remove();
-				$('#phistory').children().last().remove();
-				this.show(this.history[this.history.length-1]);
+		var author = this.passage('StoryAuthor');
 
-				if (this.undoHistory.length == 0) {
-					$('#nav-link-undo').css({'visibility': 'hidden'});
-				}
+		if (author && author.source.trim() && this.dom.author) {
+			this.dom.author.textContent = ' by ' + author.source.trim();
+		}
+
+		// undo & restart buttons
+
+		this.dom.undo.addEventListener('click', this.undo.bind(this));
+
+		var story = this;
+		var openDialog = function(event) {
+			event.preventDefault();
+
+			if (typeof story.dom.dialog.showModal === 'function') {
+				story.dom.dialog.showModal();
 			}
-		}.bind(this));
-
-		// set up passage link handler; don't handle historical links
-
-		$('body').on('click', 'a[data-passage]', function (e) {
-			if ($(e.target).closest('#phistory').length == 0) {
-
-				this.movePassageToHistory();
-				this.clearUserResponses();
-				this.showUserPassage($(e.target).text());
-
-				// show new passage, without moving the current passage into history, as that has been done already
-				var targetName = $(e.target).closest('[data-passage]').attr('data-passage');
-				var passageDelay = this.getPassageDelay(targetName);
-				this.showDelayed(targetName, false, true);
+			else if (window.confirm('Restart the story?')) {
+				story.restart();
 			}
-		}.bind(this));
+		};
 
-		// set up hash change handler for save/restore
+		this.dom.restart.addEventListener('click', openDialog);
+		this.dom.back.addEventListener('click', openDialog);
 
-		$(window).on('hashchange', function() {
-			this.restore(window.location.hash.replace('#', ''));	
-		}.bind(this));
+		this.dom.dialog.addEventListener('click', function(event) {
+			var action = event.target.closest('[data-dialog-action]');
 
-		// set up error handler
+			if (action) {
+				if (action.getAttribute('data-dialog-action') === 'restart') {
+					story.restart();
+				}
+
+				story.dom.dialog.close();
+				return;
+			}
+
+			// Bootstrap-era compatibility: injected modal footers use
+			// data-dismiss="modal" for their close buttons.
+
+			if (event.target.closest('[data-dismiss="modal"]')) {
+				story.dom.dialog.close();
+			}
+		});
+
+		// menu button toggles the right sidebar on small screens
+
+		this.dom.menu.addEventListener('click', function() {
+			story.dom.rightSidebar.classList.toggle('open');
+		});
+
+		// passage link handler; links inside the chat history are inert
+
+		document.body.addEventListener('click', function(event) {
+			var link = event.target.closest('[data-passage]');
+
+			if (!link || link.closest('#phistory')) {
+				return;
+			}
+
+			event.preventDefault();
+			story.choose(
+				link.getAttribute('data-passage'),
+				link.textContent.trim()
+			);
+		});
+
+		// hash change handler for save/restore
+
+		window.addEventListener('hashchange', function() {
+			var hash = window.location.hash.replace('#', '');
+
+			if (hash) {
+				story.restore(hash);
+			}
+		});
+
+		// error handler
 
 		window.onerror = function(message, url, line) {
-			if (! this.errorMessage || typeof(this.errorMessage) != 'string') {
-				this.errorMessage = Story.prototype.errorMessage;
+			if (!story.errorMessage || typeof story.errorMessage != 'string') {
+				story.errorMessage = Story.prototype.errorMessage;
 			}
 
-			if (!this.ignoreErrors) {
+			if (!story.ignoreErrors) {
 				if (url) {
 					message += ' (' + url;
 
@@ -378,302 +289,594 @@ _.extend(Story.prototype, {
 					message += ')';
 				}
 
-				$('#passage').html(this.errorMessage.replace('%s', message));
+				story.showError(story.errorMessage.replace('%s', message));
 			}
-		}.bind(this);
+		};
 
 		// activate user styles
 
-		_.each(this.userStyles, function(style) {
-			$('body').append('<style>' + style + '</style>');
+		this.userStyles.forEach(function(style) {
+			var styleEl = document.createElement('style');
+
+			styleEl.textContent = style;
+			document.body.appendChild(styleEl);
 		});
 
 		// run user scripts
 
-		_.each(this.userScripts, function(script) {
-			eval(script);
+		this.userScripts.forEach(function(script) {
+			try {
+				/* eslint-disable no-eval */
+				eval(script);
+				/* eslint-enable no-eval */
+			}
+			catch (error) {
+				if (!story.ignoreErrors) {
+					story.showError(
+						story.errorMessage.replace('%s', error.message)
+					);
+				}
+			}
 		});
 
 		/**
-		 Triggered when the story is finished loading, and right before
-		 the first passage is displayed. The story property of this event
-		 contains the story.
-
-		 @event startstory
+		 Triggered when the story is finished loading, right before the
+		 first passage is displayed.
 		**/
 
-		$.event.trigger('startstory', { story: this });
+		dispatch('startstory', { story: this });
 
-		// try to restore based on the window hash if possible	
+		// restore from the URL hash, then from autosave, else start fresh
 
-		if (window.location.hash === '' ||
-			!this.restore(window.location.hash.replace('#', ''))) {
+		var hash = window.location.hash.replace('#', '');
 
-			this.show(this.startPassage);
+		if (hash !== '' && this.restore(hash)) {
+			return;
 		}
+
+		if (this.config.autosave && this.ifid) {
+			var saved = null;
+
+			try {
+				saved = window.localStorage.getItem(this.saveKey());
+			}
+			catch (e) { /* storage unavailable */ }
+
+			if (saved && this.restore(saved)) {
+				return;
+			}
+		}
+
+		this.show(this.startPassage);
 	},
 
 	/**
 	 Returns the Passage object corresponding to either an ID or name.
-	 If none exists, then it returns null.
-
-	 @method passage
-	 @param idOrName {String or Number} ID or name of the passage
-	 @return Passage object or null
+	 If none exists, returns null.
 	**/
 
 	passage: function(idOrName) {
-		if (_.isNumber(idOrName)) {
-			return this.passages[idOrName];
+		if (typeof idOrName === 'number') {
+			return this.passages[idOrName] || null;
 		}
-		else if (_.isString(idOrName)) {
-			return _.findWhere(this.passages, { name: idOrName });
-		}
-	},
 
-	/**
-	 Displays a passage on the page, replacing the current one. If
-	 there is no passage by the name or ID passed, an exception is raised.
-
-	 Calling this immediately inside a passage (i.e. in its source code) will
-	 *not* display the other passage. Use Story.render() instead.
-
-	 @method show
-	 @param idOrName {String or Number} ID or name of the passage
-	 @param noHistory {Boolean} if true, then this will not be recorded in the story history
-	**/
-
-	show: function(idOrName, noHistory, noMove) {
-		var passage = this.passage(idOrName);
-
-		if (!passage) {
-			throw new Error(
-				'There is no passage with the ID or name "' + idOrName + '"'
+		if (typeof idOrName === 'string') {
+			return (
+				this.passages.find(function(p) {
+					return p && p.name === idOrName;
+				}) || null
 			);
 		}
 
-		/**
-		 Triggered whenever a passage is about to be replaced onscreen with another.
-		 The passage being hidden is stored in the passage property of the event.
+		return null;
+	},
 
-		 @event hidepassage
+	/**
+	 Handles the user choosing a response: checkpoints the current state,
+	 renders the choice as an outgoing message and shows the target
+	 passage after a typing delay.
+	**/
+
+	choose: function(targetName, displayText) {
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.clearUserResponses();
+		this.showUserBubble(displayText);
+		this.showDelayed(targetName, { noMove: true });
+	},
+
+	/**
+	 Displays a passage, appending it to the chat. If there is no passage
+	 by the given name or ID, an error message is shown in the chat.
+
+	 Options:
+	   noMove  - don't move the current passage into history first
+	   record  - if false, don't record this passage in the timeline
+	   instant - skip entrance animations (used when restoring)
+	**/
+
+	show: function(idOrName, opts) {
+		opts = opts || {};
+
+		var passage = this.passage(idOrName);
+
+		if (!passage) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage with the ID or name "' + idOrName + '"'
+				)
+			);
+			return;
+		}
+
+		/**
+		 Triggered when a passage is about to be hidden/shown.
 		**/
 
-		$.event.trigger('hidepassage', { passage: window.passage });
+		dispatch('hidepassage', { passage: window.passage });
+		dispatch('showpassage', { passage: passage });
 
-		/**
-		 Triggered whenever a passage is about to be shown onscreen.
-		 The passage being displayed is stored in the passage property of the event.
-
-		 @event showpassage
-		**/
-
-		$.event.trigger('showpassage', { passage: passage });
-
-		/**
-		 Save the old passage html to the passage history.
-		 **/
-
-		if (!noMove) {
+		if (!opts.noMove) {
 			this.movePassageToHistory();
 		}
 
-		/**
-     Create passage element
-		 **/
-
 		window.passage = passage;
+		passage.links = [];
 
-  	var speaker = this.getPassageSpeaker(passage);
+		var html;
 
-    var passageElem;
-		if (speaker == 'undefined') {
-			passageElem = $('<div class="meta-passage">' + passage.render() + '</div>');
-		} else {
-		  passageElem = $(
-				'<div data-speaker="' + speaker + '" class="chat-passage-wrapper ' + passage.tags.join(' ') + '">' + 
-		  			'<div data-speaker="' + speaker + '" class="chat-passage">' + 
-						passage.render() + 
-					'</div>' +
-				'</div>'
-			);  
+		try {
+			html = passage.render();
 		}
-    
-		if (!noHistory) {
-			this.recent.push(passage.id);
-			this.recent_dom.push(passageElem[0]);
-    }
+		catch (error) {
+			this.showError(this.errorMessage.replace('%s', error.message));
+			return;
+		}
 
-    /**
-		 Add passage element to passage container element
-     **/
+		var speaker = this.getPassageSpeaker(passage);
+		var wrapper = this.buildPassageElement(passage, speaker, html);
 
-		$('#passage')
-      .append(passageElem)
-			.fadeIn('slow');
-		
+		if (wrapper) {
+			if (opts.instant) {
+				wrapper.classList.add('no-anim');
+			}
+
+			this.applyGrouping(wrapper);
+			this.dom.passage.appendChild(wrapper);
+		}
+
+		if (opts.record !== false) {
+			this.timeline.push({ t: 'p', id: passage.id });
+			this.history.push(passage.id);
+		}
+
+		this.clearUserResponses();
 		this.showUserResponses();
-		
+		this.pcolophon();
+		this.persist();
 		this.scrollChatIntoView();
 
-		this.pcolophon();
-
 		/**
-		 Triggered after a passage has been shown onscreen, and is now
-		 displayed in the div with id passage. The passage being displayed is
-		 stored in the passage property of the event.
+		 Triggered after a passage has been shown onscreen.
+		**/
 
-		 @event showpassage:after
-		 **/
-
-		$.event.trigger('showpassage:after', { passage: passage });
+		dispatch('showpassage:after', { passage: passage });
 	},
 
 	/**
-	 move current passage to history
-	 **/
-	movePassageToHistory: function () {
-		// $('#passage').hide();
-		
-		this.emptyPassageLinks();
+	 Builds the DOM element for a rendered passage: a centered meta
+	 passage when there is no speaker tag, otherwise a chat message
+	 group with avatar, speaker name and one bubble per paragraph.
+	 Returns null if the passage rendered to nothing visible.
+	**/
 
-		this.pcopy();
+	buildPassageElement: function(passage, speaker, html) {
+		var content = document.createElement('div');
+
+		content.innerHTML = html;
+
+		var blocks = Array.prototype.filter.call(content.childNodes, function(node) {
+			return !(
+				node.nodeType === Node.TEXT_NODE && node.textContent.trim() === ''
+			);
+		});
+
+		if (blocks.length === 0) {
+			return null;
+		}
+
+		// meta passage (no speaker)
+
+		if (!speaker) {
+			var meta = document.createElement('div');
+
+			meta.className = 'meta-passage';
+			blocks.forEach(function(node) {
+				meta.appendChild(node);
+			});
+
+			return meta;
+		}
+
+		// chat message group
+
+		var wrapper = document.createElement('div');
+
+		wrapper.className = 'chat-passage-wrapper';
+		wrapper.setAttribute('data-speaker', speaker);
+
+		passage.tags.forEach(function(tag) {
+			if (/^[A-Za-z_][\w-]*$/.test(tag)) {
+				wrapper.classList.add(tag);
+			}
+		});
+
+		if (speaker !== 'you') {
+			wrapper.appendChild(this.buildAvatar(speaker));
+		}
+
+		var bubbles = document.createElement('div');
+
+		bubbles.className = 'chat-bubbles';
+		wrapper.appendChild(bubbles);
+
+		if (speaker !== 'you') {
+			var name = document.createElement('div');
+
+			name.className = 'chat-speaker-name';
+			name.textContent = this.getSpeakerDisplayName(speaker);
+			bubbles.appendChild(name);
+		}
+
+		var story = this;
+		var bubbleBlocks = this.config.splitBubbles ? blocks : [null];
+		var index = 0;
+
+		bubbleBlocks.forEach(function(block) {
+			var bubble = document.createElement('div');
+
+			bubble.className = 'chat-passage';
+			bubble.setAttribute('data-speaker', speaker);
+
+			if (block === null) {
+				while (content.firstChild) {
+					bubble.appendChild(content.firstChild);
+				}
+			}
+			else {
+				if (block.nodeType === Node.TEXT_NODE) {
+					var p = document.createElement('p');
+
+					p.textContent = block.textContent;
+					bubble.appendChild(p);
+				}
+				else {
+					bubble.appendChild(block);
+				}
+			}
+
+			// media-only bubbles (a lone image/video/iframe) render
+			// borderless, like a photo message
+
+			if (story.isMediaOnly(bubble)) {
+				bubble.classList.add('chat-passage--media');
+			}
+
+			bubble.style.animationDelay =
+				(index * story.config.bubbleStagger) + 'ms';
+			index += 1;
+
+			bubbles.appendChild(bubble);
+		});
+
+		return wrapper;
 	},
-	
+
+	buildAvatar: function(speaker) {
+		var avatar = document.createElement('div');
+
+		avatar.className = 'chat-avatar';
+		avatar.setAttribute('aria-hidden', 'true');
+		avatar.setAttribute('data-speaker', speaker);
+		avatar.textContent = this.getSpeakerDisplayName(speaker)
+			.charAt(0)
+			.toUpperCase();
+		avatar.style.setProperty('--avatar-hue', this.speakerHue(speaker));
+
+		return avatar;
+	},
+
+	isMediaOnly: function(bubble) {
+		if (bubble.textContent.trim() !== '') {
+			return false;
+		}
+
+		var media = bubble.querySelectorAll('img, video, iframe, svg');
+
+		return media.length > 0;
+	},
+
 	/**
-	 render passage links as UserResponses in UserResponsePanel
-	 **/
-	showUserResponses: function () {
-		_.each(passage.links, function (link) {
-			$('#user-response-panel').append(
-				'<a ' + 
-					'href="javascript:void(0)"' +
-					'class="user-response"' +
-					'data-passage="' + _.escape(link.target) + '"' +
-				'>' + 
-					link.display + 
-				'</a>'
-			).fadeIn('slow')
+	 Derives a stable hue (0-359) from a speaker name, used to tint that
+	 speaker's avatar. Override per speaker with CSS if you prefer:
+	   .chat-avatar[data-speaker="alice"] { background: rebeccapurple; }
+	**/
+
+	speakerHue: function(speaker) {
+		if (!(speaker in this._speakerHues)) {
+			var hash = 0;
+
+			for (var i = 0; i < speaker.length; i++) {
+				hash = (hash * 31 + speaker.charCodeAt(i)) % 360;
+			}
+
+			this._speakerHues[speaker] = hash;
+		}
+
+		return this._speakerHues[speaker];
+	},
+
+	/**
+	 Marks a new message group as a continuation when the previous group
+	 has the same speaker, so CSS can tighten spacing, hide the repeated
+	 name/avatar and adjust bubble corners.
+	**/
+
+	applyGrouping: function(wrapper) {
+		var previous =
+			this.dom.passage.lastElementChild ||
+			this.dom.history.lastElementChild;
+
+		if (
+			previous &&
+			previous.classList.contains('chat-passage-wrapper') &&
+			previous.getAttribute('data-speaker') ===
+				wrapper.getAttribute('data-speaker')
+		) {
+			wrapper.classList.add('chat-follow');
+			previous.classList.add('has-follow');
+
+			var name = wrapper.querySelector('.chat-speaker-name');
+
+			if (name) {
+				name.remove();
+			}
+		}
+	},
+
+	/**
+	 Moves the current passage's messages into the history container.
+	**/
+
+	movePassageToHistory: function() {
+		while (this.dom.passage.firstChild) {
+			this.dom.history.appendChild(this.dom.passage.firstChild);
+		}
+	},
+
+	/**
+	 Renders passage links as response buttons in the response panel.
+	**/
+
+	showUserResponses: function() {
+		var story = this;
+
+		if (!window.passage) {
+			return;
+		}
+
+		window.passage.links.forEach(function(link, index) {
+			var button = document.createElement('button');
+
+			button.type = 'button';
+			button.className = 'user-response';
+			button.setAttribute('data-passage', link.target);
+			button.innerHTML = link.display;
+			button.style.animationDelay = (index * 60) + 'ms';
+			story.dom.responses.appendChild(button);
 		});
 	},
 
 	/**
-	 remove UserResponses from UserResponsePanel
-	 **/
+	 Removes response buttons from the response panel.
+	**/
 
-	clearUserResponses: function () {
-		// remove UserResponse links
-		$('#user-response-panel').empty();
+	clearUserResponses: function() {
+		this.dom.responses.textContent = '';
 	},
 
 	/**
-	 render chosen UserResponse as passage in pHistory
-	 **/
+	 Renders a chosen response as an outgoing chat message.
+	**/
 
-	showUserPassage: function (text) {
-		this.history = this.history.concat(this.recent);
-		this.history_dom = this.history_dom.concat(this.recent_dom);
-		this.recent = [];
-		this.recent_dom = [];
+	showUserBubble: function(text, opts) {
+		opts = opts || {};
 
-		this.undoHistory.push(
-			{
-				state: this.state,
-				history_dom: this.history_dom,
-				history: this.history
-			}
-		);
-		$('#nav-link-undo').css({'visibility': 'visible'});
+		var wrapper = document.createElement('div');
 
-		// render clicked link as UserPassage
-		var user_passage = $('<div class="chat-passage-wrapper" data-speaker="you"><div class="chat-passage phistory" data-speaker="you" data-upassage="' + window.passage.id + '">' + text + '</div></div>');
-		$('#phistory').append(user_passage);
-		this.recent_dom.push(user_passage[0]);
+		wrapper.className = 'chat-passage-wrapper';
+		wrapper.setAttribute('data-speaker', 'you');
+
+		var bubbles = document.createElement('div');
+
+		bubbles.className = 'chat-bubbles';
+
+		var bubble = document.createElement('div');
+
+		bubble.className = 'chat-passage phistory';
+		bubble.setAttribute('data-speaker', 'you');
+
+		if (window.passage) {
+			bubble.setAttribute('data-upassage', window.passage.id);
+		}
+
+		bubble.textContent = text;
+		bubbles.appendChild(bubble);
+		wrapper.appendChild(bubbles);
+
+		if (opts.instant) {
+			wrapper.classList.add('no-anim');
+		}
+
+		this.applyGrouping(wrapper);
+		this.dom.history.appendChild(wrapper);
+		this.timeline.push({ t: 'u', text: text });
 		this.scrollChatIntoView();
 	},
 
 	/**
-	 scroll bottom of chat-panel into view to ensure recently 
-	 added passages can be read
-	 **/
+	 Shows an error as a meta message in the chat.
+	**/
 
-	scrollChatIntoView: function () {
-		var d = document.documentElement;
-		var offset = d.scrollTop + window.innerHeight;
-		var height = d.offsetHeight;
+	showError: function(message) {
+		var meta = document.createElement('div');
 
-		if (offset !== height) {
-			$('html, body').animate({scrollTop:$('.chat-panel').height()}, 1000);
+		meta.className = 'meta-passage meta-passage--error';
+		meta.textContent = message;
+
+		if (this.dom && this.dom.passage) {
+			this.dom.passage.appendChild(meta);
+			this.scrollChatIntoView();
 		}
 	},
 
 	/**
-	 Copies the colophon into an end passage.
-
-	 @method pcolophon
+	 Saves an undo checkpoint. Called right before a user choice is
+	 applied.
 	**/
-	
+
+	pushCheckpoint: function() {
+		this.checkpoints.push({
+			state: deepClone(this.state),
+			domCount: this.dom.history.children.length,
+			timelineLength: this.timeline.length,
+			passageId: window.passage ? window.passage.id : null,
+			links: window.passage ? window.passage.links.slice() : []
+		});
+
+		this.dom.undo.hidden = false;
+	},
+
+	/**
+	 Undoes the most recent choice: restores state, trims the chat back
+	 to the checkpoint and re-offers the responses that were available.
+	**/
+
+	undo: function() {
+		var checkpoint = this.checkpoints.pop();
+
+		if (!checkpoint) {
+			return;
+		}
+
+		this.cancelTimers();
+		this.hideTyping();
+		this.clearUserResponses();
+
+		// everything since the checkpoint is discarded
+
+		this.dom.passage.textContent = '';
+
+		var history = this.dom.history;
+
+		while (history.children.length > checkpoint.domCount) {
+			history.lastElementChild.remove();
+		}
+
+		if (history.lastElementChild) {
+			history.lastElementChild.classList.remove('has-follow');
+		}
+
+		this.state = checkpoint.state;
+		this.timeline.length = checkpoint.timelineLength;
+		this.history = this.timeline
+			.filter(function(entry) { return entry.t === 'p'; })
+			.map(function(entry) { return entry.id; });
+
+		var passage = this.passage(checkpoint.passageId);
+
+		if (passage) {
+			window.passage = passage;
+			passage.links = checkpoint.links.slice();
+		}
+
+		this.showUserResponses();
+		this.persist();
+		this.scrollChatIntoView();
+
+		if (this.checkpoints.length === 0) {
+			this.dom.undo.hidden = true;
+		}
+	},
+
+	/**
+	 Scrolls the chat panel so the newest messages are visible.
+	**/
+
+	scrollChatIntoView: function() {
+		var panel = this.dom.panel;
+
+		window.requestAnimationFrame(function() {
+			panel.scrollTo({
+				top: panel.scrollHeight,
+				behavior: 'smooth'
+			});
+		});
+	},
+
+	/**
+	 Appends the StoryColophon passage when an End-tagged passage shows.
+	**/
+
 	pcolophon: function() {
-		if ($.inArray('End', window.passage.tags) > -1 && this.passage('StoryColophon') != null) {
-			$(this.passage('StoryColophon').render()).hide().appendTo("#passage").fadeIn('slow');
+		if (
+			window.passage.tags.indexOf('End') > -1 &&
+			this.passage('StoryColophon') !== null
+		) {
+			var meta = document.createElement('div');
+
+			meta.className = 'meta-passage meta-passage--colophon';
+			meta.innerHTML = this.passage('StoryColophon').render();
+			this.dom.passage.appendChild(meta);
 		}
 	},
-	
-	/**
-	 Copies the current passage text into the passage history div.
-
-	 @method pcopy
-	**/
-	
-	pcopy: function() {
-		if (parseInt(window.passage.id,10)){
-      // (I used .remove() here to remove any event handlers, which shouldn't persist.)
-      var removed = $('#passage').children().remove();
-			$('#phistory').append(removed);
-		}
-	},
-	
-	/**
-	 Empties the current passage object links attribute,
-	 making space for the next passage's data
-
-	 @method emptyPassageLinks
-	**/
-	
-	emptyPassageLinks: function() {
-		passage.links = [];
-	},
-
 
 	/**
-	 Retrieves the speaker from the passage tags
-
-	 @method getPassageSpeaker
-	 @param passage {Passage} current window.passage object
-	 @return {String} Speaker name of passage
+	 Retrieves the speaker from a passage's tags. Returns null when the
+	 passage has no speaker-* tag (it renders as a meta passage).
 	**/
-	
+
 	getPassageSpeaker: function(passage) {
-		if (!String.prototype.startsWith) {
-			String.prototype.startsWith = function(search, pos) {
-				return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
-			};
-		}
-		var speakerTag = _.find(passage.tags, function(tag){ return tag.startsWith('speaker-'); });
-		if (typeof speakerTag === 'undefined') {
-			return 'undefined';
-		}
-		return speakerTag.substring(8);
-	},
-	
-	/**
-	 Returns the HTML source for a passage. This is most often used when
-	 embedding one passage inside another. In this instance, make sure to
-	 use <%= %> instead of <%- %> to avoid incorrectly encoding HTML entities.
+		var speakerTag = passage.tags.find(function(tag) {
+			return tag.indexOf(SPEAKER_TAG_PREFIX) === 0;
+		});
 
-	 @method render
-	 @param idOrName {String or Number} ID or name of the passage
-	 @return {String} HTML source code
+		return speakerTag ? speakerTag.substring(SPEAKER_TAG_PREFIX.length) : null;
+	},
+
+	/**
+	 Human-readable version of a speaker id: dashes become spaces
+	 ("speaker-happy-bot" is displayed as "happy bot").
+	**/
+
+	getSpeakerDisplayName: function(speaker) {
+		return speaker.replace(/-+/g, ' ').trim();
+	},
+
+	/**
+	 Returns the HTML source for a passage, most often used to embed one
+	 passage in another.
 	**/
 
 	render: function(idOrName) {
@@ -687,169 +890,248 @@ _.extend(Story.prototype, {
 	},
 
 	/**
-	 Jump from one passage to another, 
-	 delayed based on the length of the target passage
-
-	 @method showDelayed
-	 @param idOrName {String or Number} ID or name of the passage
+	 Shows a passage after a delay proportional to its length, with a
+	 typing indicator while "typing" it.
 	**/
 
-	showDelayed: function (idOrName, noHistory, noMove) {
-		var typingDelayRatio = 0.3;
-		var delayMS = this.getPassageDelay(idOrName);
+	showDelayed: function(idOrName, opts) {
+		var story = this;
+		var passage = this.passage(idOrName);
 
-		var speaker = this.getPassageSpeaker(this.passage(idOrName));
-
-		// show animation
-		if (speaker != 'undefined') {
-      this.delayedTypingEvent = _.delay(
-        function(){
-          story.showTyping(idOrName);
-        },
-        delayMS * typingDelayRatio
-      );
-		} else {
-			delayMS = 1000;
+		if (!passage) {
+			this.show(idOrName, opts); // surfaces the error message
+			return;
 		}
-    
-		this.delayedPassageEvent = _.delay(
-			function(){
+
+		var speaker = this.getPassageSpeaker(passage);
+		var delay = speaker
+			? this.getPassageDelay(idOrName)
+			: this.config.metaDelay;
+
+		if (speaker && this.config.typing) {
+			this.timers.push(
+				window.setTimeout(function() {
+					story.showTyping(idOrName);
+				}, Math.min(250, delay * 0.25))
+			);
+		}
+
+		this.timers.push(
+			window.setTimeout(function() {
 				story.hideTyping();
-				story.show(idOrName, noHistory, noMove);
-			},
-			delayMS
+				story.show(idOrName, opts);
+			}, delay)
 		);
+	},
 
+	cancelTimers: function() {
+		this.timers.forEach(function(id) {
+			window.clearTimeout(id);
+		});
+		this.timers = [];
 	},
 
 	/**
-	 get number of milliseconds to wait based on target passage text length
-
-	 @method getPassageDelay
-	 @param idOrName {String or Number} ID or name of the passage
+	 Number of milliseconds to "type" the target passage, based on its
+	 text length (links excluded), clamped to configured bounds.
 	**/
 
-	getPassageDelay: function (idOrName) {
+	getPassageDelay: function(idOrName) {
 		var target = this.passage(idOrName);
-		var targetSourceTextLength = $('<div></div>').html(target.source).text().length;
-		var targetUserResponseLength = _.reduce(
-			target.links, 
-			function(memo, link){ 
-				return memo + link.display.length + 4; // + 4 for '[['+']]'
-			}, 
-			0
+
+		if (!target) {
+			return this.config.minTypingDelay;
+		}
+
+		var probe = document.createElement('div');
+
+		probe.innerHTML = target.source.replace(/\[\[.*?\]\]/g, '');
+
+		var length = probe.textContent.trim().length;
+
+		return Math.max(
+			this.config.minTypingDelay,
+			Math.min(length * this.config.msPerChar, this.config.maxTypingDelay)
 		);
-		var targetTextLength = targetSourceTextLength - targetUserResponseLength;
-		var msPerChar = 20;
-		var delayMS = targetTextLength * msPerChar;
-		var delayThresholded = Math.min(delayMS, this.maxPassageDelay);
-		return delayThresholded;
 	},
 
 	/**
-	 turn typing animation on
-
-	 @method toggleTyping
-	 @param idOrName {String or Number} ID or name of the passage
+	 Shows the typing indicator, styled for the passage's speaker.
 	**/
 
-	showTyping: function (idOrName) {
-		var speaker = this.getPassageSpeaker(this.passage(idOrName));
-		$('#animation-container .chat-passage-wrapper').attr('data-speaker', speaker);
-		$('#animation-container .chat-passage-wrapper .chat-passage').attr('data-speaker', speaker);
-		$('#animation-container').fadeIn('slow');
+	showTyping: function(idOrName) {
+		var passage = this.passage(idOrName);
+		var speaker = passage ? this.getPassageSpeaker(passage) : null;
+
+		if (!speaker) {
+			return;
+		}
+
+		var typing = this.dom.typing;
+		var wrapper = typing.querySelector('.chat-passage-wrapper');
+		var avatar = typing.querySelector('.chat-avatar');
+
+		wrapper.setAttribute('data-speaker', speaker);
+
+		var previous =
+			this.dom.passage.lastElementChild ||
+			this.dom.history.lastElementChild;
+
+		wrapper.classList.toggle(
+			'chat-follow',
+			!!(
+				previous &&
+				previous.classList.contains('chat-passage-wrapper') &&
+				previous.getAttribute('data-speaker') === speaker
+			)
+		);
+
+		avatar.textContent = this.getSpeakerDisplayName(speaker)
+			.charAt(0)
+			.toUpperCase();
+		avatar.setAttribute('data-speaker', speaker);
+		avatar.style.setProperty('--avatar-hue', this.speakerHue(speaker));
+
+		typing.hidden = false;
 		this.scrollChatIntoView();
 	},
 
 	/**
-	 turn typing animation off
-
-	 @method toggleTyping
-	 @param idOrName {String or Number} ID or name of the passage
+	 Hides the typing indicator.
 	**/
 
-	hideTyping: function (idOrName) {
-		$('#animation-container').hide();
+	hideTyping: function() {
+		this.dom.typing.hidden = true;
 	},
 
 	/**
-	 Returns a hash value representing the current state of the story.
-
-	 @method saveHash
-	 @return String hash
+	 Returns a hash value representing the current story progress.
 	**/
 
-	saveHash: function()
-	{	
-		return LZString.compressToBase64(JSON.stringify({ state: this.state, history: this.history }));
+	saveHash: function() {
+		return LZString.compressToBase64(
+			JSON.stringify({
+				state: this.state,
+				timeline: this.timeline,
+				/* legacy field so old integrations reading history keep working */
+				history: this.history
+			})
+		);
 	},
 
 	/**
-	 Sets the URL's hash property to the hash value created by saveHash().
-
-	 @method save
-	 @return String hash
+	 Sets the URL hash to the current progress, creating a bookmarkable
+	 save.
 	**/
 
-	save: function()
-	{
-		/**
-		 Triggered whenever story progress is saved.
+	save: function() {
+		dispatch('save', { story: this });
+		window.history.replaceState(null, '', '#' + this.saveHash());
+	},
 
-		 @event save
-		**/
-
-		$.event.trigger('save');
-		window.location.hash = this.saveHash();
+	saveKey: function() {
+		return 'trialogue-save-' + this.ifid;
 	},
 
 	/**
-	 Tries to restore the story state from a hash value generated by saveHash().
-
-	 @method restore
-	 @param hash {String} 
-	 @return {Boolean} whether the restore succeeded
+	 Writes an autosave if enabled.
 	**/
 
-	restore: function (hash)
-	{
-		/**
-		 Triggered before trying to restore from a hash.
-
-		 @event restore
-		**/
-
-		$.event.trigger('restore');
-
-		try
-		{
-			var save = JSON.parse(LZString.decompressFromBase64(hash));
-			this.state = save.state;
-			this.history = save.history;
-			this.show(this.history[this.history.length - 1], true);
+	persist: function() {
+		if (!this.config.autosave || !this.ifid) {
+			return;
 		}
-		catch (e)
-		{
-			// swallow the error
 
-			/**
-			 Triggered if there was an error with restoring from a hash.
+		try {
+			window.localStorage.setItem(this.saveKey(), this.saveHash());
+		}
+		catch (e) { /* storage unavailable or full */ }
+	},
 
-			 @event restorefailed
-			**/
+	/**
+	 Restores progress from a hash created by saveHash(), replaying the
+	 whole conversation instantly. Returns whether the restore succeeded.
+	**/
 
-			$.event.trigger('restorefailed', { error: e });
+	restore: function(hash) {
+		dispatch('restore', { story: this });
+
+		try {
+			var save = JSON.parse(LZString.decompressFromBase64(hash));
+			var timeline = save.timeline;
+
+			if (!timeline && save.history) {
+				// legacy hash from Trialogue 1.x
+				timeline = save.history.map(function(id) {
+					return { t: 'p', id: id };
+				});
+			}
+
+			if (!timeline || !timeline.length) {
+				throw new Error('Save data is empty');
+			}
+
+			this.cancelTimers();
+			this.hideTyping();
+			this.clearUserResponses();
+			this.state = {};
+			this.timeline = [];
+			this.history = [];
+			this.checkpoints = [];
+			this.dom.history.textContent = '';
+			this.dom.passage.textContent = '';
+			this.dom.undo.hidden = true;
+
+			var story = this;
+
+			timeline.forEach(function(entry) {
+				if (entry.t === 'u') {
+					story.showUserBubble(entry.text, { instant: true });
+				}
+				else {
+					story.show(entry.id, {
+						record: false,
+						instant: true
+					});
+					story.timeline.push({ t: 'p', id: entry.id });
+					story.history.push(entry.id);
+				}
+			});
+
+			// replaying re-runs template side effects; the explicitly
+			// saved state still wins
+
+			if (save.state) {
+				this.state = save.state;
+			}
+
+			this.persist();
+		}
+		catch (e) {
+			dispatch('restorefailed', { error: e });
 			return false;
-		};
+		}
 
-		/**
-		 Triggered after completing a restore from a hash.
-
-		 @event restore:after
-		**/
-
-		$.event.trigger('restore:after');
+		dispatch('restore:after', { story: this });
 		return true;
+	},
+
+	/**
+	 Clears saved progress and restarts the story from the beginning.
+	**/
+
+	restart: function() {
+		try {
+			window.localStorage.removeItem(this.saveKey());
+		}
+		catch (e) { /* storage unavailable */ }
+
+		window.history.replaceState(
+			null,
+			'',
+			window.location.pathname + window.location.search
+		);
+		window.location.reload();
 	}
 });
 

@@ -1,28 +1,25 @@
 {
-  "name": "Trialogue",
-  "version": "0.1.1",
-  "description": "A chat style story format based on Paloma",
+  "name": "trialogue",
+  "version": "2.0.0",
+  "description": "A chat-style story format for Twine 2",
   "author": "Philo van Kemenade",
   "license": "MIT",
-  "repository": "https://github.com/phivk/trialogue",
+  "repository": "https://github.com/samplereality/trilogue-relog",
   "config": {
+    "formatName": "Trialogue",
     "distDir": "dist/"
   },
+  "scripts": {
+    "build": "node build.js",
+    "demo": "node build.js && node scripts/build-demo.js",
+    "test": "node build.js && node scripts/build-demo.js && node scripts/smoke-test.js"
+  },
   "dependencies": {
-    "jquery": "^3.6.0",
-    "lz-string": "^1.4.4",
-    "marked": "^4.0.17",
-    "underscore": "^1.13.4"
+    "lz-string": "^1.5.0",
+    "marked": "^12.0.2"
   },
   "devDependencies": {
-    "grunt": "^1.5.3",
-    "grunt-browserify": "^6.0.0",
-    "grunt-contrib-clean": "^2.0.1",
-    "grunt-contrib-cssmin": "^4.0.0",
-    "grunt-contrib-watch": "^1.1.0",
-    "grunt-contrib-yuidoc": "^1.0.0",
-    "grunt-eslint": "^24.0.0",
-    "jit-grunt": "^0.10.0",
-    "uglifyify": "^5.0.2"
+    "esbuild": "^0.24.2",
+    "playwright": "^1.49.1"
   }
 }

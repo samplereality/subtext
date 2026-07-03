@@ -1,74 +1,148 @@
 <p align="center"><img src="src/icon.svg" alt="Trialogue logo"></p>
 <h1 align="center">Trialogue</h1>
 
-Trialogue is a Story Format for [Twine](https://twinery.org/) that let's you turn a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, add Trialogue as the Story Format and play back your story in the form of an interactive chat.
+Trialogue is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, select Trialogue as the story format, and play your story back as a modern text-message exchange.
 
-👉 Demo story: https://phivk.github.io/trialogue/docs/trialogue-demo.html <br>
+This is a modernized fork of [phivk/trialogue](https://github.com/phivk/trialogue) (itself based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) and [Snowman](https://github.com/videlais/snowman)).
 
-## User Guide
+## What's new in 2.0
 
-A guide on how to use Trialogue to create interactive chat bot stories in Twine is available at:
+**A modern messaging look**
 
-https://phivk.gitbook.io/trialogue/
+- Message bubbles are grouped by speaker with iMessage-style corner shaping, a speaker name above each group, and an auto-colored avatar beside it.
+- Each paragraph of a passage becomes its own bubble, so longer passages read like a real text exchange.
+- Outgoing (player) messages render as accent-colored bubbles on the right; choices appear as quick-reply pill buttons.
+- Passages containing only an image render frameless, like a photo message.
+- Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode.
 
-## Example stories powered by Trialogue
+**A more robust format**
 
-Example stories using Trialogue (add yours by submitting a Pull Request, or open an issue with a link):
+- The runtime was rewritten in dependency-free vanilla JavaScript. jQuery, Underscore, and the Bootstrap/jQuery CDN links are gone — published stories are fully self-contained and work offline.
+- Save/restore now replays the entire conversation, not just the last passage, and an optional autosave keeps progress across reloads.
+- Undo restores story state correctly (state snapshots are deep-copied per choice).
+- Broken links, render errors, and script errors surface as readable messages in the chat instead of failing silently.
+- The Grunt/Browserify toolchain was replaced with a single esbuild-based build script, plus a built-in Twee compiler and headless-browser smoke test.
 
-- [Chatterpast](https://chatterpast.tolerantfutures.com/): Explore life in Iron Age and Roman Britannia with Enica and her friends.
-- [Filla Fulla Chat](https://fillafulla.sng.sk/?lang=en): Take part in an interactive conversation and explore life stories and key artworks of the iconic Czech and Slovak artists Emil Filla and Ľudovít Fulla.
-- [Mother Tongue](https://2370.play.ifcomp.org/content/mother-tongue.html): How to learn Tagalog in just one awkward conversation with your mom a day.
+## Writing a chat story
 
-## Development Setup
-
-A possible workflow for collaboration between a Story Author and Format Developer:
-
-1. Story Author works on story in [Twinery GUI](https://twinery.org/2/#!/stories), with current version of published Story Format selected
-2. Story Author exports updated version of Story to `.html` file and shares it with Format Developer *(infrequently)*
-3. Format Developer decompiles the latest Story version from `.html` to `.twee` using [TweeGo](https://www.motoslave.net/tweego/)/[Twee2](https://dan-q.github.io/twee2/) *(see 'Testing during development')*
-4. Format Developer runs [TweeGo](https://www.motoslave.net/tweego/)/[Twee2](https://dan-q.github.io/twee2/) to compile the latest Story from `.twee` to `.html` with WIP/'in development' version of custom Story Format *(see 'Testing during development')*
-5. Format Developer adjusts Story Format *(frequently)*
-6. Format Developer repeats from step **4.** until happy to release a new version of Story Format
-7. Format Developer publishes Story Format as a new version *(infrequently)*
-8. Story Author imports the new version of the Story Format and continues working on the Story
-9. Repeat from **1.** until happy with Story Format functionality
-10. 🎉
-
-### Testing during development
-
-#### Building Story Format from Source
-
-Run `npm install` to install dependencies.  Run `grunt package` to create a release version for Twine under `dist/`.  Run `grunt --help` to list other grunt targets.
-
-#### Compiling a story using Trialogue
-
-A way to test the result of adjustments to the Story Format, is to compile a `.twee` Story to `.html` using the Trialogue format and check the behaviour & styling in a browser.
-
-(De)compilation can be done using either:
-
-- [TweeGo](https://www.motoslave.net/tweego/)
-- [Twee2](https://dan-q.github.io/twee2/)
-
-**Decompile** `.html` story to `.twee`/`.tw2` using Trialogue Story Format:
+Every passage is a message. Tag a passage `speaker-<name>` to say who sends it:
 
 ```
-tweego --decompile --output=[path/to/target.twee] [path/to/source.html] --format=Trialogue
+:: Start [speaker-detective]
+Something doesn't add up here.
+
+Meet me at the docks in an hour?
+
+[[on my way]]
+[[why the docks?]]
 ```
 
-```
-twee2 decompile [path/to/source.html] [path/to/target.tw2]
+- Each paragraph (blank-line separated) becomes its own bubble.
+- `[[links]]` become the player's quick-reply choices. The usual Twine link forms work: `[[display|target]]`, `[[display->target]]`, `[[target<-display]]`.
+- A passage **without** a `speaker-` tag renders as a centered "meta" message — good for narration or scene breaks.
+- Speaker names get an avatar automatically (initial + a stable color derived from the name). Multi-word names use dashes: `speaker-happy-bot` displays as "happy bot".
+- Markdown, inline HTML, and Snowman-style `<%= s.variable %>` templates are all supported. Story state lives in `s` (an alias for `window.story.state`).
+
+### Special passages
+
+| Passage | Purpose |
+| --- | --- |
+| `StorySubtitle` | Subtitle shown under the story title in the header |
+| `StoryAuthor` | Author credit shown next to the subtitle |
+| `StoryColophon` | Appended as a meta message when a passage tagged `End` is shown |
+| tag `script` | Story JavaScript (Twine's Edit Story JavaScript also works) |
+| tag `stylesheet` | Story CSS (Twine's Edit Story Stylesheet also works) |
+
+### Configuration
+
+Adjust behavior from your story's JavaScript:
+
+```js
+story.config.typing = true;        // show the typing indicator
+story.config.msPerChar = 20;       // simulated typing speed
+story.config.minTypingDelay = 500; // ms
+story.config.maxTypingDelay = 4000;// ms
+story.config.metaDelay = 800;      // delay before meta passages
+story.config.splitBubbles = true;  // one bubble per paragraph
+story.config.autosave = false;     // persist progress to localStorage
 ```
 
-**Compile** `.twee`/`.tw2` story to `.html` story using Trialogue Story Format:
+### Theming
+
+Override CSS variables from your story stylesheet:
+
+```css
+:root {
+  --t-accent: #34c759;            /* player bubbles & buttons */
+  --t-bg: #ffffff;                /* chat background */
+  --t-bubble-in: #e9e9eb;         /* incoming bubble background */
+  --t-bubble-in-text: #111114;    /* incoming bubble text */
+  --t-chat-width: 44rem;          /* max chat column width */
+}
+```
+
+Dark mode follows the player's system preference automatically; force a scheme with `<html data-theme="dark">` (or `light`). The Trialogue 1.x variable names (`--bg-color`, `--user-color`, `--passage-bg-color`, `--passage-text-color`, `--navbar-bg-color`, `--speaker-color`) are still honored.
+
+Style an individual speaker by targeting its `data-speaker` attribute:
+
+```css
+.chat-avatar[data-speaker="detective"] {
+  background-image: url('detective.png');
+  color: transparent;
+}
+.chat-passage[data-speaker="detective"] {
+  background: #ffe8cc;
+}
+```
+
+### Page chrome helpers
+
+Call these from your story JavaScript to fill in the page around the chat:
+
+```js
+inject_left_sidebar('<h3>About</h3><p>…</p>');   // desktop-only left column
+inject_right_sidebar('<p>…</p>');                // right column / mobile drawer
+inject_hint('Choose an option to continue');     // text above the choices
+inject_modal('Leave?', '<p>Progress will be lost.</p>', '<button data-dismiss="modal">Stay</button>');
+inject_nav_back('← back');                       // shows a back link in the header
+inject_nav_menu('menu');                         // custom label for the drawer button
+```
+
+The header always includes an Undo button (appears once there is something to undo) and a Restart button that asks for confirmation.
+
+### Saving
+
+- `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.
+- `story.config.autosave = true` additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.
+
+## Using the format in Twine
+
+In Twine 2: **Twine → Story Formats → Add** and paste the URL of a hosted copy of `dist/Twine2/Trialogue/format.js`, e.g. the GitHub Pages/raw URL for this repository.
+
+## Development
 
 ```
-tweego --output=[path/to/target.html] [path/to/source.twee] --format=Trialogue
+npm install
+npm run build   # build dist/Twine2/Trialogue/format.js
+npm run demo    # build + compile docs/trialogue-demo.twee to docs/trialogue-demo.html
+npm test        # build + demo + headless-browser smoke test
 ```
 
+The demo compiler (`scripts/build-demo.js`) is a minimal Twee-to-HTML stand-in for [Tweego](https://www.motoslave.net/tweego/), so you can iterate on the format without external tools. Tweego still works too:
+
 ```
-twee2 build [path/to/source.tw2] [path/to/target.html] --format=./dist/Twine2/Trialogue
+tweego --output=story.html story.twee --format=./dist/Twine2/Trialogue
 ```
 
-# Paloma
+## Migrating from Trialogue 1.x
 
-Trialogue is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco: a Jonah-style Story Format for Twine 1 and 2 based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/).
+Stories authored for 1.x work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
+
+- jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works.)
+- Story events (`startstory`, `showpassage`, `showpassage:after`, …) are now plain DOM `CustomEvent`s on `window`: `window.addEventListener('showpassage', e => …)` with data in `e.detail`.
+- Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
+- Twine 1 documents are no longer supported.
+
+# Credits
+
+Trialogue was created by [Philo van Kemenade](https://github.com/phivk). It is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco, a Jonah-style story format based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/).
