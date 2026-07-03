@@ -41,6 +41,16 @@ function render(source) {
 
 	result = result.replace(/^\/\/.*(\r\n?|\n)/gm, '');
 
+	// [timestamp Today 9:41 AM] on its own line becomes a centered
+	// timestamp chip above the message
+
+	result = result.replace(
+		/^[ \t]*\[timestamp[ \t]+([^\]]+)\][ \t]*$/gim,
+		function(match, label) {
+			return '<div class="chat-timestamp">' + template.escapeHtml(label.trim()) + '</div>';
+		}
+	);
+
 	// [\ndiv\n]{.withClass#andID}
 
 	var divRegexp = /\[([\r\n+])([^\]]*?)([\r\n+])\]\{(.*?)\}/g;

@@ -37,6 +37,32 @@ function dispatch(name, detail) {
 	window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
 }
 
+/**
+ Picks black or white text for a hex background color (YIQ brightness).
+ Returns null for non-hex values, leaving the theme default in place.
+**/
+
+function contrastColor(color) {
+	var match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+
+	if (!match) {
+		return null;
+	}
+
+	var hex = match[1];
+
+	if (hex.length === 3) {
+		hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+	}
+
+	var r = parseInt(hex.substr(0, 2), 16);
+	var g = parseInt(hex.substr(2, 2), 16);
+	var b = parseInt(hex.substr(4, 2), 16);
+	var yiq = (r * 299 + g * 587 + b * 114) / 1000;
+
+	return yiq >= 145 ? '#111114' : '#ffffff';
+}
+
 var Story = function() {
 	var el = document.querySelector('tw-storydata');
 
@@ -122,8 +148,30 @@ var Story = function() {
 		/* accessible label on the camera button */
 		photoButtonLabel: 'Send a photo',
 		/* heading of the photo picker */
-		photoPickerTitle: 'Send a photo'
+		photoPickerTitle: 'Send a photo',
+		/* show Delivered/Read status under the player's last message */
+		readReceipts: true,
+		/* a speaker's reply automatically marks the last message read */
+		autoRead: true,
+		/* receipt wording (localize or restyle here) */
+		receiptLabels: { delivered: 'Delivered', read: 'Read' },
+		/* subtle send/receive sounds (opt-in; requires a user gesture) */
+		sounds: false,
+		/* show "(2) Story Name" in the tab title while it is hidden */
+		titleNotifications: true
 	};
+
+	/**
+	 Speaker profiles, parsed from the StorySpeakers passage. Entries are
+	 { name, avatar, color } keyed by speaker id; also scriptable via
+	 `story.speakers`.
+	**/
+	this.speakers = {};
+
+	/** Messages received while the tab was hidden. **/
+	this.unseen = 0;
+
+	this._audioCtx = null;
 
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
@@ -209,6 +257,7 @@ Object.assign(Story.prototype, {
 		};
 
 		this.gallery = this.parseGallery();
+		this.speakers = this.parseSpeakers();
 
 		// header: title, subtitle, author
 
@@ -298,6 +347,37 @@ Object.assign(Story.prototype, {
 				link.getAttribute('data-passage'),
 				link.textContent.trim()
 			);
+		});
+
+		// audio can only start after a user gesture; unlock it on the
+		// first interaction so receive sounds work from then on
+
+		var resumeAudio = function() {
+			if (!story.config.sounds) {
+				return;
+			}
+
+			var Ctx = window.AudioContext || window.webkitAudioContext;
+
+			if (!story._audioCtx && Ctx) {
+				story._audioCtx = new Ctx();
+			}
+
+			if (story._audioCtx && story._audioCtx.state === 'suspended') {
+				story._audioCtx.resume();
+			}
+		};
+
+		document.addEventListener('pointerdown', resumeAudio);
+		document.addEventListener('keydown', resumeAudio);
+
+		// clear the title-bar unread badge when the tab becomes visible
+
+		document.addEventListener('visibilitychange', function() {
+			if (!document.hidden) {
+				story.unseen = 0;
+				document.title = story.name;
+			}
 		});
 
 		// hash change handler for save/restore
@@ -443,6 +523,7 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.clearUserResponses();
 		this.showUserBubble(displayText);
+		this.playSound('send');
 		this.showDelayed(targetName, { noMove: true });
 	},
 
@@ -495,27 +576,51 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
+		var story = this;
 		var speaker = this.getPassageSpeaker(passage);
-		var wrapper = this.buildPassageElement(passage, speaker, html);
+		var nodes = this.buildPassageElement(passage, speaker, html);
 
-		if (wrapper) {
+		nodes.forEach(function(node) {
 			if (opts.instant) {
-				wrapper.classList.add('no-anim');
+				node.classList.add('no-anim');
 			}
 
-			this.applyGrouping(wrapper);
-			this.dom.passage.appendChild(wrapper);
+			if (node.classList.contains('chat-passage-wrapper')) {
+				story.applyGrouping(node);
+			}
+
+			story.dom.passage.appendChild(node);
 
 			// images finish loading after the initial scroll; re-scroll
 			// so they don't leave the newest messages cut off
 
-			var story = this;
-
-			wrapper.querySelectorAll('img').forEach(function(img) {
+			node.querySelectorAll('img').forEach(function(img) {
 				img.addEventListener('load', function() {
 					story.scrollChatIntoView();
 				});
 			});
+		});
+
+		// read receipts: explicit tags win, otherwise a speaker's reply
+		// marks the player's last message as read
+
+		if (this.config.readReceipts) {
+			if (passage.tags.indexOf('unread') > -1) {
+				this.markUnread();
+			}
+			else if (passage.tags.indexOf('read') > -1) {
+				this.markRead();
+			}
+			else if (this.config.autoRead && speaker && speaker !== 'you') {
+				this.markRead();
+			}
+		}
+
+		// incoming-message effects (skipped while replaying a save)
+
+		if (!opts.instant && speaker && speaker !== 'you') {
+			this.playSound('receive');
+			this.notifyTitle();
 		}
 
 		if (opts.record !== false) {
@@ -537,13 +642,15 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
-	 Builds the DOM element for a rendered passage: a centered meta
-	 passage when there is no speaker tag, otherwise a chat message
+	 Builds the DOM elements for a rendered passage: timestamp chips,
+	 then a centered meta passage (no speaker tag) or a chat message
 	 group with avatar, speaker name and one bubble per paragraph.
-	 Returns null if the passage rendered to nothing visible.
+	 Returns an array of elements (empty if nothing rendered visible).
 	**/
 
 	buildPassageElement: function(passage, speaker, html) {
+		var story = this;
+		var nodes = [];
 		var content = document.createElement('div');
 
 		content.innerHTML = html;
@@ -554,8 +661,32 @@ Object.assign(Story.prototype, {
 			);
 		});
 
+		// a passage tagged `timestamp` renders entirely as timestamp chips
+
+		if (passage.tags.indexOf('timestamp') > -1) {
+			blocks.forEach(function(block) {
+				nodes.push(story.buildTimestamp(block.textContent.trim()));
+			});
+
+			return nodes;
+		}
+
+		// hoist inline [timestamp ...] chips above the message group
+
+		blocks = blocks.filter(function(block) {
+			if (
+				block.nodeType === Node.ELEMENT_NODE &&
+				block.classList.contains('chat-timestamp')
+			) {
+				nodes.push(block);
+				return false;
+			}
+
+			return true;
+		});
+
 		if (blocks.length === 0) {
-			return null;
+			return nodes;
 		}
 
 		// meta passage (no speaker)
@@ -568,15 +699,27 @@ Object.assign(Story.prototype, {
 				meta.appendChild(node);
 			});
 
-			return meta;
+			nodes.push(meta);
+			return nodes;
 		}
 
 		// chat message group
 
+		var profile = this.getSpeakerProfile(speaker);
 		var wrapper = document.createElement('div');
 
 		wrapper.className = 'chat-passage-wrapper';
 		wrapper.setAttribute('data-speaker', speaker);
+
+		if (profile.color) {
+			wrapper.style.setProperty('--speaker-color', profile.color);
+
+			var textColor = contrastColor(profile.color);
+
+			if (textColor) {
+				wrapper.style.setProperty('--speaker-text-color', textColor);
+			}
+		}
 
 		passage.tags.forEach(function(tag) {
 			if (/^[A-Za-z_][\w-]*$/.test(tag)) {
@@ -585,7 +728,12 @@ Object.assign(Story.prototype, {
 		});
 
 		if (speaker !== 'you') {
-			wrapper.appendChild(this.buildAvatar(speaker));
+			var avatar = document.createElement('div');
+
+			avatar.className = 'chat-avatar';
+			avatar.setAttribute('aria-hidden', 'true');
+			this.decorateAvatar(avatar, speaker);
+			wrapper.appendChild(avatar);
 		}
 
 		var bubbles = document.createElement('div');
@@ -601,7 +749,6 @@ Object.assign(Story.prototype, {
 			bubbles.appendChild(name);
 		}
 
-		var story = this;
 		var bubbleBlocks = this.config.splitBubbles ? blocks : [null];
 		var index = 0;
 
@@ -642,21 +789,50 @@ Object.assign(Story.prototype, {
 			bubbles.appendChild(bubble);
 		});
 
-		return wrapper;
+		nodes.push(wrapper);
+		return nodes;
 	},
 
-	buildAvatar: function(speaker) {
-		var avatar = document.createElement('div');
+	buildTimestamp: function(text) {
+		var chip = document.createElement('div');
 
-		avatar.className = 'chat-avatar';
-		avatar.setAttribute('aria-hidden', 'true');
+		chip.className = 'chat-timestamp';
+		chip.textContent = text;
+
+		return chip;
+	},
+
+	/**
+	 Fills an avatar element for a speaker: profile image if one is set,
+	 otherwise an initial on a stable auto color.
+	**/
+
+	decorateAvatar: function(avatar, speaker) {
+		var profile = this.getSpeakerProfile(speaker);
+
 		avatar.setAttribute('data-speaker', speaker);
-		avatar.textContent = this.getSpeakerDisplayName(speaker)
-			.charAt(0)
-			.toUpperCase();
 		avatar.style.setProperty('--avatar-hue', this.speakerHue(speaker));
 
-		return avatar;
+		if (profile.avatar) {
+			avatar.classList.add('chat-avatar--img');
+			avatar.style.backgroundImage = 'url("' + profile.avatar + '")';
+			avatar.textContent = '';
+		}
+		else {
+			avatar.classList.remove('chat-avatar--img');
+			avatar.style.backgroundImage = '';
+
+			if (profile.color) {
+				avatar.style.backgroundColor = profile.color;
+			}
+			else {
+				avatar.style.backgroundColor = '';
+			}
+
+			avatar.textContent = this.getSpeakerDisplayName(speaker)
+				.charAt(0)
+				.toUpperCase();
+		}
 	},
 
 	isMediaOnly: function(bubble) {
@@ -925,6 +1101,7 @@ Object.assign(Story.prototype, {
 		this.state.sentPhotos = (this.state.sentPhotos || []).concat(name);
 
 		this.showPhotoBubble(name);
+		this.playSound('send');
 
 		/**
 		 Triggered when the player sends a photo.
@@ -967,6 +1144,9 @@ Object.assign(Story.prototype, {
 		bubble.appendChild(img);
 		bubbles.appendChild(bubble);
 		wrapper.appendChild(bubbles);
+		this.applyUserProfile(wrapper);
+
+		var status = this.attachReceipt(wrapper, bubbles, opts.receipt);
 
 		if (opts.instant) {
 			wrapper.classList.add('no-anim');
@@ -974,7 +1154,18 @@ Object.assign(Story.prototype, {
 
 		this.applyGrouping(wrapper);
 		this.dom.history.appendChild(wrapper);
-		this.timeline.push({ t: 'i', name: name });
+
+		var entry = { t: 'i', name: name };
+
+		if (status) {
+			entry.r = status;
+
+			if (opts.receipt && opts.receipt.label) {
+				entry.rl = opts.receipt.label;
+			}
+		}
+
+		this.timeline.push(entry);
 		this.scrollChatIntoView();
 	},
 
@@ -1014,6 +1205,9 @@ Object.assign(Story.prototype, {
 		bubble.textContent = text;
 		bubbles.appendChild(bubble);
 		wrapper.appendChild(bubbles);
+		this.applyUserProfile(wrapper);
+
+		var status = this.attachReceipt(wrapper, bubbles, opts.receipt);
 
 		if (opts.instant) {
 			wrapper.classList.add('no-anim');
@@ -1021,8 +1215,197 @@ Object.assign(Story.prototype, {
 
 		this.applyGrouping(wrapper);
 		this.dom.history.appendChild(wrapper);
-		this.timeline.push({ t: 'u', text: text });
+
+		var entry = { t: 'u', text: text };
+
+		if (status) {
+			entry.r = status;
+
+			if (opts.receipt && opts.receipt.label) {
+				entry.rl = opts.receipt.label;
+			}
+		}
+
+		this.timeline.push(entry);
 		this.scrollChatIntoView();
+	},
+
+	/**
+	 Applies the "you" speaker profile color (if any) to an outgoing
+	 message wrapper.
+	**/
+
+	applyUserProfile: function(wrapper) {
+		var profile = this.getSpeakerProfile('you');
+
+		if (profile.color) {
+			wrapper.style.setProperty('--speaker-color', profile.color);
+
+			var textColor = contrastColor(profile.color);
+
+			if (textColor) {
+				wrapper.style.setProperty('--speaker-text-color', textColor);
+			}
+		}
+	},
+
+	/**
+	 Sets the read receipt on the player's most recent message and
+	 records it in the timeline so saves and undo keep it. `status` is
+	 'delivered' or 'read'; `label` optionally overrides the display
+	 text (e.g. story.markRead('Read 9:41 PM')).
+	**/
+
+	setReceipt: function(status, label) {
+		if (!this.config.readReceipts) {
+			return;
+		}
+
+		var wrappers = this.dom.history.querySelectorAll(
+			'.chat-passage-wrapper[data-speaker="you"]'
+		);
+
+		if (wrappers.length === 0) {
+			return;
+		}
+
+		var wrapper = wrappers[wrappers.length - 1];
+		var text = label || this.config.receiptLabels[status] || '';
+
+		wrapper.setAttribute('data-receipt', status);
+
+		var receipt = wrapper.querySelector('.chat-receipt');
+
+		if (!receipt) {
+			receipt = document.createElement('div');
+			receipt.className = 'chat-receipt';
+			wrapper.querySelector('.chat-bubbles').appendChild(receipt);
+		}
+
+		receipt.textContent = text;
+
+		for (var i = this.timeline.length - 1; i >= 0; i--) {
+			var entry = this.timeline[i];
+
+			if (entry.t === 'u' || entry.t === 'i') {
+				entry.r = status;
+
+				if (label) {
+					entry.rl = label;
+				}
+				else {
+					delete entry.rl;
+				}
+
+				break;
+			}
+		}
+
+		this.persist();
+	},
+
+	/**
+	 Marks the player's last message as read. Called automatically when
+	 a speaker replies (config.autoRead) or by a passage tagged `read`;
+	 call it yourself for finer control.
+	**/
+
+	markRead: function(label) {
+		this.setReceipt('read', label);
+	},
+
+	/**
+	 Flips the player's last message back to Delivered — useful for
+	 dramatic tension (the reply that never comes). Also triggered by a
+	 passage tagged `unread`.
+	**/
+
+	markUnread: function(label) {
+		this.setReceipt('delivered', label);
+	},
+
+	/**
+	 Attaches a receipt element to an outgoing message wrapper.
+	**/
+
+	attachReceipt: function(wrapper, bubbles, receiptOpts) {
+		if (!this.config.readReceipts) {
+			return null;
+		}
+
+		var status = (receiptOpts && receiptOpts.status) || 'delivered';
+		var receipt = document.createElement('div');
+
+		receipt.className = 'chat-receipt';
+		receipt.textContent =
+			(receiptOpts && receiptOpts.label) ||
+			this.config.receiptLabels[status] ||
+			'';
+		wrapper.setAttribute('data-receipt', status);
+		bubbles.appendChild(receipt);
+
+		return status;
+	},
+
+	/**
+	 Plays a short synthesized blip for a sent or received message.
+	 Only when config.sounds is on, and only once the browser has
+	 unlocked audio after a user gesture.
+	**/
+
+	playSound: function(kind) {
+		if (!this.config.sounds) {
+			return;
+		}
+
+		var ctx = this._audioCtx;
+
+		if (!ctx || ctx.state !== 'running') {
+			return;
+		}
+
+		try {
+			var t = ctx.currentTime;
+			var osc = ctx.createOscillator();
+			var gain = ctx.createGain();
+
+			osc.type = 'sine';
+
+			if (kind === 'send') {
+				osc.frequency.setValueAtTime(880, t);
+				osc.frequency.exponentialRampToValueAtTime(1320, t + 0.09);
+			}
+			else {
+				osc.frequency.setValueAtTime(660, t);
+				osc.frequency.exponentialRampToValueAtTime(470, t + 0.11);
+			}
+
+			gain.gain.setValueAtTime(0.0001, t);
+			gain.gain.exponentialRampToValueAtTime(0.1, t + 0.015);
+			gain.gain.exponentialRampToValueAtTime(
+				0.0001,
+				t + (kind === 'send' ? 0.12 : 0.16)
+			);
+
+			osc.connect(gain);
+			gain.connect(ctx.destination);
+			osc.start(t);
+			osc.stop(t + 0.2);
+		}
+		catch (e) { /* audio is best-effort */ }
+	},
+
+	/**
+	 Bumps the "(n) Story Name" tab title while the tab is hidden.
+	**/
+
+	notifyTitle: function() {
+		if (!this.config.titleNotifications || !document.hidden) {
+			return;
+		}
+
+		this.unseen += 1;
+		document.title = '(' + this.unseen + ') ' + this.name;
 	},
 
 	/**
@@ -1047,12 +1430,30 @@ Object.assign(Story.prototype, {
 	**/
 
 	pushCheckpoint: function() {
+		// snapshot the receipt on the (currently) last outgoing message,
+		// so undo can rewind a later Delivered -> Read flip
+
+		var lastReceipt = null;
+
+		for (var i = this.timeline.length - 1; i >= 0; i--) {
+			var entry = this.timeline[i];
+
+			if (entry.t === 'u' || entry.t === 'i') {
+				if (entry.r) {
+					lastReceipt = { status: entry.r, label: entry.rl };
+				}
+
+				break;
+			}
+		}
+
 		this.checkpoints.push({
 			state: deepClone(this.state),
 			domCount: this.dom.history.children.length,
 			timelineLength: this.timeline.length,
 			passageId: window.passage ? window.passage.id : null,
-			links: window.passage ? window.passage.links.slice() : []
+			links: window.passage ? window.passage.links.slice() : [],
+			lastReceipt: lastReceipt
 		});
 
 		this.dom.undo.hidden = false;
@@ -1099,6 +1500,13 @@ Object.assign(Story.prototype, {
 		if (passage) {
 			window.passage = passage;
 			passage.links = checkpoint.links.slice();
+		}
+
+		if (checkpoint.lastReceipt) {
+			this.setReceipt(
+				checkpoint.lastReceipt.status,
+				checkpoint.lastReceipt.label
+			);
 		}
 
 		this.showUserResponses();
@@ -1156,12 +1564,65 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
-	 Human-readable version of a speaker id: dashes become spaces
-	 ("speaker-happy-bot" is displayed as "happy bot").
+	 Human-readable version of a speaker id: the profile name if one is
+	 set, otherwise dashes become spaces ("speaker-happy-bot" is
+	 displayed as "happy bot").
 	**/
 
 	getSpeakerDisplayName: function(speaker) {
-		return speaker.replace(/-+/g, ' ').trim();
+		var profile = this.getSpeakerProfile(speaker);
+
+		return profile.name || speaker.replace(/-+/g, ' ').trim();
+	},
+
+	/**
+	 Returns the profile ({ name, avatar, color }) for a speaker id, or
+	 an empty object.
+	**/
+
+	getSpeakerProfile: function(speaker) {
+		return this.speakers[speaker] || {};
+	},
+
+	/**
+	 Parses the StorySpeakers passage into speaker profiles. One speaker
+	 per line: the speaker id, a colon, then a display name and/or
+	 semicolon-separated `avatar:`/`color:` properties, e.g.
+
+	   detective: Detective Marlowe; avatar: marlowe.png; color: #8e44ad
+	   you: color: #34c759
+	**/
+
+	parseSpeakers: function() {
+		var speakers = {};
+		var speakersPassage = this.passage('StorySpeakers');
+
+		if (speakersPassage) {
+			speakersPassage.source.split(/\r?\n/).forEach(function(line) {
+				var match = line.match(/^\s*[-*]?\s*([\w][\w-]*)\s*:\s*(.+)$/);
+
+				if (!match) {
+					return;
+				}
+
+				var profile = {};
+
+				match[2].split(';').forEach(function(part) {
+					var kv = part.match(/^\s*(name|avatar|color)\s*:\s*(.+?)\s*$/);
+
+					if (kv) {
+						profile[kv[1]] = kv[2];
+					}
+					else if (part.trim()) {
+						profile.name = part.trim();
+					}
+				});
+
+				speakers[match[1]] = profile;
+			});
+		}
+
+		return speakers;
 	},
 
 	/**
@@ -1276,11 +1737,24 @@ Object.assign(Story.prototype, {
 			)
 		);
 
-		avatar.textContent = this.getSpeakerDisplayName(speaker)
-			.charAt(0)
-			.toUpperCase();
-		avatar.setAttribute('data-speaker', speaker);
-		avatar.style.setProperty('--avatar-hue', this.speakerHue(speaker));
+		this.decorateAvatar(avatar, speaker);
+
+		var profile = this.getSpeakerProfile(speaker);
+		var textColor = profile.color ? contrastColor(profile.color) : null;
+
+		if (profile.color) {
+			wrapper.style.setProperty('--speaker-color', profile.color);
+		}
+		else {
+			wrapper.style.removeProperty('--speaker-color');
+		}
+
+		if (textColor) {
+			wrapper.style.setProperty('--speaker-text-color', textColor);
+		}
+		else {
+			wrapper.style.removeProperty('--speaker-text-color');
+		}
 
 		typing.hidden = false;
 		this.scrollChatIntoView();
@@ -1375,14 +1849,24 @@ Object.assign(Story.prototype, {
 			var story = this;
 
 			timeline.forEach(function(entry) {
+				var receipt = entry.r
+					? { status: entry.r, label: entry.rl }
+					: null;
+
 				if (entry.t === 'u') {
-					story.showUserBubble(entry.text, { instant: true });
+					story.showUserBubble(entry.text, {
+						instant: true,
+						receipt: receipt
+					});
 				}
 				else if (entry.t === 'i') {
 					story.state.lastPhoto = entry.name;
 					story.state.sentPhotos =
 						(story.state.sentPhotos || []).concat(entry.name);
-					story.showPhotoBubble(entry.name, { instant: true });
+					story.showPhotoBubble(entry.name, {
+						instant: true,
+						receipt: receipt
+					});
 				}
 				else {
 					story.show(entry.id, {

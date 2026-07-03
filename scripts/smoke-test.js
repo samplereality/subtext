@@ -52,8 +52,21 @@ async function run() {
 		(await page.locator('.chat-passage[data-speaker="1"]').count()) === 2
 	);
 	check(
-		'speaker name shown',
-		(await page.locator('.chat-speaker-name').first().textContent()) === '1'
+		'speaker profile name shown',
+		(await page.locator('.chat-speaker-name').first().textContent()) === 'Alex'
+	);
+	check(
+		'timestamp chip rendered',
+		(await page.locator('.chat-timestamp').first().textContent()) ===
+			'Today 9:41 AM'
+	);
+	check(
+		'speaker profile color applied to bubbles',
+		(await page
+			.locator('.chat-passage[data-speaker="1"]')
+			.first()
+			.evaluate((el) => getComputedStyle(el).backgroundColor)) ===
+			'rgb(94, 92, 230)'
 	);
 	check(
 		'two responses offered',
@@ -73,6 +86,12 @@ async function run() {
 		'speakerless passage rendered as meta passage',
 		(await page.locator('.meta-passage').count()) === 1
 	);
+	check(
+		'receipt stays Delivered while only a meta passage follows',
+		(await page
+			.locator('.chat-passage-wrapper[data-receipt="delivered"] .chat-receipt')
+			.textContent()) === 'Delivered'
+	);
 
 	console.log('choose "ok" -> typing indicator -> speaker 2');
 	await page.click('.user-response:has-text("ok")');
@@ -87,6 +106,37 @@ async function run() {
 		'typing indicator hidden again',
 		await page.locator('#animation-container[hidden]').count() === 1
 	);
+	check(
+		'speaker reply marks the last message Read',
+		(await page
+			.locator('.chat-passage-wrapper[data-speaker="you"]')
+			.last()
+			.getAttribute('data-receipt')) === 'read'
+	);
+	check(
+		'speaker profile avatar image applied',
+		(await page.locator('.chat-avatar--img[data-speaker="2"]').count()) >= 1
+	);
+
+	console.log('receipt flipping');
+	await page.evaluate(() => window.story.markUnread());
+	check(
+		'markUnread flips the receipt back to Delivered',
+		(await page
+			.locator('.chat-passage-wrapper[data-speaker="you"]')
+			.last()
+			.getAttribute('data-receipt')) === 'delivered'
+	);
+	await page.evaluate(() => window.story.markRead('Read 9:41 AM'));
+	check(
+		'markRead accepts a custom label',
+		(await page
+			.locator('.chat-passage-wrapper[data-speaker="you"]')
+			.last()
+			.locator('.chat-receipt')
+			.textContent()) === 'Read 9:41 AM'
+	);
+	await page.evaluate(() => window.story.markRead());
 
 	if (SHOT_DIR) {
 		await page.screenshot({ path: path.join(SHOT_DIR, 'demo-light.png') });
@@ -127,6 +177,13 @@ async function run() {
 		'restore replays the whole transcript',
 		(await page2.locator('.chat-passage-wrapper[data-speaker="you"]').count()) >= 2 &&
 		(await page2.locator('.user-response').count()) === 2
+	);
+	check(
+		'read receipt survives restore',
+		(await page2
+			.locator('.chat-passage-wrapper[data-speaker="you"]')
+			.last()
+			.getAttribute('data-receipt')) === 'read'
 	);
 	await page2.close();
 
@@ -186,6 +243,30 @@ async function run() {
 	check(
 		'sentPhotos holds one photo after the undo',
 		(await page.evaluate(() => window.story.state.sentPhotos.length)) === 1
+	);
+
+	console.log('title notifications');
+	await page.evaluate(() => {
+		Object.defineProperty(document, 'hidden', {
+			get: () => true,
+			configurable: true
+		});
+	});
+	await page.click('.user-response:has-text("start over?")');
+	await page.waitForFunction(() => document.title.indexOf('(') === 0, null, {
+		timeout: 15000
+	});
+	check('hidden tab title shows the unread count', true);
+	await page.evaluate(() => {
+		Object.defineProperty(document, 'hidden', {
+			get: () => false,
+			configurable: true
+		});
+		document.dispatchEvent(new Event('visibilitychange'));
+	});
+	check(
+		'title resets when the tab becomes visible',
+		(await page.title()) === 'Trialogue Demo'
 	);
 
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);

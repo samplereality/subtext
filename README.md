@@ -13,6 +13,9 @@ This is a modernized fork of [phivk/trialogue](https://github.com/phivk/trialogu
 - Each paragraph of a passage becomes its own bubble, so longer passages read like a real text exchange.
 - Outgoing (player) messages render as accent-colored bubbles on the right; choices appear as quick-reply pill buttons.
 - Passages containing only an image render frameless, like a photo message.
+- Players can send photos from a picker; stories can branch on which image was sent.
+- Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect.
+- Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode.
 
 **A more robust format**
@@ -65,6 +68,10 @@ story.config.maxTypingDelay = 4000;// ms
 story.config.metaDelay = 800;      // delay before meta passages
 story.config.splitBubbles = true;  // one bubble per paragraph
 story.config.autosave = false;     // persist progress to localStorage
+story.config.readReceipts = true;  // Delivered/Read under the last message
+story.config.autoRead = true;      // replies mark the last message read
+story.config.sounds = false;       // subtle send/receive sounds (opt-in)
+story.config.titleNotifications = true; // "(2) Story" tab title when hidden
 ```
 
 ### Photo messages
@@ -105,6 +112,53 @@ you've sent <%= s.sentPhotos.length %> photo(s)
 ```
 
 `s.lastPhoto` is the most recently sent image name; `s.sentPhotos` is an array of every image sent. Both participate in undo and save/restore like any other state, and a `photosent` event (`window.addEventListener('photosent', e => …)`, with `e.detail.name` and `e.detail.target`) fires on every send. Related config: `story.config.photoButtonLabel`, `story.config.photoPickerTitle`, and `story.config.preloadImages` (warms the browser cache for gallery images at startup, on by default).
+
+### Speaker profiles
+
+Give speakers display names, avatar images, and bubble colors in one place with a `StorySpeakers` passage — one speaker per line, using the speaker id from the tag (the part after `speaker-`):
+
+```
+:: StorySpeakers
+detective: Detective Marlowe; avatar: images/marlowe.png; color: #8e44ad
+happy-bot: Chip; color: #148f77
+you: color: #34c759
+```
+
+- The first segment (or `name:`) sets the display name shown above the speaker's messages and used for the avatar initial.
+- `avatar:` sets an avatar image (any URL or data URI); without one, the speaker gets an initial on a stable auto-generated color.
+- `color:` tints that speaker's bubbles (and avatar); text automatically switches between dark and light for contrast. A `you` entry recolors the player's outgoing bubbles.
+
+Profiles are also scriptable: `story.speakers['detective'] = { name: 'Marlowe', … }` in your story JavaScript. Anything not covered by a profile can still be styled with CSS via `data-speaker` attributes.
+
+### Read receipts
+
+Player messages show a **Delivered** status that flips to **Read** when a speaker replies (only the most recent message displays its receipt, iMessage-style). The receipt participates in undo and save/restore.
+
+Silence can be louder than a reply — so you control the receipt:
+
+- Tag a passage `unread` and showing it will *not* mark the player's message as read (a meta passage narrating "hours pass…" while the message sits on Delivered).
+- Tag a passage `read` to force the flip — even from a meta passage. Read with no reply coming is peak dramatic tension.
+- From JavaScript or inside a passage template: `<% story.markRead() %>`, `<% story.markUnread() %>`, or with a custom label, `<% story.markRead('Read 11:58 PM') %>`.
+- Set `story.config.autoRead = false` to take full manual control, or `story.config.readReceipts = false` to turn receipts off entirely. Labels are configurable via `story.config.receiptLabels`.
+
+### Timestamps
+
+Add centered timestamp chips, like a conversation that unfolds over time:
+
+```
+:: morning [speaker-detective]
+[timestamp Tuesday 9:41 AM]
+any progress on the case?
+
+[[some->progress]]
+```
+
+A `[timestamp …]` line at the start of any passage renders as a chip above the message (it also resets message grouping, as a time gap should). Alternatively, tag a whole passage `timestamp` to render its text as chips. Timestamps are purely presentational — write whatever fits your story's clock.
+
+### Notifications
+
+- `story.config.sounds = true` enables subtle synthesized send/receive sounds (no audio files needed). Browsers allow sound only after the player's first interaction, so the very first messages are always silent.
+- While the tab is hidden, incoming messages update the title to `(2) Your Story Name` and it resets when the player returns (`story.config.titleNotifications`, on by default).
 
 ### Theming
 

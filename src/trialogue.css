@@ -322,6 +322,10 @@ a {
 	visibility: hidden;
 }
 
+.chat-avatar--img {
+	background-color: transparent;
+}
+
 .chat-bubbles {
 	display: flex;
 	flex-direction: column;
@@ -343,8 +347,8 @@ a {
 }
 
 .chat-passage {
-	background: var(--t-bubble-in);
-	color: var(--t-bubble-in-text);
+	background: var(--speaker-color, var(--t-bubble-in));
+	color: var(--speaker-text-color, var(--t-bubble-in-text));
 	padding: 0.48rem 0.8rem;
 	border-radius: var(--t-radius);
 	max-width: 100%;
@@ -417,8 +421,11 @@ a {
 /* outgoing messages mirror the corner shaping and use the accent color */
 
 .chat-passage[data-speaker="you"] {
-	background: linear-gradient(180deg, var(--t-accent), var(--t-accent-deep));
-	color: var(--t-bubble-out-text);
+	background: var(
+		--speaker-color,
+		linear-gradient(180deg, var(--t-accent), var(--t-accent-deep))
+	);
+	color: var(--speaker-text-color, var(--t-bubble-out-text));
 }
 
 [data-speaker="you"] .chat-passage + .chat-passage {
@@ -464,6 +471,40 @@ a {
 	border-radius: 0;
 }
 
+/* Read receipts =========================================================== */
+
+/* every outgoing message carries its receipt, but only the most recent
+   one displays it (iMessage style) */
+
+.chat-receipt {
+	display: none;
+	font-size: 0.68rem;
+	color: var(--t-muted);
+	margin: 0.16rem 0.3rem 0;
+	align-self: flex-end;
+	animation: t-pop 0.25s ease both;
+}
+
+#phistory
+	.chat-passage-wrapper[data-speaker="you"]:not(
+		:has(~ .chat-passage-wrapper[data-speaker="you"])
+	)
+	.chat-receipt {
+	display: block;
+}
+
+/* Timestamps ============================================================== */
+
+.chat-timestamp {
+	align-self: center;
+	text-align: center;
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: var(--t-muted);
+	margin: 1.2rem auto 0.15rem;
+	animation: t-pop 0.3s ease both;
+}
+
 /* Meta passages =========================================================== */
 
 .meta-passage {
@@ -501,7 +542,7 @@ a {
 	width: 0.48rem;
 	height: 0.48rem;
 	border-radius: 50%;
-	background: var(--t-muted);
+	background: var(--speaker-text-color, var(--t-muted));
 	animation: t-typing 1.2s ease-in-out infinite;
 }
 
