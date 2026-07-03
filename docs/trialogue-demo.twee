@@ -55,7 +55,21 @@ which makes longer passages feel like a real text exchange 💬
 :: pretty good [speaker-1]
 nice to hear!
 
+what's the weather like where you are? send me a photo ☀️
+
+[[photo:*->photo-reply]]
+[[rather not say->Start]]
+
+:: photo-reply [speaker-1]
+<% if (s.lastPhoto === 'sunny') { %>gorgeous! enjoy the sunshine 😎<% } else { %>oh no, stay dry out there ☔<% } %>
+
+you've sent me <%= s.sentPhotos.length %> photo(s) so far
+
 [[start over?->Start]]
+
+:: StoryImages
+sunny: data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'%3E%3Crect width='240' height='240' fill='%2387CEEB'/%3E%3Ccircle cx='120' cy='120' r='52' fill='%23FFB300'/%3E%3Cg stroke='%23FFB300' stroke-width='10' stroke-linecap='round'%3E%3Cline x1='120' y1='22' x2='120' y2='48'/%3E%3Cline x1='120' y1='192' x2='120' y2='218'/%3E%3Cline x1='22' y1='120' x2='48' y2='120'/%3E%3Cline x1='192' y1='120' x2='218' y2='120'/%3E%3Cline x1='51' y1='51' x2='69' y2='69'/%3E%3Cline x1='171' y1='171' x2='189' y2='189'/%3E%3Cline x1='51' y1='189' x2='69' y2='171'/%3E%3Cline x1='171' y1='69' x2='189' y2='51'/%3E%3C/g%3E%3C/svg%3E
+rainy: data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'%3E%3Crect width='240' height='240' fill='%23708CA3'/%3E%3Cellipse cx='120' cy='100' rx='62' ry='36' fill='%23EDF1F4'/%3E%3Ccircle cx='78' cy='108' r='26' fill='%23EDF1F4'/%3E%3Ccircle cx='162' cy='108' r='26' fill='%23EDF1F4'/%3E%3Cg stroke='%233F6E9E' stroke-width='8' stroke-linecap='round'%3E%3Cline x1='90' y1='156' x2='82' y2='182'/%3E%3Cline x1='124' y1='156' x2='116' y2='182'/%3E%3Cline x1='158' y1='156' x2='150' y2='182'/%3E%3C/g%3E%3C/svg%3E
 
 :: not so well [speaker-1]
 maybe this will brighten up your day!

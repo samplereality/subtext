@@ -9,6 +9,16 @@ var Passage = require('./passage');
 var template = require('./template');
 
 var SPEAKER_TAG_PREFIX = 'speaker-';
+var PHOTO_LINK_PREFIX = 'photo:';
+
+/* Feather Icons camera (MIT) */
+var CAMERA_SVG =
+	'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 ' +
+	'2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>' +
+	'<circle cx="12" cy="13" r="4"></circle></svg>';
 
 function byId(id) {
 	return document.getElementById(id);
@@ -106,8 +116,21 @@ var Story = function() {
 		/* stagger between bubbles of the same passage, in ms */
 		bubbleStagger: 140,
 		/* persist progress to localStorage after every message */
-		autosave: false
+		autosave: false,
+		/* warm the browser cache for StoryImages entries at startup */
+		preloadImages: true,
+		/* accessible label on the camera button */
+		photoButtonLabel: 'Send a photo',
+		/* heading of the photo picker */
+		photoPickerTitle: 'Send a photo'
 	};
+
+	/**
+	 The story's image gallery, parsed from the StoryImages passage
+	 (one `name: url` per line). Add or change entries from your story
+	 JavaScript via `story.gallery`.
+	**/
+	this.gallery = {};
 
 	/** Pending setTimeout ids for the current delayed passage. **/
 	this.timers = [];
@@ -179,8 +202,13 @@ Object.assign(Story.prototype, {
 			back: byId('nav-link-back'),
 			menu: byId('nav-link-menu'),
 			dialog: byId('exit-dialog'),
+			picker: byId('photo-picker'),
+			pickerGrid: byId('photo-picker-grid'),
+			pickerTitle: byId('photo-picker-title'),
 			rightSidebar: document.querySelector('.right-sidebar')
 		};
+
+		this.gallery = this.parseGallery();
 
 		// header: title, subtitle, author
 
@@ -243,6 +271,17 @@ Object.assign(Story.prototype, {
 
 		this.dom.menu.addEventListener('click', function() {
 			story.dom.rightSidebar.classList.toggle('open');
+		});
+
+		// photo picker: close button and backdrop click both dismiss
+
+		this.dom.picker.addEventListener('click', function(event) {
+			if (
+				event.target === story.dom.picker ||
+				event.target.closest('[data-picker-close]')
+			) {
+				story.dom.picker.close();
+			}
 		});
 
 		// passage link handler; links inside the chat history are inert
@@ -318,6 +357,18 @@ Object.assign(Story.prototype, {
 				}
 			}
 		});
+
+		// apply config that user scripts may have changed
+
+		if (this.dom.pickerTitle) {
+			this.dom.pickerTitle.textContent = this.config.photoPickerTitle;
+		}
+
+		if (this.config.preloadImages) {
+			Object.keys(this.gallery).forEach(function(name) {
+				new Image().src = story.gallery[name];
+			});
+		}
 
 		/**
 		 Triggered when the story is finished loading, right before the
@@ -454,6 +505,17 @@ Object.assign(Story.prototype, {
 
 			this.applyGrouping(wrapper);
 			this.dom.passage.appendChild(wrapper);
+
+			// images finish loading after the initial scroll; re-scroll
+			// so they don't leave the newest messages cut off
+
+			var story = this;
+
+			wrapper.querySelectorAll('img').forEach(function(img) {
+				img.addEventListener('load', function() {
+					story.scrollChatIntoView();
+				});
+			});
 		}
 
 		if (opts.record !== false) {
@@ -667,6 +729,8 @@ Object.assign(Story.prototype, {
 
 	/**
 	 Renders passage links as response buttons in the response panel.
+	 Links whose display text starts with "photo:" are collected into a
+	 single camera button that opens the photo picker.
 	**/
 
 	showUserResponses: function() {
@@ -676,7 +740,13 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
-		window.passage.links.forEach(function(link, index) {
+		var links = window.passage.links;
+		var photoOffers = this.getPhotoOffers(links);
+		var textLinks = links.filter(function(link) {
+			return link.display.trim().indexOf(PHOTO_LINK_PREFIX) !== 0;
+		});
+
+		textLinks.forEach(function(link, index) {
 			var button = document.createElement('button');
 
 			button.type = 'button';
@@ -686,6 +756,226 @@ Object.assign(Story.prototype, {
 			button.style.animationDelay = (index * 60) + 'ms';
 			story.dom.responses.appendChild(button);
 		});
+
+		if (photoOffers.length > 0) {
+			var photoButton = document.createElement('button');
+
+			photoButton.type = 'button';
+			photoButton.className = 'user-response user-response--photo';
+			photoButton.setAttribute('aria-label', this.config.photoButtonLabel);
+			photoButton.setAttribute('title', this.config.photoButtonLabel);
+			photoButton.innerHTML = CAMERA_SVG;
+			photoButton.style.animationDelay = (textLinks.length * 60) + 'ms';
+			photoButton.addEventListener('click', function() {
+				story.openPhotoPicker(photoOffers);
+			});
+			this.dom.responses.appendChild(photoButton);
+		}
+	},
+
+	/**
+	 Parses the StoryImages passage into the gallery: one image per line
+	 in `name: url` form. Lines may optionally start with a list dash.
+	**/
+
+	parseGallery: function() {
+		var gallery = {};
+		var imagesPassage = this.passage('StoryImages');
+
+		if (imagesPassage) {
+			imagesPassage.source.split(/\r?\n/).forEach(function(line) {
+				var match = line.match(/^\s*[-*]?\s*([\w][\w -]*?)\s*:\s*(\S.*?)\s*$/);
+
+				if (match) {
+					gallery[match[1]] = match[2];
+				}
+			});
+		}
+
+		return gallery;
+	},
+
+	/**
+	 Extracts photo offers from a passage's links.
+
+	   [[photo:cat->Target]]       offer the gallery image named "cat"
+	   [[photo:cat,dog->Target]]   offer several images
+	   [[photo:*->Target]]         offer the whole gallery
+
+	 Each offer is { name, target }; choosing one sends that image and
+	 shows the target passage.
+	**/
+
+	getPhotoOffers: function(links) {
+		var story = this;
+		var offers = [];
+		var seen = {};
+
+		links.forEach(function(link) {
+			var display = link.display.trim();
+
+			if (display.indexOf(PHOTO_LINK_PREFIX) !== 0) {
+				return;
+			}
+
+			var names = display.substring(PHOTO_LINK_PREFIX.length).trim();
+			var list =
+				names === '*' || names === ''
+					? Object.keys(story.gallery)
+					: names.split(',').map(function(n) { return n.trim(); });
+
+			list.forEach(function(name) {
+				if (name && !seen[name]) {
+					seen[name] = true;
+					offers.push({ name: name, target: link.target });
+				}
+			});
+		});
+
+		return offers;
+	},
+
+	/**
+	 Opens the photo picker sheet with the given offers.
+	**/
+
+	openPhotoPicker: function(offers) {
+		var story = this;
+		var grid = this.dom.pickerGrid;
+
+		grid.textContent = '';
+
+		offers.forEach(function(offer) {
+			var url = story.gallery[offer.name];
+
+			if (!url) {
+				return;
+			}
+
+			var item = document.createElement('button');
+
+			item.type = 'button';
+			item.className = 'photo-picker-item';
+
+			var img = document.createElement('img');
+
+			img.src = url;
+			img.alt = '';
+
+			var label = document.createElement('span');
+
+			label.textContent = offer.name;
+			item.appendChild(img);
+			item.appendChild(label);
+			item.addEventListener('click', function() {
+				story.dom.picker.close();
+				story.sendPhoto(offer.name, offer.target);
+			});
+			grid.appendChild(item);
+		});
+
+		if (grid.children.length === 0) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'No matching images — add them to a StoryImages passage ' +
+					'(one "name: url" per line)'
+				)
+			);
+			return;
+		}
+
+		if (typeof this.dom.picker.showModal === 'function') {
+			this.dom.picker.showModal();
+		}
+	},
+
+	/**
+	 Sends a gallery image as the player's message and shows the target
+	 passage. The choice is tracked in story state: `s.lastPhoto` holds
+	 the most recent image name and `s.sentPhotos` every image sent.
+	**/
+
+	sendPhoto: function(name, targetName) {
+		if (!this.gallery[name]) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no image named "' + name + '" in StoryImages'
+				)
+			);
+			return;
+		}
+
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.clearUserResponses();
+
+		this.state.lastPhoto = name;
+		this.state.sentPhotos = (this.state.sentPhotos || []).concat(name);
+
+		this.showPhotoBubble(name);
+
+		/**
+		 Triggered when the player sends a photo.
+		**/
+
+		dispatch('photosent', { name: name, target: targetName, story: this });
+
+		this.showDelayed(targetName, { noMove: true });
+	},
+
+	/**
+	 Renders a sent image as an outgoing photo message.
+	**/
+
+	showPhotoBubble: function(name, opts) {
+		opts = opts || {};
+
+		var story = this;
+		var wrapper = document.createElement('div');
+
+		wrapper.className = 'chat-passage-wrapper';
+		wrapper.setAttribute('data-speaker', 'you');
+
+		var bubbles = document.createElement('div');
+
+		bubbles.className = 'chat-bubbles';
+
+		var bubble = document.createElement('div');
+
+		bubble.className = 'chat-passage chat-passage--media phistory';
+		bubble.setAttribute('data-speaker', 'you');
+
+		var img = document.createElement('img');
+
+		img.src = this.gallery[name] || '';
+		img.alt = name;
+		img.addEventListener('load', function() {
+			story.scrollChatIntoView();
+		});
+		bubble.appendChild(img);
+		bubbles.appendChild(bubble);
+		wrapper.appendChild(bubbles);
+
+		if (opts.instant) {
+			wrapper.classList.add('no-anim');
+		}
+
+		this.applyGrouping(wrapper);
+		this.dom.history.appendChild(wrapper);
+		this.timeline.push({ t: 'i', name: name });
+		this.scrollChatIntoView();
 	},
 
 	/**
@@ -1087,6 +1377,12 @@ Object.assign(Story.prototype, {
 			timeline.forEach(function(entry) {
 				if (entry.t === 'u') {
 					story.showUserBubble(entry.text, { instant: true });
+				}
+				else if (entry.t === 'i') {
+					story.state.lastPhoto = entry.name;
+					story.state.sentPhotos =
+						(story.state.sentPhotos || []).concat(entry.name);
+					story.showPhotoBubble(entry.name, { instant: true });
 				}
 				else {
 					story.show(entry.id, {

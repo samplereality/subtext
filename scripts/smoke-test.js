@@ -130,6 +130,64 @@ async function run() {
 	);
 	await page2.close();
 
+	console.log('photo picker');
+	await page.click('.user-response:has-text("pretty good")');
+	await page.waitForSelector('.user-response--photo', { timeout: 15000 });
+	check(
+		'camera button offered alongside text responses',
+		(await page.locator('.user-response:has-text("rather not say")').count()) === 1
+	);
+	await page.click('.user-response--photo');
+	await page.waitForSelector('#photo-picker[open]');
+	check(
+		'picker shows the gallery',
+		(await page.locator('.photo-picker-item').count()) === 2
+	);
+
+	if (SHOT_DIR) {
+		await page.screenshot({ path: path.join(SHOT_DIR, 'photo-picker.png') });
+	}
+
+	await page.click('.photo-picker-item:has-text("sunny")');
+	check(
+		'sent photo appears as outgoing media bubble',
+		(await page.locator('.chat-passage--media[data-speaker="you"]').count()) === 1
+	);
+	check(
+		'photo tracked in state',
+		(await page.evaluate(() => window.story.state.lastPhoto)) === 'sunny'
+	);
+	await page.waitForSelector('.chat-passage:has-text("sunshine")', {
+		timeout: 15000
+	});
+	check('story branched on the sent photo', true);
+
+	if (SHOT_DIR) {
+		await page.screenshot({ path: path.join(SHOT_DIR, 'photo-sent.png') });
+	}
+
+	console.log('undo after photo');
+	await page.click('#nav-link-undo');
+	check(
+		'undo removed the photo bubble',
+		(await page.locator('.chat-passage--media[data-speaker="you"]').count()) === 0
+	);
+	check(
+		'undo reverted photo state',
+		(await page.evaluate(() => window.story.state.lastPhoto)) === undefined
+	);
+	await page.click('.user-response--photo');
+	await page.waitForSelector('#photo-picker[open]');
+	await page.click('.photo-picker-item:has-text("rainy")');
+	await page.waitForSelector('.chat-passage:has-text("stay dry")', {
+		timeout: 15000
+	});
+	check('second photo takes the other branch', true);
+	check(
+		'sentPhotos holds one photo after the undo',
+		(await page.evaluate(() => window.story.state.sentPhotos.length)) === 1
+	);
+
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);
 
 	await browser.close();

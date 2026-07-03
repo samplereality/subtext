@@ -67,6 +67,45 @@ story.config.splitBubbles = true;  // one bubble per paragraph
 story.config.autosave = false;     // persist progress to localStorage
 ```
 
+### Photo messages
+
+Let the player reply with a picture instead of words. First, declare the story's image gallery in a passage named `StoryImages`, one image per line:
+
+```
+:: StoryImages
+sunny: https://example.com/sunny.jpg
+rainy: images/rainy.png
+selfie: data:image/svg+xml,%3Csvg …%3E
+```
+
+(Any URL works — hosted files, relative paths, or data URIs for fully self-contained stories. Entries can also be added from story JavaScript via `story.gallery`.)
+
+Then offer photos in a passage using `photo:` links. A camera button appears with the other choices; tapping it opens a picker sheet, and the selected image is sent as an outgoing photo message before the story continues to the link's target:
+
+```
+:: pretty good [speaker-1]
+what's the weather like where you are? send me a photo!
+
+[[photo:*->photo-reply]]
+[[rather not say->Start]]
+```
+
+- `[[photo:*->Target]]` offers the whole gallery
+- `[[photo:sunny->Target]]` offers a single image
+- `[[photo:sunny,rainy->Target]]` offers a subset
+- Several `photo:` links with different targets can branch per image
+
+**Tracking what was sent:** the choice is recorded in story state, so passages can react to it:
+
+```
+:: photo-reply [speaker-1]
+<% if (s.lastPhoto === 'sunny') { %>enjoy the sunshine!<% } else { %>stay dry!<% } %>
+
+you've sent <%= s.sentPhotos.length %> photo(s)
+```
+
+`s.lastPhoto` is the most recently sent image name; `s.sentPhotos` is an array of every image sent. Both participate in undo and save/restore like any other state, and a `photosent` event (`window.addEventListener('photosent', e => …)`, with `e.detail.name` and `e.detail.target`) fires on every send. Related config: `story.config.photoButtonLabel`, `story.config.photoPickerTitle`, and `story.config.preloadImages` (warms the browser cache for gallery images at startup, on by default).
+
 ### Theming
 
 Override CSS variables from your story stylesheet:
