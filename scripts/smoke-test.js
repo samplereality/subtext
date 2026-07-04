@@ -532,6 +532,46 @@ async function run() {
 		await page.screenshot({ path: path.join(SHOT_DIR, 'reactions.png') });
 	}
 
+	console.log('Snowman utility functions');
+	check(
+		'either() picks from a flattened pool',
+		await page.evaluate(() => {
+			const picks = new Set();
+
+			for (let i = 0; i < 40; i++) {
+				picks.add(window.either('a', ['b', 'c']));
+			}
+
+			return [...picks].every((p) => ['a', 'b', 'c'].includes(p)) &&
+				picks.size > 1;
+		})
+	);
+	check(
+		'hasVisited() and visited() track story history',
+		await page.evaluate(
+			() =>
+				window.hasVisited('Start') &&
+				!window.hasVisited('no such passage') &&
+				window.visited('Start') >= 2 &&
+				window.visited('no such passage') === 0
+		)
+	);
+	check(
+		'renderToSelector() renders a passage into any element',
+		await page.evaluate(() => {
+			const el = document.createElement('div');
+
+			el.id = 'rts-test';
+			document.body.appendChild(el);
+			window.renderToSelector('#rts-test', 'hello');
+
+			const ok = el.textContent.indexOf('narrator') !== -1;
+
+			el.remove();
+			return ok;
+		})
+	);
+
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);
 
 	await browser.close();
