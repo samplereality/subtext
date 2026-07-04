@@ -55,6 +55,30 @@ async function run() {
 		window.addEventListener('sm.passage.shown', () => {
 			window.__smShown += 1;
 		});
+
+		// guard the screen-reader fix: message elements must never be
+		// removed from (or re-inserted into) the role="log" region
+		// during normal play, or live regions re-announce old messages
+		// (text updates, like a receipt flipping to Read, are fine)
+		window.__logRemovals = 0;
+		new MutationObserver((mutations) => {
+			mutations.forEach((m) => {
+				m.removedNodes.forEach((node) => {
+					if (
+						node.nodeType === 1 &&
+						(node.classList.contains('chat-passage-wrapper') ||
+							node.classList.contains('chat-passage') ||
+							node.classList.contains('meta-passage') ||
+							node.classList.contains('chat-timestamp'))
+					) {
+						window.__logRemovals += 1;
+					}
+				});
+			});
+		}).observe(document.getElementById('phistory'), {
+			childList: true,
+			subtree: true
+		});
 	});
 	check('title shown', (await page.textContent('#ptitle')) === 'Chatbook Demo');
 	check(
@@ -200,6 +224,10 @@ async function run() {
 	check(
 		'Snowman 2 style sm.passage.shown events dispatched',
 		(await page.evaluate(() => window.__smShown)) >= 2
+	);
+	check(
+		'no DOM removals from the conversation log during normal flow',
+		(await page.evaluate(() => window.__logRemovals)) === 0
 	);
 
 	console.log('receipt flipping');
@@ -531,6 +559,33 @@ async function run() {
 		await page.waitForTimeout(600);
 		await page.screenshot({ path: path.join(SHOT_DIR, 'reactions.png') });
 	}
+
+	console.log('axe accessibility audit');
+	await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+
+	const axeViolations = await page.evaluate(async () => {
+		const results = await window.axe.run(document, {
+			resultTypes: ['violations']
+		});
+
+		return results.violations.map((v) => ({
+			id: v.id,
+			impact: v.impact,
+			nodes: v.nodes.length
+		}));
+	});
+	const axeSerious = axeViolations.filter((v) =>
+		['serious', 'critical'].includes(v.impact)
+	);
+
+	if (axeViolations.length > 0) {
+		console.log('  axe findings: ' + JSON.stringify(axeViolations));
+	}
+
+	check(
+		'axe: no serious or critical violations',
+		axeSerious.length === 0
+	);
 
 	console.log('Snowman utility functions');
 	check(

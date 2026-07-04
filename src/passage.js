@@ -239,7 +239,7 @@ function readyFunc(arg) {
 		window.addEventListener(
 			'showpassage:after',
 			function handler(event) {
-				arg.call(document.getElementById('passage'), event);
+				arg.call(document.getElementById('phistory'), event);
 			},
 			{ once: true }
 		);

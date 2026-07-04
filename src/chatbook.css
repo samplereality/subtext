@@ -19,20 +19,22 @@
 	/* the width of the phone column */
 	--t-chat-width: 27rem;
 
-	/* light theme defaults */
+	/* light theme defaults (colors meet WCAG AA contrast) */
 	--t-page-bg-default: #e2e3e8;
 	--t-bg-default: #f5f5f7;
 	--t-elevated-default: #ffffff;
 	--t-surface-default: rgba(250, 250, 252, 0.88);
 	--t-border-default: rgba(0, 0, 0, 0.08);
 	--t-text-default: #111114;
-	--t-muted-default: #86868b;
+	--t-muted-default: #6d6d74;
 	--t-bubble-in-default: #e9e9eb;
 	--t-bubble-in-text-default: #111114;
-	--t-accent-default: #0a84ff;
-	--t-accent-deep-default: #0668d8;
+	--t-accent-default: #0b63cf;
+	--t-accent-deep-default: #0850a8;
+	--t-bubble-out-bg-default: #0b63cf;
+	--t-bubble-out-deep-default: #0850a8;
 	--t-bubble-out-text-default: #ffffff;
-	--t-error-default: #d93025;
+	--t-error-default: #b3261e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,8 +48,10 @@
 		--t-muted-default: #98989f;
 		--t-bubble-in-default: #26262b;
 		--t-bubble-in-text-default: #f2f2f4;
-		--t-accent-default: #0a84ff;
-		--t-accent-deep-default: #0668d8;
+		--t-accent-default: #409cff;
+		--t-accent-deep-default: #0a84ff;
+		--t-bubble-out-bg-default: #0a6ce0;
+		--t-bubble-out-deep-default: #0554b8;
 		--t-error-default: #ff6b60;
 	}
 }
@@ -59,10 +63,14 @@
 	--t-surface-default: rgba(250, 250, 252, 0.88);
 	--t-border-default: rgba(0, 0, 0, 0.08);
 	--t-text-default: #111114;
-	--t-muted-default: #86868b;
+	--t-muted-default: #6d6d74;
 	--t-bubble-in-default: #e9e9eb;
 	--t-bubble-in-text-default: #111114;
-	--t-error-default: #d93025;
+	--t-accent-default: #0b63cf;
+	--t-accent-deep-default: #0850a8;
+	--t-bubble-out-bg-default: #0b63cf;
+	--t-bubble-out-deep-default: #0850a8;
+	--t-error-default: #b3261e;
 }
 
 :root[data-theme="dark"] {
@@ -75,6 +83,10 @@
 	--t-muted-default: #98989f;
 	--t-bubble-in-default: #26262b;
 	--t-bubble-in-text-default: #f2f2f4;
+	--t-accent-default: #409cff;
+	--t-accent-deep-default: #0a84ff;
+	--t-bubble-out-bg-default: #0a6ce0;
+	--t-bubble-out-deep-default: #0554b8;
 	--t-error-default: #ff6b60;
 }
 
@@ -91,6 +103,8 @@
 	--t-bubble-in-text: var(--passage-text-color, var(--t-bubble-in-text-default));
 	--t-accent: var(--user-color, var(--t-accent-default));
 	--t-accent-deep: var(--user-color, var(--t-accent-deep-default));
+	--t-bubble-out-bg: var(--user-color, var(--t-bubble-out-bg-default));
+	--t-bubble-out-deep: var(--user-color, var(--t-bubble-out-deep-default));
 	--t-bubble-out-text: var(--t-bubble-out-text-default);
 	--t-error: var(--t-error-default);
 }
@@ -275,6 +289,14 @@ a {
 	justify-content: flex-end;
 }
 
+/* the single conversation log all messages live in */
+
+#phistory {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+}
+
 /* Messages ================================================================ */
 
 .chat-passage-wrapper {
@@ -303,7 +325,7 @@ a {
 	font-size: 0.8rem;
 	font-weight: 650;
 	color: #fff;
-	background-color: hsl(var(--avatar-hue, 210) 48% 46%);
+	background-color: hsl(var(--avatar-hue, 210) 48% 42%);
 	background-size: cover;
 	background-position: center;
 	user-select: none;
@@ -415,7 +437,7 @@ a {
 .chat-passage[data-speaker="you"] {
 	background: var(
 		--speaker-color,
-		linear-gradient(180deg, var(--t-accent), var(--t-accent-deep))
+		linear-gradient(180deg, var(--t-bubble-out-bg), var(--t-bubble-out-deep))
 	);
 	color: var(--speaker-text-color, var(--t-bubble-out-text));
 }
@@ -803,13 +825,37 @@ a {
 
 .meta-notification-header {
 	display: flex;
-	justify-content: space-between;
+	align-items: center;
 	gap: 0.5rem;
 	font-size: 0.66rem;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: var(--t-muted);
 	margin-bottom: 0.2rem;
+}
+
+.meta-notification-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.meta-notification-close {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: var(--t-muted);
+	font-size: 1.05rem;
+	line-height: 1;
+	padding: 0.05rem 0.3rem;
+	margin: -0.15rem -0.3rem -0.15rem 0;
+	cursor: pointer;
+	border-radius: 0.4rem;
+}
+
+.meta-notification-close:hover {
+	background: color-mix(in srgb, var(--t-muted) 15%, transparent);
 }
 
 .meta-notification-body p {
@@ -920,7 +966,8 @@ a {
 
 .user-response:hover,
 .user-response:focus-visible {
-	background: var(--t-accent);
+	background: var(--t-bubble-out-bg);
+	border-color: var(--t-bubble-out-bg);
 	color: #fff;
 	text-decoration: none;
 }
@@ -1169,6 +1216,39 @@ a {
 .no-anim,
 .no-anim * {
 	animation: none !important;
+}
+
+/* consistent, visible keyboard focus indicators */
+
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+	outline: 2px solid var(--t-accent);
+	outline-offset: 2px;
+}
+
+#user-response-panel:focus-visible,
+#user-response-panel:focus {
+	outline: none;
+}
+
+/* stronger boundaries for players who ask for more contrast */
+
+@media (prefers-contrast: more) {
+	.chat-passage {
+		border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+	}
+
+	.user-response {
+		border-width: 2px;
+	}
+
+	.chat-speaker-name,
+	.chat-timestamp,
+	.meta-passage,
+	.user-response-hint {
+		color: var(--t-text);
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {

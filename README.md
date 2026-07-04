@@ -338,6 +338,17 @@ The Menu button (☰) only appears once the menu has content. The Trialogue 1.x 
 - `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.
 - `story.config.autosave = true` additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.
 
+## Accessibility
+
+Chatbook is built to WCAG 2.1 AA and tested with axe-core on every run of the test suite. What players get:
+
+- **Screen readers:** the conversation is a `role="log"` live region, and messages are never moved or re-inserted in the DOM, so each one is announced exactly once. The typing indicator announces *"Sam is typing"* (localize via `story.config.typingLabel`), narration overlays and notifications are polite status regions, restoring a save replays silently instead of flooding the reader, and reactions, receipts, voice memos, and location cards all carry proper labels.
+- **Keyboard:** every control is a real button or link with a visible focus indicator; after choosing a reply, focus stays anchored on the reply panel; dialogs are native `<dialog>` elements (focus trapping and Escape included).
+- **Contrast & motion:** default palettes meet AA contrast in both themes, `prefers-contrast: more` adds stronger bubble boundaries, and `prefers-reduced-motion` disables animations.
+- **Language:** the page declares `lang="en"` by default — set `story.config.lang = 'fr'` (etc.) for stories in other languages.
+
+What authors should still do: write alt text in image HTML (`<img src="…" alt="…">`), give gallery images meaningful names (the photo picker uses them as labels), keep meaningful information out of color alone, and remember voice memos have no captions — pair important audio with text.
+
 ## Using the format in Twine
 
 In Twine 2: **Twine → Story Formats → Add a New Format** and paste:

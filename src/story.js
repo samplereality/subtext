@@ -166,6 +166,14 @@ var Story = function() {
 	this.timeline = [];
 
 	/**
+	 DOM nodes belonging to the passage currently "live" (its inline
+	 links still clickable). All messages share one role="log" container
+	 so screen readers announce each exactly once; these refs replace
+	 the old separate #passage element.
+	**/
+	this._currentNodes = [];
+
+	/**
 	 An array of passage IDs viewed this session (kept for compatibility
 	 with Trialogue 1.x scripts that read story.history).
 	**/
@@ -239,6 +247,12 @@ var Story = function() {
 		metaNotificationLabel: '',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
+		/* language of the story's interface, applied to <html lang>
+		   (leave empty to keep the default "en") */
+		lang: '',
+		/* screen-reader announcement while a speaker is typing;
+		   %s is replaced with the speaker's display name */
+		typingLabel: '%s is typing',
 		/* default label on a location-share response button */
 		locationButtonLabel: 'Share my location',
 		/* label under the map card of a shared player location */
@@ -326,7 +340,7 @@ Object.assign(Story.prototype, {
 		this.dom = {
 			panel: byId('chat-panel'),
 			history: byId('phistory'),
-			passage: byId('passage'),
+			typingText: byId('typing-announcement'),
 			typing: byId('animation-container'),
 			responses: byId('user-response-panel'),
 			hint: byId('user-response-hint'),
@@ -351,10 +365,14 @@ Object.assign(Story.prototype, {
 		};
 
 		// tapping a notification banner dismisses it (but interactive
-		// content inside it, like a voice memo, stays usable)
+		// content inside it, like a voice memo, stays usable); the ×
+		// button does the same for keyboard and screen-reader users
 
 		this.dom.metaNotification.addEventListener('click', function(event) {
-			if (!event.target.closest('button, a')) {
+			if (
+				event.target.closest('[data-notification-close]') ||
+				!event.target.closest('button, a')
+			) {
 				story.dom.metaNotification.hidden = true;
 			}
 		});
@@ -453,7 +471,7 @@ Object.assign(Story.prototype, {
 		document.body.addEventListener('click', function(event) {
 			var link = event.target.closest('[data-passage]');
 
-			if (!link || link.closest('#phistory')) {
+			if (!link || link.closest('.is-history')) {
 				return;
 			}
 
@@ -555,6 +573,10 @@ Object.assign(Story.prototype, {
 
 		// apply config that user scripts may have changed
 
+		if (this.config.lang) {
+			document.documentElement.lang = this.config.lang;
+		}
+
 		this.initTheme();
 
 		if (this.dom.pickerTitle) {
@@ -640,6 +662,7 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
 		this.showUserBubble(displayText);
 		this.playSound('send');
 		this.showDelayed(targetName, { noMove: true });
@@ -721,6 +744,7 @@ Object.assign(Story.prototype, {
 
 		if (metaMode !== 'chat') {
 			this.showMeta(html, metaMode);
+			this._currentNodes = [];
 		}
 		else {
 			var nodes = this.buildPassageElement(passage, speaker, html);
@@ -734,7 +758,7 @@ Object.assign(Story.prototype, {
 					story.applyGrouping(node);
 				}
 
-				story.dom.passage.appendChild(node);
+				story.dom.history.appendChild(node);
 
 				// images finish loading after the initial scroll;
 				// re-scroll so they don't cut off the newest messages
@@ -745,6 +769,8 @@ Object.assign(Story.prototype, {
 					});
 				});
 			});
+
+			this._currentNodes = nodes;
 		}
 
 		// read receipts: explicit tags win, otherwise a speaker's reply
@@ -992,6 +1018,8 @@ Object.assign(Story.prototype, {
 		}
 
 		el.setAttribute('data-built', '1');
+		el.setAttribute('role', 'group');
+		el.setAttribute('aria-label', 'Voice message');
 
 		var audio = document.createElement('audio');
 
@@ -1144,8 +1172,14 @@ Object.assign(Story.prototype, {
 		var coords = document.createElement('span');
 
 		coords.textContent = lat.toFixed(4) + ', ' + lon.toFixed(4);
+
+		var srNote = document.createElement('span');
+
+		srNote.className = 'visually-hidden';
+		srNote.textContent = ' (opens map in a new tab)';
 		info.appendChild(name);
 		info.appendChild(coords);
+		info.appendChild(srNote);
 		card.appendChild(map);
 		card.appendChild(info);
 		el.textContent = '';
@@ -1231,9 +1265,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	applyGrouping: function(wrapper) {
-		var previous =
-			this.dom.passage.lastElementChild ||
-			this.dom.history.lastElementChild;
+		var previous = this.dom.history.lastElementChild;
 
 		if (
 			previous &&
@@ -1257,9 +1289,14 @@ Object.assign(Story.prototype, {
 	**/
 
 	movePassageToHistory: function() {
-		while (this.dom.passage.firstChild) {
-			this.dom.history.appendChild(this.dom.passage.firstChild);
-		}
+		// nodes stay where they are (one shared role="log" container,
+		// so screen readers never see them re-inserted); they are only
+		// marked historical, which makes their inline links inert
+
+		this._currentNodes.forEach(function(node) {
+			node.classList.add('is-history');
+		});
+		this._currentNodes = [];
 	},
 
 	/**
@@ -1419,6 +1456,7 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
 
 		var story = this;
 
@@ -1672,6 +1710,7 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
 
 		this.state.lastPhoto = name;
 		this.state.sentPhotos = (this.state.sentPhotos || []).concat(name);
@@ -1751,6 +1790,18 @@ Object.assign(Story.prototype, {
 
 	clearUserResponses: function() {
 		this.dom.responses.textContent = '';
+	},
+
+	/**
+	 Keeps keyboard/screen-reader focus anchored on the response panel
+	 after a chosen reply button is removed from the DOM (otherwise
+	 focus falls back to the top of the page).
+	**/
+
+	focusResponses: function() {
+		if (this.dom.responses && this.dom.responses.focus) {
+			this.dom.responses.focus({ preventScroll: true });
+		}
 	},
 
 	/**
@@ -1933,14 +1984,7 @@ Object.assign(Story.prototype, {
 			(which === 'in'
 				? ':not([data-speaker="you"])'
 				: '[data-speaker="you"]');
-		var wrappers = [].concat(
-			Array.prototype.slice.call(
-				this.dom.history.querySelectorAll(selector)
-			),
-			Array.prototype.slice.call(
-				this.dom.passage.querySelectorAll(selector)
-			)
-		);
+		var wrappers = this.dom.history.querySelectorAll(selector);
 
 		var wrapper = wrappers[wrappers.length - 1];
 
@@ -1964,10 +2008,12 @@ Object.assign(Story.prototype, {
 		if (!badge) {
 			badge = document.createElement('span');
 			badge.className = 'chat-reaction';
+			badge.setAttribute('role', 'img');
 			bubbles.appendChild(badge);
 		}
 
 		badge.textContent = emoji;
+		badge.setAttribute('aria-label', 'Reaction: ' + emoji);
 		wrapper.classList.add('has-reaction');
 		this.persist();
 	},
@@ -1994,6 +2040,7 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
 
 		this.state.lastReaction = emoji;
 		this.react(emoji, 'in');
@@ -2018,7 +2065,7 @@ Object.assign(Story.prototype, {
 
 	clearThread: function() {
 		this.dom.history.textContent = '';
-		this.dom.passage.textContent = '';
+		this._currentNodes = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
 		this.dom.undo.hidden = true;
@@ -2263,8 +2310,9 @@ Object.assign(Story.prototype, {
 		meta.className = 'meta-passage meta-passage--error';
 		meta.textContent = message;
 
-		if (this.dom && this.dom.passage) {
-			this.dom.passage.appendChild(meta);
+		if (this.dom && this.dom.history) {
+			this.dom.history.appendChild(meta);
+			this._currentNodes.push(meta);
 			this.scrollChatIntoView();
 		}
 	},
@@ -2339,7 +2387,7 @@ Object.assign(Story.prototype, {
 
 		// everything since the checkpoint is discarded
 
-		this.dom.passage.textContent = '';
+		this._currentNodes = [];
 
 		// revert reactions applied since the checkpoint
 
@@ -2436,7 +2484,8 @@ Object.assign(Story.prototype, {
 
 			meta.className = 'meta-passage meta-passage--colophon';
 			meta.innerHTML = this.passage('StoryColophon').render();
-			this.dom.passage.appendChild(meta);
+			this.dom.history.appendChild(meta);
+			this._currentNodes.push(meta);
 		}
 	},
 
@@ -2616,9 +2665,7 @@ Object.assign(Story.prototype, {
 
 		wrapper.setAttribute('data-speaker', speaker);
 
-		var previous =
-			this.dom.passage.lastElementChild ||
-			this.dom.history.lastElementChild;
+		var previous = this.dom.history.lastElementChild;
 
 		wrapper.classList.toggle(
 			'chat-follow',
@@ -2649,6 +2696,22 @@ Object.assign(Story.prototype, {
 		}
 
 		typing.hidden = false;
+
+		// announce "<name> is typing" — set the text after the region
+		// is visible so screen readers reliably pick up the change
+
+		var story = this;
+
+		window.requestAnimationFrame(function() {
+			if (!typing.hidden) {
+				story.dom.typingText.textContent =
+					story.config.typingLabel.replace(
+						'%s',
+						story.getSpeakerDisplayName(speaker)
+					);
+			}
+		});
+
 		this.scrollChatIntoView();
 	},
 
@@ -2658,6 +2721,7 @@ Object.assign(Story.prototype, {
 
 	hideTyping: function() {
 		this.dom.typing.hidden = true;
+		this.dom.typingText.textContent = '';
 	},
 
 	/**
@@ -2737,8 +2801,13 @@ Object.assign(Story.prototype, {
 			this.checkpoints = [];
 			this._reactionLog = [];
 			this.dom.history.textContent = '';
-			this.dom.passage.textContent = '';
+			this._currentNodes = [];
 			this.dom.undo.hidden = true;
+
+			// replaying a whole transcript would flood screen readers;
+			// silence the log while it rebuilds
+
+			this.dom.history.setAttribute('aria-live', 'off');
 
 			var story = this;
 
@@ -2794,8 +2863,10 @@ Object.assign(Story.prototype, {
 			}
 
 			this.persist();
+			this.dom.history.removeAttribute('aria-live');
 		}
 		catch (e) {
+			this.dom.history.removeAttribute('aria-live');
 			dispatch('restorefailed', { error: e });
 			return false;
 		}

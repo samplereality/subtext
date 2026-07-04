@@ -20,6 +20,7 @@
     "marked": "^12.0.2"
   },
   "devDependencies": {
+    "axe-core": "^4.12.1",
     "esbuild": "^0.24.2",
     "playwright": "^1.49.1"
   }
