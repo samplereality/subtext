@@ -1,12 +1,12 @@
 {
-  "name": "trialogue",
+  "name": "chatbook",
   "version": "2.0.0",
   "description": "A chat-style story format for Twine 2",
   "author": "Philo van Kemenade",
   "license": "MIT",
   "repository": "https://github.com/samplereality/trilogue-relog",
   "config": {
-    "formatName": "Trialogue",
+    "formatName": "Chatbook",
     "distDir": "dist/"
   },
   "scripts": {

@@ -110,7 +110,7 @@ var Story = function() {
 
 	if (!el) {
 		throw new Error(
-			'Trialogue could not find a <tw-storydata> element. ' +
+			'Chatbook could not find a <tw-storydata> element. ' +
 			'(Twine 1 documents are no longer supported.)'
 		);
 	}
@@ -2162,7 +2162,7 @@ Object.assign(Story.prototype, {
 	},
 
 	themeKey: function() {
-		return 'trialogue-theme-' + this.ifid;
+		return 'chatbook-theme-' + this.ifid;
 	},
 
 	/**
@@ -2662,7 +2662,7 @@ Object.assign(Story.prototype, {
 	},
 
 	saveKey: function() {
-		return 'trialogue-save-' + this.ifid;
+		return 'chatbook-save-' + this.ifid;
 	},
 
 	/**

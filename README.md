@@ -1,9 +1,9 @@
-<p align="center"><img src="src/icon.svg" alt="Trialogue logo"></p>
-<h1 align="center">Trialogue</h1>
+<p align="center"><img src="src/icon.svg" alt="Chatbook logo"></p>
+<h1 align="center">Chatbook</h1>
 
-Trialogue is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, select Trialogue as the story format, and play your story back as a modern text-message exchange.
+Chatbook is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, select Chatbook as the story format, and play your story back as a modern text-message exchange.
 
-This is a modernized fork of [phivk/trialogue](https://github.com/phivk/trialogue) (itself based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) and [Snowman](https://github.com/videlais/snowman)).
+Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trialogue) by Philo van Kemenade — its name a small homage to Twine's [Chapbook](https://klembot.github.io/chapbook/) format. The lineage runs Chatbook → Trialogue → [Paloma](http://mcdemarco.net/tools/scree/paloma/) → [Snowman](https://github.com/videlais/snowman).
 
 ## What's new in 2.0
 
@@ -171,7 +171,7 @@ story.config.metaStyle = 'overlay';
 story.config.metaStyle = 'notification';
 ```
 
-- **`chat`** — centered system-style text inside the conversation (the classic Trialogue behavior). Tight and contained, reads like an iMessage system message.
+- **`chat`** — centered system-style text inside the conversation (the classic Trialogue behavior Chatbook inherits). Tight and contained, reads like an iMessage system message.
 - **`overlay`** — the narration floats over the blurred, dimmed chat, like the camera pulling back from the phone. The player's choices stay visible and tappable below it, and the veil lifts as soon as they choose or the next message arrives. Best for scene breaks and interiority that shouldn't pretend to be part of the phone.
 - **`notification`** — the narration drops in as a phone-style notification banner (labeled with the story name by default; change it with `story.config.metaNotificationLabel`). It stays inside the device's fiction — the narrator as an app pinging you. Tapping the banner dismisses it.
 
@@ -317,26 +317,26 @@ The Menu button (☰) only appears once the menu has content. The Trialogue 1.x 
 
 ## Using the format in Twine
 
-In Twine 2: **Twine → Story Formats → Add** and paste the URL of a hosted copy of `dist/Twine2/Trialogue/format.js`, e.g. the GitHub Pages/raw URL for this repository.
+In Twine 2: **Twine → Story Formats → Add** and paste the URL of a hosted copy of `dist/Twine2/Chatbook/format.js`, e.g. the GitHub Pages/raw URL for this repository.
 
 ## Development
 
 ```
 npm install
-npm run build   # build dist/Twine2/Trialogue/format.js
-npm run demo    # build + compile docs/trialogue-demo.twee to docs/trialogue-demo.html
+npm run build   # build dist/Twine2/Chatbook/format.js
+npm run demo    # build + compile docs/chatbook-demo.twee to docs/chatbook-demo.html
 npm test        # build + demo + headless-browser smoke test
 ```
 
 The demo compiler (`scripts/build-demo.js`) is a minimal Twee-to-HTML stand-in for [Tweego](https://www.motoslave.net/tweego/), so you can iterate on the format without external tools. Tweego still works too:
 
 ```
-tweego --output=story.html story.twee --format=./dist/Twine2/Trialogue
+tweego --output=story.html story.twee --format=./dist/Twine2/Chatbook
 ```
 
-## Migrating from Trialogue 1.x
+## Migrating from Trialogue
 
-Stories authored for 1.x work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
+Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
 
 - jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works.)
 - Story events (`startstory`, `showpassage`, `showpassage:after`, …) are now plain DOM `CustomEvent`s on `window`: `window.addEventListener('showpassage', e => …)` with data in `e.detail`.
@@ -345,4 +345,4 @@ Stories authored for 1.x work unchanged in most cases — speaker tags, links, s
 
 # Credits
 
-Trialogue was created by [Philo van Kemenade](https://github.com/phivk). It is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco, a Jonah-style story format based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/).
+Chatbook builds on [Trialogue](https://github.com/phivk/trialogue) by [Philo van Kemenade](https://github.com/phivk), which is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco, a Jonah-style story format based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/). The name is an homage to Klimas's [Chapbook](https://klembot.github.io/chapbook/) format.

@@ -1,11 +1,11 @@
 /*
- Builds the Trialogue story format.
+ Builds the Chatbook story format.
 
    node build.js
 
  Produces:
-   dist/Twine2/Trialogue/format.js   the story format, importable in Twine 2
-   dist/Twine2/Trialogue/icon.svg
+   dist/Twine2/Chatbook/format.js    the story format, importable in Twine 2
+   dist/Twine2/Chatbook/icon.svg
    build/format.html                 the assembled template (for inspection)
 */
 
@@ -40,7 +40,7 @@ function build() {
 	// minify the stylesheet
 
 	const css = esbuild.transformSync(
-		fs.readFileSync(path.join(ROOT, 'src/trialogue.css'), 'utf8'),
+		fs.readFileSync(path.join(ROOT, 'src/chatbook.css'), 'utf8'),
 		{ loader: 'css', minify: true }
 	).code;
 

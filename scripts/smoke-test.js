@@ -11,7 +11,7 @@
 const path = require('path');
 const { chromium } = require('playwright');
 
-const DEMO = path.join(__dirname, '..', 'docs', 'trialogue-demo.html');
+const DEMO = path.join(__dirname, '..', 'docs', 'chatbook-demo.html');
 const SHOT_DIR = process.env.SMOKE_SHOT_DIR || '';
 
 let failures = 0;
@@ -50,7 +50,7 @@ async function run() {
 
 	console.log('start passage');
 	await page.waitForSelector('.user-response');
-	check('title shown', (await page.textContent('#ptitle')) === 'Trialogue Demo');
+	check('title shown', (await page.textContent('#ptitle')) === 'Chatbook Demo');
 	check(
 		'start passage split into two bubbles',
 		(await page.locator('.chat-passage[data-speaker="1"]').count()) === 2
@@ -106,7 +106,7 @@ async function run() {
 		'theme choice persisted per story',
 		await page.evaluate(() =>
 			Object.keys(window.localStorage).some(function(key) {
-				return key.indexOf('trialogue-theme-') === 0;
+				return key.indexOf('chatbook-theme-') === 0;
 			})
 		)
 	);
@@ -122,7 +122,7 @@ async function run() {
 	await page.evaluate(() => {
 		document.documentElement.removeAttribute('data-theme');
 		Object.keys(window.localStorage).forEach(function(key) {
-			if (key.indexOf('trialogue-theme-') === 0) {
+			if (key.indexOf('chatbook-theme-') === 0) {
 				window.localStorage.removeItem(key);
 			}
 		});
@@ -340,7 +340,7 @@ async function run() {
 	});
 	check(
 		'title resets when the tab becomes visible',
-		(await page.title()) === 'Trialogue Demo'
+		(await page.title()) === 'Chatbook Demo'
 	);
 
 	console.log('location sharing');
@@ -422,7 +422,7 @@ async function run() {
 	check(
 		'notification banner is labeled with the story name',
 		(await page.locator('#meta-notification-label').textContent()) ===
-			'Trialogue Demo'
+			'Chatbook Demo'
 	);
 
 	if (SHOT_DIR) {

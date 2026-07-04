@@ -4,14 +4,14 @@
 }
 
 :: StoryTitle
-Trialogue Demo
+Chatbook Demo
 
 :: StorySubtitle
 an interactive chat story
 
 :: Story JavaScript [script]
 
-var menuContent              = '<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/trilogue-relog">Trialogue</a>.</p><p>Anything passed to <span style="font-family: monospace;">inject_menu()</span> in your Story JavaScript appears here.</p>';
+var menuContent              = '<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/trilogue-relog">Chatbook</a>.</p><p>Anything passed to <span style="font-family: monospace;">inject_menu()</span> in your Story JavaScript appears here.</p>';
 var userResponseHintContent  = 'Choose an option to continue the conversation';
 
 inject_menu(menuContent);
@@ -89,7 +89,7 @@ rainy: data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0
 :: not so well [speaker-1]
 maybe this will brighten up your day!
 
-<img src="https://picsum.photos/seed/trialogue/800/500" alt="a random photo">
+<img src="https://picsum.photos/seed/chatbook/800/500" alt="a random photo">
 
 [[start over?->Start]]
 
