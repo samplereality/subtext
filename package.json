@@ -2,7 +2,7 @@
   "name": "subtext",
   "version": "2.1.0",
   "description": "A chat-style story format for Twine 2",
-  "author": "Philo van Kemenade",
+  "author": "Mark Sample",
   "license": "MIT",
   "repository": "https://github.com/samplereality/subtext",
   "config": {

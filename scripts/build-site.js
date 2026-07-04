@@ -111,7 +111,7 @@ const page = `<!DOCTYPE html>
 	</div>
 	<div class="install">
 		<div class="label">Add to Twine via Twine → Story Formats → Add a New Format:</div>
-		<code>${PAGES_URL}/format.js</code>
+		<code>${PAGES_URL}/format.js?v=${pkg.version}</code>
 	</div>
 </header>
 <section class="try">

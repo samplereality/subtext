@@ -744,14 +744,12 @@ a {
 
 @keyframes t-screen-in {
 	from {
-		opacity: 0;
 		transform: translateX(1.25rem);
 	}
 }
 
 @keyframes t-screen-back {
 	from {
-		opacity: 0;
 		transform: translateX(-1.25rem);
 	}
 }
