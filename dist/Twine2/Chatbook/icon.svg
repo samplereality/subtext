@@ -1,10 +1,18 @@
 <svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="150" height="150" fill="white"/>
-<rect width="150" height="150" fill="white"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M45 15H145V45H45V15Z" fill="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M5 60H105V90H5V60Z" fill="black"/>
-<path d="M20 45C28.2843 45 35 38.2843 35 30C35 21.7157 28.2843 15 20 15C11.7157 15 5 21.7157 5 30C5 38.2843 11.7157 45 20 45Z" fill="#D0011B"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M45 105H145V135H45V105Z" fill="black"/>
-<path d="M20 135C28.2843 135 35 128.284 35 120C35 111.716 28.2843 105 20 105C11.7157 105 5 111.716 5 120C5 128.284 11.7157 135 20 135Z" fill="#4990E2"/>
-<path d="M129 90C137.284 90 144 83.2843 144 75C144 66.7157 137.284 60 129 60C120.716 60 114 66.7157 114 75C114 83.2843 120.716 90 129 90Z" fill="#417505"/>
+  <defs>
+    <linearGradient id="chatbook-bg" x1="75" y1="0" x2="75" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58AEFF"/>
+      <stop offset="1" stop-color="#0668D8"/>
+    </linearGradient>
+  </defs>
+  <rect width="150" height="150" rx="33" fill="url(#chatbook-bg)"/>
+  <!-- incoming bubble: a page of text (the book) -->
+  <path d="M24 50 Q24 34 40 34 H82 Q98 34 98 50 V64 Q98 80 82 80 H29 Q24 80 24 75 Z" fill="#FFFFFF"/>
+  <rect x="36" y="45" width="44" height="7" rx="3.5" fill="#9FC3F5"/>
+  <rect x="36" y="57" width="32" height="7" rx="3.5" fill="#9FC3F5"/>
+  <!-- outgoing bubble: typing dots (the chat) -->
+  <path d="M62 102 Q62 88 76 88 H112 Q126 88 126 102 V121 Q126 126 121 126 H76 Q62 126 62 112 Z" fill="#FFFFFF"/>
+  <circle cx="81" cy="107" r="5" fill="#0A84FF"/>
+  <circle cx="94" cy="107" r="5" fill="#0A84FF"/>
+  <circle cx="107" cy="107" r="5" fill="#0A84FF"/>
 </svg>
