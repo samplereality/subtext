@@ -3,6 +3,8 @@
 
 Chatbook is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, select Chatbook as the story format, and play your story back as a modern text-message exchange.
 
+👉 **Docs:** https://samplereality.github.io/chatbook/ · **Play the demo:** https://samplereality.github.io/chatbook/demo.html
+
 Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trialogue) by Philo van Kemenade — its name a small homage to Twine's [Chapbook](https://klembot.github.io/chapbook/) format. The lineage runs Chatbook → Trialogue → [Paloma](http://mcdemarco.net/tools/scree/paloma/) → [Snowman](https://github.com/videlais/snowman).
 
 ## What's new in 2.0
@@ -317,7 +319,13 @@ The Menu button (☰) only appears once the menu has content. The Trialogue 1.x 
 
 ## Using the format in Twine
 
-In Twine 2: **Twine → Story Formats → Add** and paste the URL of a hosted copy of `dist/Twine2/Chatbook/format.js`, e.g. the GitHub Pages/raw URL for this repository.
+In Twine 2: **Twine → Story Formats → Add a New Format** and paste:
+
+```
+https://samplereality.github.io/chatbook/format.js
+```
+
+(That URL is the copy of `dist/Twine2/Chatbook/format.js` published by this repository's GitHub Pages site, redeployed automatically on every push to `main`.)
 
 ## Development
 
@@ -339,7 +347,7 @@ tweego --output=story.html story.twee --format=./dist/Twine2/Chatbook
 Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
 
 - jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works.)
-- Story events (`startstory`, `showpassage`, `showpassage:after`, …) are now plain DOM `CustomEvent`s on `window`: `window.addEventListener('showpassage', e => …)` with data in `e.detail`.
+- Story events (`startstory`, `showpassage`, `showpassage:after`, …) are now plain DOM `CustomEvent`s on `window`: `window.addEventListener('showpassage', e => …)` with data in `e.detail`. The Snowman 2 event names (`sm.story.started`, `sm.passage.showing`, `sm.passage.shown`, `sm.passage.hidden`, `sm.story.saved`, `sm.restore.success`, `sm.restore.failed`, `sm.story.error`) are dispatched as aliases, so snippets written for Snowman 2 documentation work too.
 - Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
 - Twine 1 documents are no longer supported.
 

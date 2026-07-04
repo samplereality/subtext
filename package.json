@@ -12,6 +12,7 @@
   "scripts": {
     "build": "node build.js",
     "demo": "node build.js && node scripts/build-demo.js",
+    "site": "node build.js && node scripts/build-demo.js && node scripts/build-site.js",
     "test": "node build.js && node scripts/build-demo.js && node scripts/smoke-test.js"
   },
   "dependencies": {

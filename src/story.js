@@ -75,8 +75,30 @@ function deepClone(value) {
 	}
 }
 
+/*
+ Chatbook keeps its original (Snowman 1 / Trialogue) event names and
+ also dispatches the Snowman 2 sm.* equivalents, so scripts written
+ against either generation of documentation work.
+*/
+
+var SM_EVENT_ALIASES = {
+	'startstory': 'sm.story.started',
+	'hidepassage': 'sm.passage.hidden',
+	'showpassage': 'sm.passage.showing',
+	'showpassage:after': 'sm.passage.shown',
+	'save': 'sm.story.saved',
+	'restorefailed': 'sm.restore.failed',
+	'restore:after': 'sm.restore.success'
+};
+
 function dispatch(name, detail) {
 	window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+
+	if (SM_EVENT_ALIASES[name]) {
+		window.dispatchEvent(
+			new CustomEvent(SM_EVENT_ALIASES[name], { detail: detail || {} })
+		);
+	}
 }
 
 /**
@@ -2234,6 +2256,8 @@ Object.assign(Story.prototype, {
 	**/
 
 	showError: function(message) {
+		dispatch('sm.story.error', { message: message, story: this });
+
 		var meta = document.createElement('div');
 
 		meta.className = 'meta-passage meta-passage--error';

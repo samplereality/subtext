@@ -1,0 +1,142 @@
+/*
+ Builds the documentation site published to GitHub Pages.
+
+   node build.js && node scripts/build-demo.js && node scripts/build-site.js
+
+ Produces site/ containing:
+   index.html    docs rendered from README.md, with an embedded demo
+   demo.html     the playable demo story
+   format.js     the story format, at a stable URL for Twine to import
+   icon.svg      logo / favicon
+*/
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { marked } = require('marked');
+const pkg = require('../package.json');
+
+const ROOT = path.join(__dirname, '..');
+const SITE = path.join(ROOT, 'site');
+const PAGES_URL = 'https://samplereality.github.io/chatbook';
+
+marked.setOptions({ gfm: true });
+
+// README, minus the logo/title header (the site has its own hero)
+
+let readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const introAt = readme.indexOf('Chatbook is a story format');
+
+if (introAt !== -1) {
+	readme = readme.slice(introAt);
+}
+
+const docsHtml = marked.parse(readme);
+
+const css = `
+:root {
+	--bg: #f5f5f7; --surface: #ffffff; --text: #111114; --muted: #6e6e73;
+	--accent: #0a84ff; --border: rgba(0, 0, 0, 0.09); --code-bg: rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0a0a0d; --surface: #17171b; --text: #f2f2f4; --muted: #98989f;
+		--accent: #409cff; --border: rgba(255, 255, 255, 0.1); --code-bg: rgba(255, 255, 255, 0.08);
+	}
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0; background: var(--bg); color: var(--text);
+	font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+.hero { text-align: center; padding: 3.5rem 1.25rem 2rem; }
+.hero img { width: 72px; height: 72px; }
+.hero h1 { font-size: 2.4rem; letter-spacing: -0.02em; margin: 0.75rem 0 0.25rem; }
+.hero .tagline { color: var(--muted); font-size: 1.1rem; max-width: 34rem; margin: 0.25rem auto 1.5rem; }
+.actions { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; }
+.btn {
+	display: inline-block; padding: 0.55rem 1.2rem; border-radius: 999px;
+	background: var(--accent); color: #fff !important; text-decoration: none; font-weight: 600;
+}
+.btn--ghost { background: transparent; color: var(--accent) !important; border: 1.5px solid var(--accent); }
+.install { margin: 1.75rem auto 0; max-width: 34rem; }
+.install .label { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+.install code {
+	display: block; padding: 0.7rem 1rem; border-radius: 0.75rem; overflow-x: auto;
+	background: var(--surface); border: 1px solid var(--border); font-size: 0.85rem; white-space: nowrap;
+}
+.try { display: flex; justify-content: center; padding: 1.5rem 1rem 0.5rem; }
+.try iframe {
+	width: 396px; max-width: 100%; height: 720px; border: 1px solid var(--border);
+	border-radius: 1.6rem; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25); background: var(--bg);
+}
+.try-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin: 0.75rem 0 0; }
+main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+main h1, main h2 { letter-spacing: -0.01em; margin-top: 2.2em; }
+main h1 { font-size: 1.6rem; } main h2 { font-size: 1.35rem; } main h3 { font-size: 1.1rem; margin-top: 1.8em; }
+main pre {
+	background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem;
+	padding: 0.9rem 1.1rem; overflow-x: auto; font-size: 0.85rem; line-height: 1.5;
+}
+main code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875em; }
+main :not(pre) > code { background: var(--code-bg); padding: 0.12em 0.35em; border-radius: 0.35em; }
+main table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+main th, main td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; }
+main blockquote { border-left: 3px solid var(--accent); margin: 1em 0; padding: 0.1em 1em; color: var(--muted); }
+footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 0 1rem 3rem; }
+`;
+
+const page = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chatbook — a chat story format for Twine</title>
+<meta name="description" content="Chatbook turns a branching Twine story into a modern text-message exchange: bubbles, typing indicators, photos, voice memos, locations, reactions, and read receipts.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>${css}</style>
+</head>
+<body>
+<header class="hero">
+	<img src="icon.svg" alt="">
+	<h1>Chatbook</h1>
+	<p class="tagline">A story format for Twine 2 that turns a branching narrative into a modern text-message exchange.</p>
+	<div class="actions">
+		<a class="btn" href="demo.html">Play the demo</a>
+		<a class="btn btn--ghost" href="https://github.com/samplereality/chatbook">GitHub</a>
+	</div>
+	<div class="install">
+		<div class="label">Add to Twine via Twine → Story Formats → Add a New Format:</div>
+		<code>${PAGES_URL}/format.js</code>
+	</div>
+</header>
+<section class="try">
+	<iframe src="demo.html" title="Playable Chatbook demo" loading="lazy"></iframe>
+</section>
+<p class="try-hint">The demo, live. It's a phone — tap the replies.</p>
+<main>
+${docsHtml}
+</main>
+<footer>Chatbook ${pkg.version} · MIT License</footer>
+</body>
+</html>
+`;
+
+fs.rmSync(SITE, { recursive: true, force: true });
+fs.mkdirSync(SITE, { recursive: true });
+fs.writeFileSync(path.join(SITE, 'index.html'), page);
+fs.copyFileSync(
+	path.join(ROOT, 'docs/chatbook-demo.html'),
+	path.join(SITE, 'demo.html')
+);
+fs.copyFileSync(
+	path.join(ROOT, 'dist/Twine2/Chatbook/format.js'),
+	path.join(SITE, 'format.js')
+);
+fs.copyFileSync(path.join(ROOT, 'src/icon.svg'), path.join(SITE, 'icon.svg'));
+fs.writeFileSync(path.join(SITE, '.nojekyll'), '');
+
+console.log('Built docs site -> site/');

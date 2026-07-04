@@ -27,10 +27,20 @@ marked.setOptions({
 **/
 
 function render(source) {
-	var result = template.compile(source)({
-		s: window.story.state,
-		$: readyFunc
-	});
+	var result;
+
+	// only invoke the template engine when template syntax is present
+	// (matches Snowman 2.x, which guards this for speed and safety)
+
+	if (source.indexOf('<%') !== -1) {
+		result = template.compile(source)({
+			s: window.story.state,
+			$: readyFunc
+		});
+	}
+	else {
+		result = source;
+	}
 
 	// Remove /* comments */
 

@@ -50,6 +50,12 @@ async function run() {
 
 	console.log('start passage');
 	await page.waitForSelector('.user-response');
+	await page.evaluate(() => {
+		window.__smShown = 0;
+		window.addEventListener('sm.passage.shown', () => {
+			window.__smShown += 1;
+		});
+	});
 	check('title shown', (await page.textContent('#ptitle')) === 'Chatbook Demo');
 	check(
 		'start passage split into two bubbles',
@@ -190,6 +196,10 @@ async function run() {
 	check(
 		'speaker profile avatar image applied',
 		(await page.locator('.chat-avatar--img[data-speaker="2"]').count()) >= 1
+	);
+	check(
+		'Snowman 2 style sm.passage.shown events dispatched',
+		(await page.evaluate(() => window.__smShown)) >= 2
 	);
 
 	console.log('receipt flipping');

@@ -3,4 +3,5 @@
 node_modules/*
 doc/*
 build/*
+site/
 test-data/*.html
