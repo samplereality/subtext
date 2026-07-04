@@ -1,6 +1,8 @@
 :: StoryData
 {
-  "ifid": "B4A595DB-0D82-4652-99AD-6C801B0F1510"
+  "ifid": "B4A595DB-0D82-4652-99AD-6C801B0F1510",
+  "format": "Chatbook",
+  "format-version": "2.0.0"
 }
 
 :: StoryTitle

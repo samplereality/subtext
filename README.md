@@ -403,6 +403,51 @@ https://samplereality.github.io/chatbook/format.js
 
 (That URL is the copy of `dist/Twine2/Chatbook/format.js` published by this repository's GitHub Pages site, redeployed automatically on every push to `main`.)
 
+## Using the format with Tweego
+
+Prefer writing Twee in a text editor? Chatbook works with [Tweego](https://www.motoslave.net/tweego/), the command-line Twine compiler.
+
+**1. Install the format where Tweego can find it.** Tweego looks for story formats in a `storyformats` directory — next to your project, next to the `tweego` binary, or anywhere listed in the `TWEEGO_PATH` environment variable. Each format lives in its own subdirectory containing a `format.js`:
+
+```bash
+mkdir -p storyformats/chatbook
+curl -o storyformats/chatbook/format.js https://samplereality.github.io/chatbook/format.js
+```
+
+(Or copy `dist/Twine2/Chatbook/` from a clone of this repository into `storyformats/`.) Confirm it's visible — and note its ID — with:
+
+```bash
+tweego --list-formats
+```
+
+**2. Declare the format in your StoryData passage** so both Tweego and Twine select it automatically:
+
+```
+:: StoryData
+{
+  "ifid": "YOUR-STORY-IFID",
+  "format": "Chatbook",
+  "format-version": "2.0.0"
+}
+```
+
+(Every story needs its own unique IFID — Tweego generates one for you if the field is missing, and prints it so you can paste it in.)
+
+**3. Compile:**
+
+```bash
+tweego -o story.html story.twee
+```
+
+If you skip the StoryData declaration, pass the format explicitly with `-f chatbook` (the ID from `--list-formats`). Other handy invocations:
+
+```bash
+tweego -w -o story.html story.twee    # watch mode: recompile on every save
+tweego -d -o story.twee story.html    # decompile a published story back to Twee
+```
+
+This repository's demo story, [`docs/chatbook-demo.twee`](docs/chatbook-demo.twee), is a ready-made example of a Tweego-compatible Chatbook project.
+
 ## Development
 
 ```
@@ -412,11 +457,7 @@ npm run demo    # build + compile docs/chatbook-demo.twee to docs/chatbook-demo.
 npm test        # build + demo + headless-browser smoke test
 ```
 
-The demo compiler (`scripts/build-demo.js`) is a minimal Twee-to-HTML stand-in for [Tweego](https://www.motoslave.net/tweego/), so you can iterate on the format without external tools. Tweego still works too:
-
-```
-tweego --output=story.html story.twee --format=./dist/Twine2/Chatbook
-```
+The demo compiler (`scripts/build-demo.js`) is a minimal Twee-to-HTML stand-in for Tweego, so you can iterate on the format without external tools. Tweego works too — see [Using the format with Tweego](#using-the-format-with-tweego), pointing `storyformats/chatbook/` at the freshly built `dist/Twine2/Chatbook/`.
 
 ## Migrating from Trialogue
 
