@@ -12,6 +12,16 @@ var SPEAKER_TAG_PREFIX = 'speaker-';
 var PHOTO_LINK_PREFIX = 'photo:';
 var LOCATION_LINK_PREFIX = 'location:';
 var REACT_LINK_PREFIX = 'react:';
+var INPUT_LINK_PREFIX = 'input:';
+var TIMEOUT_LINK_PREFIX = 'timeout:';
+
+/* Feather Icons arrow-up (MIT) */
+var SEND_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<line x1="12" y1="19" x2="12" y2="5"></line>' +
+	'<polyline points="5 12 12 5 19 12"></polyline></svg>';
 
 /* Feather Icons camera (MIT) */
 var CAMERA_SVG =
@@ -166,6 +176,14 @@ var Story = function() {
 	this.timeline = [];
 
 	/**
+	 DOM nodes belonging to the passage currently "live" (its inline
+	 links still clickable). All messages share one role="log" container
+	 so screen readers announce each exactly once; these refs replace
+	 the old separate #passage element.
+	**/
+	this._currentNodes = [];
+
+	/**
 	 An array of passage IDs viewed this session (kept for compatibility
 	 with Trialogue 1.x scripts that read story.history).
 	**/
@@ -239,6 +257,27 @@ var Story = function() {
 		metaNotificationLabel: '',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
+		/* language of the story's interface, applied to <html lang>
+		   (leave empty to keep the default "en") */
+		lang: '',
+		/* screen-reader announcement while a speaker is typing;
+		   %s is replaced with the speaker's display name */
+		typingLabel: '%s is typing',
+		/* honor [[timeout:...]] links; set false to give every player
+		   unlimited time (an accessibility affordance) */
+		timers: true,
+		/* screen-reader announcement when a response timer starts;
+		   %s is replaced with the number of seconds */
+		timerLabel: 'You have %s seconds to reply',
+		/* accessible label on the free-text send button */
+		inputSendLabel: 'Send',
+		/* helper text under the chat: `hint` above choice chips (also
+		   set via inject_hint()), `inputHint` above the free-text
+		   composer, and hintFadeAfter retires both once the player has
+		   made that many moves (null = never fade, 0 = never show) */
+		hint: '',
+		inputHint: '',
+		hintFadeAfter: null,
 		/* default label on a location-share response button */
 		locationButtonLabel: 'Share my location',
 		/* label under the map card of a shared player location */
@@ -326,7 +365,7 @@ Object.assign(Story.prototype, {
 		this.dom = {
 			panel: byId('chat-panel'),
 			history: byId('phistory'),
-			passage: byId('passage'),
+			typingText: byId('typing-announcement'),
 			typing: byId('animation-container'),
 			responses: byId('user-response-panel'),
 			hint: byId('user-response-hint'),
@@ -347,14 +386,22 @@ Object.assign(Story.prototype, {
 			metaNotificationLabel: byId('meta-notification-label'),
 			metaNotificationBody: byId('meta-notification-body'),
 			menuDialog: byId('menu-dialog'),
-			theme: byId('nav-link-theme')
+			theme: byId('nav-link-theme'),
+			footer: document.querySelector('.user-response-panel'),
+			timerText: byId('timer-announcement')
 		};
 
+		this._responseTimer = null;
+
 		// tapping a notification banner dismisses it (but interactive
-		// content inside it, like a voice memo, stays usable)
+		// content inside it, like a voice memo, stays usable); the ×
+		// button does the same for keyboard and screen-reader users
 
 		this.dom.metaNotification.addEventListener('click', function(event) {
-			if (!event.target.closest('button, a')) {
+			if (
+				event.target.closest('[data-notification-close]') ||
+				!event.target.closest('button, a')
+			) {
 				story.dom.metaNotification.hidden = true;
 			}
 		});
@@ -453,7 +500,7 @@ Object.assign(Story.prototype, {
 		document.body.addEventListener('click', function(event) {
 			var link = event.target.closest('[data-passage]');
 
-			if (!link || link.closest('#phistory')) {
+			if (!link || link.closest('.is-history')) {
 				return;
 			}
 
@@ -555,6 +602,10 @@ Object.assign(Story.prototype, {
 
 		// apply config that user scripts may have changed
 
+		if (this.config.lang) {
+			document.documentElement.lang = this.config.lang;
+		}
+
 		this.initTheme();
 
 		if (this.dom.pickerTitle) {
@@ -640,6 +691,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
 		this.showUserBubble(displayText);
 		this.playSound('send');
 		this.showDelayed(targetName, { noMove: true });
@@ -721,6 +775,7 @@ Object.assign(Story.prototype, {
 
 		if (metaMode !== 'chat') {
 			this.showMeta(html, metaMode);
+			this._currentNodes = [];
 		}
 		else {
 			var nodes = this.buildPassageElement(passage, speaker, html);
@@ -734,7 +789,7 @@ Object.assign(Story.prototype, {
 					story.applyGrouping(node);
 				}
 
-				story.dom.passage.appendChild(node);
+				story.dom.history.appendChild(node);
 
 				// images finish loading after the initial scroll;
 				// re-scroll so they don't cut off the newest messages
@@ -745,6 +800,8 @@ Object.assign(Story.prototype, {
 					});
 				});
 			});
+
+			this._currentNodes = nodes;
 		}
 
 		// read receipts: explicit tags win, otherwise a speaker's reply
@@ -992,6 +1049,8 @@ Object.assign(Story.prototype, {
 		}
 
 		el.setAttribute('data-built', '1');
+		el.setAttribute('role', 'group');
+		el.setAttribute('aria-label', 'Voice message');
 
 		var audio = document.createElement('audio');
 
@@ -1144,8 +1203,14 @@ Object.assign(Story.prototype, {
 		var coords = document.createElement('span');
 
 		coords.textContent = lat.toFixed(4) + ', ' + lon.toFixed(4);
+
+		var srNote = document.createElement('span');
+
+		srNote.className = 'visually-hidden';
+		srNote.textContent = ' (opens map in a new tab)';
 		info.appendChild(name);
 		info.appendChild(coords);
+		info.appendChild(srNote);
 		card.appendChild(map);
 		card.appendChild(info);
 		el.textContent = '';
@@ -1231,9 +1296,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	applyGrouping: function(wrapper) {
-		var previous =
-			this.dom.passage.lastElementChild ||
-			this.dom.history.lastElementChild;
+		var previous = this.dom.history.lastElementChild;
 
 		if (
 			previous &&
@@ -1257,9 +1320,14 @@ Object.assign(Story.prototype, {
 	**/
 
 	movePassageToHistory: function() {
-		while (this.dom.passage.firstChild) {
-			this.dom.history.appendChild(this.dom.passage.firstChild);
-		}
+		// nodes stay where they are (one shared role="log" container,
+		// so screen readers never see them re-inserted); they are only
+		// marked historical, which makes their inline links inert
+
+		this._currentNodes.forEach(function(node) {
+			node.classList.add('is-history');
+		});
+		this._currentNodes = [];
 	},
 
 	/**
@@ -1279,6 +1347,8 @@ Object.assign(Story.prototype, {
 		var photoOffers = this.getPhotoOffers(links);
 		var locationOffers = this.getLocationOffers(links);
 		var reactionOffers = [];
+		var inputOffer = null;
+		var timeoutOffer = null;
 
 		links.forEach(function(link) {
 			var display = link.display.trim();
@@ -1289,6 +1359,31 @@ Object.assign(Story.prototype, {
 					target: link.target
 				});
 			}
+			else if (
+				!inputOffer &&
+				(display === 'input' || display.indexOf(INPUT_LINK_PREFIX) === 0)
+			) {
+				inputOffer = {
+					placeholder:
+						display === 'input'
+							? ''
+							: display.substring(INPUT_LINK_PREFIX.length).trim(),
+					target: link.target
+				};
+			}
+			else if (!timeoutOffer && display.indexOf(TIMEOUT_LINK_PREFIX) === 0) {
+				var match = display
+					.substring(TIMEOUT_LINK_PREFIX.length)
+					.match(/^\s*([\d.]+)\s*([\s\S]*)$/);
+
+				if (match && parseFloat(match[1]) > 0) {
+					timeoutOffer = {
+						seconds: parseFloat(match[1]),
+						text: match[2].trim(),
+						target: link.target
+					};
+				}
+			}
 		});
 
 		var textLinks = links.filter(function(link) {
@@ -1298,7 +1393,10 @@ Object.assign(Story.prototype, {
 				display.indexOf(PHOTO_LINK_PREFIX) !== 0 &&
 				display !== 'location' &&
 				display.indexOf(LOCATION_LINK_PREFIX) !== 0 &&
-				display.indexOf(REACT_LINK_PREFIX) !== 0
+				display.indexOf(REACT_LINK_PREFIX) !== 0 &&
+				display !== 'input' &&
+				display.indexOf(INPUT_LINK_PREFIX) !== 0 &&
+				display.indexOf(TIMEOUT_LINK_PREFIX) !== 0
 			);
 		});
 
@@ -1364,6 +1462,245 @@ Object.assign(Story.prototype, {
 			});
 			story.dom.responses.appendChild(button);
 		});
+
+		// free-text composer
+
+		if (inputOffer) {
+			var form = document.createElement('form');
+
+			form.className = 'chat-composer';
+
+			var field = document.createElement('input');
+
+			field.type = 'text';
+			field.className = 'chat-composer-input';
+			field.autocomplete = 'off';
+			field.maxLength = 500;
+			field.placeholder = inputOffer.placeholder;
+			field.setAttribute(
+				'aria-label',
+				inputOffer.placeholder || 'Type a message'
+			);
+
+			var send = document.createElement('button');
+
+			send.type = 'submit';
+			send.className = 'chat-composer-send';
+			send.setAttribute('aria-label', this.config.inputSendLabel);
+			send.setAttribute('title', this.config.inputSendLabel);
+			send.innerHTML = SEND_SVG;
+
+			form.appendChild(field);
+			form.appendChild(send);
+
+			var inputTarget = inputOffer.target;
+
+			form.addEventListener('submit', function(event) {
+				event.preventDefault();
+				story.sendText(field.value, inputTarget);
+			});
+
+			this.dom.responses.appendChild(form);
+
+			// when typing is the only way to reply, put the cursor there
+
+			if (
+				textLinks.length === 0 &&
+				photoOffers.length === 0 &&
+				locationOffers.length === 0 &&
+				reactionOffers.length === 0
+			) {
+				field.focus({ preventScroll: true });
+			}
+		}
+
+		// response timer
+
+		if (timeoutOffer && this.config.timers) {
+			this.startResponseTimer(timeoutOffer);
+		}
+
+		this.updateHint();
+	},
+
+	/**
+	 Refreshes the helper text above the responses: the input hint when
+	 a composer is showing, the regular hint otherwise — and nothing at
+	 all once the player has made config.hintFadeAfter moves (they know
+	 how the system works by then).
+	**/
+
+	updateHint: function() {
+		if (!this.dom.hint) {
+			return;
+		}
+
+		var fade = this.config.hintFadeAfter;
+		var moves = this.timeline.filter(function(entry) {
+			return entry.t !== 'p';
+		}).length;
+		var html = '';
+
+		if (!(typeof fade === 'number' && moves >= fade)) {
+			var hasComposer = !!this.dom.responses.querySelector('.chat-composer');
+
+			html =
+				hasComposer && this.config.inputHint
+					? this.config.inputHint
+					: this.config.hint;
+		}
+
+		this.dom.hint.innerHTML = html || '';
+	},
+
+	/**
+	 Sends the player's typed message and shows the target passage.
+	 The text is recorded in s.lastInput (and appended to s.inputs), so
+	 the target passage can react to it:
+
+	   <% if (s.lastInput.trim().toLowerCase() === 'swordfish') { %>…
+	**/
+
+	sendText: function(text, targetName) {
+		text = (text || '').trim();
+
+		if (text === '') {
+			return;
+		}
+
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
+		this.state.lastInput = text;
+		this.state.inputs = (this.state.inputs || []).concat(text);
+
+		this.showUserBubble(text);
+		this.playSound('send');
+
+		/**
+		 Triggered when the player sends a typed message.
+		**/
+
+		dispatch('textinput', { text: text, target: targetName, story: this });
+
+		this.showDelayed(targetName, { noMove: true });
+	},
+
+	/**
+	 Arms the response timer: the thin rule above the reply panel fills
+	 left to right — shifting from the accent color into red — and when
+	 it reaches the end the timeout fires: the offer's text is sent as
+	 the player's forced reply (if given), otherwise the story simply
+	 moves on without one. s.timedOut records which way it went.
+	**/
+
+	startResponseTimer: function(offer) {
+		this.cancelResponseTimer();
+
+		var story = this;
+		var bar = document.createElement('div');
+
+		bar.className = 'response-timer';
+		bar.setAttribute('aria-hidden', 'true');
+		bar.style.backgroundSize = this.dom.footer.clientWidth + 'px 100%';
+		this.dom.footer.appendChild(bar);
+
+		this.dom.timerText.textContent = this.config.timerLabel.replace(
+			'%s',
+			offer.seconds
+		);
+
+		var started = performance.now();
+		var duration = offer.seconds * 1000;
+
+		var tick = function(now) {
+			if (!story._responseTimer) {
+				return;
+			}
+
+			var fraction = Math.min((now - started) / duration, 1);
+
+			bar.style.width = fraction * 100 + '%';
+
+			if (fraction >= 1) {
+				story.fireResponseTimeout(offer);
+			}
+			else {
+				story._responseTimer.raf = window.requestAnimationFrame(tick);
+			}
+		};
+
+		this._responseTimer = {
+			bar: bar,
+			raf: window.requestAnimationFrame(tick)
+		};
+	},
+
+	cancelResponseTimer: function() {
+		if (!this._responseTimer) {
+			return;
+		}
+
+		window.cancelAnimationFrame(this._responseTimer.raf);
+		this._responseTimer.bar.remove();
+		this._responseTimer = null;
+		this.dom.timerText.textContent = '';
+	},
+
+	fireResponseTimeout: function(offer) {
+		this.cancelResponseTimer();
+
+		if (!this.passage(offer.target)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + offer.target + '"'
+				)
+			);
+			return;
+		}
+
+		if (this.dom.picker.open) {
+			this.dom.picker.close();
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+
+		this.state.timedOut = true;
+
+		if (offer.text) {
+			this.showUserBubble(offer.text);
+			this.playSound('send');
+		}
+
+		/**
+		 Triggered when a response timer expires.
+		**/
+
+		dispatch('timeout', {
+			target: offer.target,
+			text: offer.text,
+			story: this
+		});
+
+		this.showDelayed(offer.target, { noMove: true });
 	},
 
 	/**
@@ -1419,6 +1756,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
 
 		var story = this;
 
@@ -1672,6 +2012,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
 
 		this.state.lastPhoto = name;
 		this.state.sentPhotos = (this.state.sentPhotos || []).concat(name);
@@ -1750,7 +2093,20 @@ Object.assign(Story.prototype, {
 	**/
 
 	clearUserResponses: function() {
+		this.cancelResponseTimer();
 		this.dom.responses.textContent = '';
+	},
+
+	/**
+	 Keeps keyboard/screen-reader focus anchored on the response panel
+	 after a chosen reply button is removed from the DOM (otherwise
+	 focus falls back to the top of the page).
+	**/
+
+	focusResponses: function() {
+		if (this.dom.responses && this.dom.responses.focus) {
+			this.dom.responses.focus({ preventScroll: true });
+		}
 	},
 
 	/**
@@ -1933,14 +2289,7 @@ Object.assign(Story.prototype, {
 			(which === 'in'
 				? ':not([data-speaker="you"])'
 				: '[data-speaker="you"]');
-		var wrappers = [].concat(
-			Array.prototype.slice.call(
-				this.dom.history.querySelectorAll(selector)
-			),
-			Array.prototype.slice.call(
-				this.dom.passage.querySelectorAll(selector)
-			)
-		);
+		var wrappers = this.dom.history.querySelectorAll(selector);
 
 		var wrapper = wrappers[wrappers.length - 1];
 
@@ -1964,11 +2313,30 @@ Object.assign(Story.prototype, {
 		if (!badge) {
 			badge = document.createElement('span');
 			badge.className = 'chat-reaction';
+			badge.setAttribute('role', 'img');
 			bubbles.appendChild(badge);
 		}
 
 		badge.textContent = emoji;
+		badge.setAttribute('aria-label', 'Reaction: ' + emoji);
 		wrapper.classList.add('has-reaction');
+
+		// center the badge on the last bubble's top corner — the corner
+		// facing whoever sent the reaction
+
+		var bubbleEls = wrapper.querySelectorAll('.chat-passage');
+		var lastBubble = bubbleEls[bubbleEls.length - 1];
+
+		if (lastBubble) {
+			var outgoing = wrapper.getAttribute('data-speaker') === 'you';
+			var x = outgoing
+				? lastBubble.offsetLeft + 12
+				: lastBubble.offsetLeft + lastBubble.offsetWidth - 12;
+
+			badge.style.left = x + 'px';
+			badge.style.top = lastBubble.offsetTop + 'px';
+		}
+
 		this.persist();
 	},
 
@@ -1994,6 +2362,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
 
 		this.state.lastReaction = emoji;
 		this.react(emoji, 'in');
@@ -2018,7 +2389,7 @@ Object.assign(Story.prototype, {
 
 	clearThread: function() {
 		this.dom.history.textContent = '';
-		this.dom.passage.textContent = '';
+		this._currentNodes = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
 		this.dom.undo.hidden = true;
@@ -2263,8 +2634,9 @@ Object.assign(Story.prototype, {
 		meta.className = 'meta-passage meta-passage--error';
 		meta.textContent = message;
 
-		if (this.dom && this.dom.passage) {
-			this.dom.passage.appendChild(meta);
+		if (this.dom && this.dom.history) {
+			this.dom.history.appendChild(meta);
+			this._currentNodes.push(meta);
 			this.scrollChatIntoView();
 		}
 	},
@@ -2339,7 +2711,7 @@ Object.assign(Story.prototype, {
 
 		// everything since the checkpoint is discarded
 
-		this.dom.passage.textContent = '';
+		this._currentNodes = [];
 
 		// revert reactions applied since the checkpoint
 
@@ -2436,7 +2808,8 @@ Object.assign(Story.prototype, {
 
 			meta.className = 'meta-passage meta-passage--colophon';
 			meta.innerHTML = this.passage('StoryColophon').render();
-			this.dom.passage.appendChild(meta);
+			this.dom.history.appendChild(meta);
+			this._currentNodes.push(meta);
 		}
 	},
 
@@ -2616,9 +2989,7 @@ Object.assign(Story.prototype, {
 
 		wrapper.setAttribute('data-speaker', speaker);
 
-		var previous =
-			this.dom.passage.lastElementChild ||
-			this.dom.history.lastElementChild;
+		var previous = this.dom.history.lastElementChild;
 
 		wrapper.classList.toggle(
 			'chat-follow',
@@ -2649,6 +3020,22 @@ Object.assign(Story.prototype, {
 		}
 
 		typing.hidden = false;
+
+		// announce "<name> is typing" — set the text after the region
+		// is visible so screen readers reliably pick up the change
+
+		var story = this;
+
+		window.requestAnimationFrame(function() {
+			if (!typing.hidden) {
+				story.dom.typingText.textContent =
+					story.config.typingLabel.replace(
+						'%s',
+						story.getSpeakerDisplayName(speaker)
+					);
+			}
+		});
+
 		this.scrollChatIntoView();
 	},
 
@@ -2658,6 +3045,7 @@ Object.assign(Story.prototype, {
 
 	hideTyping: function() {
 		this.dom.typing.hidden = true;
+		this.dom.typingText.textContent = '';
 	},
 
 	/**
@@ -2737,8 +3125,13 @@ Object.assign(Story.prototype, {
 			this.checkpoints = [];
 			this._reactionLog = [];
 			this.dom.history.textContent = '';
-			this.dom.passage.textContent = '';
+			this._currentNodes = [];
 			this.dom.undo.hidden = true;
+
+			// replaying a whole transcript would flood screen readers;
+			// silence the log while it rebuilds
+
+			this.dom.history.setAttribute('aria-live', 'off');
 
 			var story = this;
 
@@ -2794,8 +3187,10 @@ Object.assign(Story.prototype, {
 			}
 
 			this.persist();
+			this.dom.history.removeAttribute('aria-live');
 		}
 		catch (e) {
+			this.dom.history.removeAttribute('aria-live');
 			dispatch('restorefailed', { error: e });
 			return false;
 		}

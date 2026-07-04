@@ -55,6 +55,30 @@ async function run() {
 		window.addEventListener('sm.passage.shown', () => {
 			window.__smShown += 1;
 		});
+
+		// guard the screen-reader fix: message elements must never be
+		// removed from (or re-inserted into) the role="log" region
+		// during normal play, or live regions re-announce old messages
+		// (text updates, like a receipt flipping to Read, are fine)
+		window.__logRemovals = 0;
+		new MutationObserver((mutations) => {
+			mutations.forEach((m) => {
+				m.removedNodes.forEach((node) => {
+					if (
+						node.nodeType === 1 &&
+						(node.classList.contains('chat-passage-wrapper') ||
+							node.classList.contains('chat-passage') ||
+							node.classList.contains('meta-passage') ||
+							node.classList.contains('chat-timestamp'))
+					) {
+						window.__logRemovals += 1;
+					}
+				});
+			});
+		}).observe(document.getElementById('phistory'), {
+			childList: true,
+			subtree: true
+		});
 	});
 	check('title shown', (await page.textContent('#ptitle')) === 'Chatbook Demo');
 	check(
@@ -81,6 +105,12 @@ async function run() {
 	check(
 		'two responses offered',
 		(await page.locator('.user-response').count()) === 2
+	);
+	check(
+		'hint text shown while the player is new',
+		(await page.textContent('#user-response-hint')).indexOf(
+			'Choose an option'
+		) !== -1
 	);
 
 	console.log('menu modal & theme toggle');
@@ -201,6 +231,14 @@ async function run() {
 		'Snowman 2 style sm.passage.shown events dispatched',
 		(await page.evaluate(() => window.__smShown)) >= 2
 	);
+	check(
+		'no DOM removals from the conversation log during normal flow',
+		(await page.evaluate(() => window.__logRemovals)) === 0
+	);
+	check(
+		'response timer meter armed by the timeout link',
+		(await page.locator('.response-timer').count()) === 1
+	);
 
 	console.log('receipt flipping');
 	await page.evaluate(() => window.story.markUnread());
@@ -273,6 +311,10 @@ async function run() {
 
 	console.log('photo picker');
 	await page.click('.user-response:has-text("pretty good")');
+	check(
+		'choosing a reply cancels the response timer',
+		(await page.locator('.response-timer').count()) === 0
+	);
 	await page.waitForSelector('.user-response--photo', { timeout: 15000 });
 	check(
 		'camera button offered alongside text responses',
@@ -512,6 +554,24 @@ async function run() {
 			.locator('.chat-passage-wrapper[data-speaker="you"] .chat-reaction')
 			.textContent()) === '❤️'
 	);
+	check(
+		'reaction badge superimposed on the bubble corner',
+		await page.evaluate(() => {
+			const wrapper = document.querySelector(
+				'.chat-passage-wrapper[data-speaker="you"].has-reaction'
+			);
+			const bubble = wrapper.querySelector('.chat-passage');
+			const badge = wrapper.querySelector('.chat-reaction');
+			const b = bubble.getBoundingClientRect();
+			const r = badge.getBoundingClientRect();
+			const cx = r.left + r.width / 2;
+			const cy = r.top + r.height / 2;
+
+			// badge center sits on the bubble's top edge, near its left
+			// (sender-facing) corner — half on, half off
+			return Math.abs(cy - b.top) < 6 && cx > b.left && cx < b.left + 40;
+		})
+	);
 	await page.click('.user-response--react');
 	await page.waitForSelector('.chat-passage:has-text("all I need")', {
 		timeout: 15000
@@ -531,6 +591,78 @@ async function run() {
 		await page.waitForTimeout(600);
 		await page.screenshot({ path: path.join(SHOT_DIR, 'reactions.png') });
 	}
+
+	console.log('free text input');
+	await page.waitForSelector('.chat-composer-input', { timeout: 15000 });
+	check(
+		'hint retired after the configured number of moves',
+		(await page.textContent('#user-response-hint')).trim() === ''
+	);
+	await page.evaluate(() => {
+		// show hints again to verify the composer-specific wording
+		window.story.config.hintFadeAfter = null;
+		window.story.updateHint();
+	});
+	check(
+		'composer shows its own hint text',
+		(await page.textContent('#user-response-hint')) ===
+			'Type your reply to continue'
+	);
+	await page.evaluate(() => {
+		window.story.config.hintFadeAfter = 4;
+		window.story.updateHint();
+	});
+	await page.fill('.chat-composer-input', 'clogs');
+	await page.click('.chat-composer-send');
+	await page.waitForSelector('.chat-passage:has-text("think geography")', {
+		timeout: 15000
+	});
+	check(
+		'typed reply sent as an outgoing bubble',
+		(await page.locator('.chat-passage[data-speaker="you"]:has-text("clogs")').count()) === 1
+	);
+	check(
+		'typed reply recorded in s.lastInput',
+		(await page.evaluate(() => window.story.state.lastInput)) === 'clogs'
+	);
+	await page.waitForSelector('.chat-composer-input', { timeout: 15000 });
+	await page.fill('.chat-composer-input', 'Amsterdam');
+	await page.press('.chat-composer-input', 'Enter');
+	await page.waitForSelector('.chat-passage:has-text("paying attention")', {
+		timeout: 15000
+	});
+	check('story branched on the secret phrase', true);
+	check(
+		'every typed reply kept in s.inputs',
+		(await page.evaluate(() => window.story.state.inputs.length)) === 2
+	);
+
+	console.log('axe accessibility audit');
+	await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+
+	const axeViolations = await page.evaluate(async () => {
+		const results = await window.axe.run(document, {
+			resultTypes: ['violations']
+		});
+
+		return results.violations.map((v) => ({
+			id: v.id,
+			impact: v.impact,
+			nodes: v.nodes.length
+		}));
+	});
+	const axeSerious = axeViolations.filter((v) =>
+		['serious', 'critical'].includes(v.impact)
+	);
+
+	if (axeViolations.length > 0) {
+		console.log('  axe findings: ' + JSON.stringify(axeViolations));
+	}
+
+	check(
+		'axe: no serious or critical violations',
+		axeSerious.length === 0
+	);
 
 	console.log('Snowman utility functions');
 	check(
@@ -570,6 +702,52 @@ async function run() {
 			el.remove();
 			return ok;
 		})
+	);
+
+	console.log('response timer expiry');
+	await page.evaluate(() => {
+		window.passage.links.push({
+			display: 'timeout:0.2 sorry, dozed off 😴',
+			target: 'Start'
+		});
+		window.story.clearUserResponses();
+		window.story.showUserResponses();
+	});
+	await page.waitForSelector('.chat-passage:has-text("sorry, dozed off")', {
+		timeout: 10000
+	});
+	check('expired timer auto-sent the forced reply', true);
+	check(
+		's.timedOut records the expiry',
+		await page.evaluate(() => window.story.state.timedOut === true)
+	);
+	await page.waitForSelector('.user-response:has-text("whatsup")', {
+		timeout: 15000
+	});
+	check('story continued to the timeout target', true);
+
+	console.log('typing dots animate');
+	await page.evaluate(() => window.story.showTyping('ok'));
+
+	const dotTransforms = await page.evaluate(async () => {
+		const dots = [...document.querySelectorAll('.chat-typing .dot')];
+		const seen = new Set();
+
+		for (let i = 0; i < 6; i++) {
+			dots.forEach((dot) => {
+				seen.add(getComputedStyle(dot).transform);
+			});
+			await new Promise((resolve) => setTimeout(resolve, 140));
+		}
+
+		return [...seen];
+	});
+
+	await page.evaluate(() => window.story.hideTyping());
+	check(
+		'typing dots visibly bounce (' + dotTransforms.length + ' transform states)',
+		dotTransforms.length > 3 &&
+		dotTransforms.some((t) => t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)')
 	);
 
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);

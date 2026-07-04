@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -37,18 +37,18 @@
 		</header>
 
 		<div class="chat-layout">
-			<main id="chat-panel" class="chat-panel" role="main">
-				<div class="chat-stream" aria-live="polite">
-					<div id="phistory" class="chat-history"></div>
-					<div id="passage"></div>
-					<div id="animation-container" hidden>
+			<main id="chat-panel" class="chat-panel" tabindex="0" aria-label="Chat">
+				<div class="chat-stream">
+					<div id="phistory" class="chat-history" role="log" aria-label="Conversation"></div>
+					<div id="animation-container" role="status" hidden>
 						<div class="chat-passage-wrapper chat-typing-wrapper">
 							<div class="chat-avatar" aria-hidden="true"></div>
 							<div class="chat-bubbles">
 								<div class="chat-passage chat-typing">
-									<span class="dot"></span>
-									<span class="dot"></span>
-									<span class="dot"></span>
+									<span class="dot" aria-hidden="true"></span>
+									<span class="dot" aria-hidden="true"></span>
+									<span class="dot" aria-hidden="true"></span>
+									<span id="typing-announcement" class="visually-hidden"></span>
 								</div>
 							</div>
 						</div>
@@ -65,6 +65,7 @@
 					<div class="meta-notification-header">
 						<span id="meta-notification-label" class="meta-notification-label"></span>
 						<span class="meta-notification-time">now</span>
+						<button type="button" class="meta-notification-close" data-notification-close aria-label="Dismiss notification">&times;</button>
 					</div>
 					<div id="meta-notification-body" class="meta-notification-body"></div>
 				</div>
@@ -72,14 +73,15 @@
 		</div>
 
 		<footer class="user-response-panel">
+			<span id="timer-announcement" class="visually-hidden" role="status"></span>
 			<div id="user-response-hint" class="user-response-hint content-container"></div>
-			<div id="user-response-panel" class="user-reponse-wrapper user-response-wrapper"></div>
+			<div id="user-response-panel" class="user-reponse-wrapper user-response-wrapper" role="group" aria-label="Your replies" tabindex="-1"></div>
 		</footer>
 	</div>
 
-	<dialog id="menu-dialog" class="chat-dialog menu-dialog">
+	<dialog id="menu-dialog" class="chat-dialog menu-dialog" aria-labelledby="menu-dialog-title">
 		<div class="menu-dialog-header">
-			<h2 class="modal-title content-container">Menu</h2>
+			<h2 id="menu-dialog-title" class="modal-title content-container">Menu</h2>
 			<button type="button" class="photo-picker-close" data-menu-close aria-label="Close">&times;</button>
 		</div>
 		<div id="menu-container" class="content-container menu-section"></div>
@@ -87,7 +89,7 @@
 		<div id="right-sidebar-container" class="content-container menu-section"></div>
 	</dialog>
 
-	<dialog id="photo-picker" class="chat-dialog photo-picker">
+	<dialog id="photo-picker" class="chat-dialog photo-picker" aria-labelledby="photo-picker-title">
 		<div class="photo-picker-header">
 			<h2 id="photo-picker-title" class="modal-title">Send a photo</h2>
 			<button type="button" class="photo-picker-close" data-picker-close aria-label="Close">&times;</button>
@@ -95,8 +97,8 @@
 		<div id="photo-picker-grid" class="photo-picker-grid"></div>
 	</dialog>
 
-	<dialog id="exit-dialog" class="chat-dialog">
-		<h2 class="modal-title content-container">Restart the story?</h2>
+	<dialog id="exit-dialog" class="chat-dialog" aria-labelledby="exit-dialog-title">
+		<h2 id="exit-dialog-title" class="modal-title content-container">Restart the story?</h2>
 		<div class="modal-body content-container">
 			<p>This clears the conversation and starts again from the beginning.</p>
 		</div>

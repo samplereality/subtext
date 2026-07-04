@@ -20,6 +20,7 @@ Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trial
 - Location map cards via `[location lat,lon Label]`, and players can share their *real* coordinates for the story to react to.
 - Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect — including a permanent, red "Not Delivered" failed state.
 - Message reactions: speakers can tapback the player's messages, and players can react as a choice.
+- Timed responses (a subtle meter reddens as time runs out — hesitate and the story moves without you) and free-text input for password/riddle beats, with the typed answer available to template logic.
 - Thread clearing for flashbacks and scene changes (`clear` tag + timestamp chips).
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode with a player-facing theme toggle.
@@ -252,6 +253,46 @@ right back at you
 
 One reaction per message; a newer one replaces it. Reactions participate in undo and save/restore.
 
+### Timed responses
+
+Put the player on the clock. A `timeout:` link arms a timer while the choices are showing — the thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
+
+```
+:: interrogation [speaker-detective]
+well?? who were you with last night?
+
+[[someone you don't know->alibi]]
+[[no one->alone]]
+[[timeout:8 …I need a lawyer->lawyer]]
+```
+
+Two flavors, depending on what expiry means:
+
+- `[[timeout:8 some text->Target]]` — after 8 seconds, *an option is chosen for you*: the text is sent as the player's message, then the story continues to the target.
+- `[[timeout:8->Target]]` — after 8 seconds, *the sender loses patience*: no player message is sent; the story simply moves to the target ("you still there??").
+
+Any manual choice cancels the timer. `s.timedOut` is `true` when the last transition came from an expired timer (and `false` after any deliberate choice), so passages can call out the hesitation. A `timeout` event fires on expiry. Undo returns to the moment before — with the clock running again.
+
+Accessibility: the time limit is announced to screen readers when the timer starts, and `story.config.timers = false` disables all timers — worth offering to players for whom time pressure is a barrier (the timeout link is simply ignored, leaving the ordinary choices).
+
+### Free text input
+
+For the moments when picking from a list won't do — passwords, names, incantations — let the player type. An `input:` link renders a real message composer (text field + send button) in the reply panel:
+
+```
+:: gatekeeper [speaker-sam]
+what's the password? hint: it's where my servers live
+
+[[input:type the password…->password-check]]
+
+:: password-check [speaker-sam]
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>✅ you're in<% } else { %>❌ nope. think geography<% } %>
+
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>[[continue]]<% } else { %>[[input:try again…->password-check]]<% } %>
+```
+
+The text after `input:` is the field's placeholder. Whatever the player types is sent as their message and stored in `s.lastInput` (with every entry kept in `s.inputs`), so the target passage does the checking with ordinary template logic — exact match, `.includes()`, regular expressions, whatever the puzzle calls for. Conditional links (as above) let wrong guesses loop back for another try. A `textinput` event fires on every send. One composer per passage; it can sit alongside regular choice chips ("type the answer, or [[give up]]").
+
 ### Clearing the thread
 
 For flashbacks, scene changes, or switching who the player is texting, tag a passage `clear` and the visible conversation wipes before it renders. Pair it with a timestamp for a clean cut:
@@ -326,10 +367,12 @@ The story presents as a phone — a single chat column, full-bleed on small scre
 ```js
 inject_menu('<h3>About</h3><p>…</p>');           // content of the Menu modal
 inject_nav_menu('about');                        // custom label for the Menu button (replaces the ☰ icon)
-inject_hint('Choose an option to continue');     // text above the choices
+inject_hint('Choose an option to continue');     // text above the choices (same as story.config.hint)
 inject_modal('Leave?', '<p>Progress will be lost.</p>', '<button data-dismiss="modal">Stay</button>');
 inject_nav_back('← back');                       // shows a back link in the header
 ```
+
+The hint is smarter than a static label: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` retires the helper text entirely once the player has made that many moves — training wheels off. (`null` keeps hints forever; `0` never shows them.)
 
 The Menu button (☰) only appears once the menu has content. The Trialogue 1.x helpers `inject_left_sidebar()` / `inject_right_sidebar()` — which used to render desktop side columns — still work as deprecated aliases, each filling an additional section of the menu. The header always includes an Undo button (↩, appears once there is something to undo), a light/dark toggle, and a Restart button that asks for confirmation.
 
@@ -337,6 +380,17 @@ The Menu button (☰) only appears once the menu has content. The Trialogue 1.x 
 
 - `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.
 - `story.config.autosave = true` additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.
+
+## Accessibility
+
+Chatbook is built to WCAG 2.1 AA and tested with axe-core on every run of the test suite. What players get:
+
+- **Screen readers:** the conversation is a `role="log"` live region, and messages are never moved or re-inserted in the DOM, so each one is announced exactly once. The typing indicator announces *"Sam is typing"* (localize via `story.config.typingLabel`), narration overlays and notifications are polite status regions, restoring a save replays silently instead of flooding the reader, and reactions, receipts, voice memos, and location cards all carry proper labels.
+- **Keyboard:** every control is a real button or link with a visible focus indicator; after choosing a reply, focus stays anchored on the reply panel; dialogs are native `<dialog>` elements (focus trapping and Escape included).
+- **Contrast & motion:** default palettes meet AA contrast in both themes, `prefers-contrast: more` adds stronger bubble boundaries, and `prefers-reduced-motion` disables animations.
+- **Language:** the page declares `lang="en"` by default — set `story.config.lang = 'fr'` (etc.) for stories in other languages.
+
+What authors should still do: write alt text in image HTML (`<img src="…" alt="…">`), give gallery images meaningful names (the photo picker uses them as labels), keep meaningful information out of color alone, and remember voice memos have no captions — pair important audio with text.
 
 ## Using the format in Twine
 

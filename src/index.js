@@ -68,7 +68,16 @@ window.inject_right_sidebar = function(htmlContent) {
 };
 
 window.inject_hint = function(htmlContent) {
-	setContent('#user-response-hint', htmlContent);
+	if (window.story) {
+		window.story.config.hint = htmlContent;
+
+		if (window.story.dom) {
+			window.story.updateHint();
+		}
+	}
+	else {
+		setContent('#user-response-hint', htmlContent);
+	}
 };
 
 window.inject_modal = function(titleContent, bodyContent, footerContent) {
