@@ -107,6 +107,12 @@ async function run() {
 		(await page.locator('.user-response').count()) === 2
 	);
 	check(
+		'single-conversation stories stay inbox-free',
+		(await page.locator('.thread-log').count()) === 0 &&
+		(await page.locator('#nav-link-inbox[hidden]').count()) === 1 &&
+		(await page.locator('#inbox[hidden]').count()) === 1
+	);
+	check(
 		'hint text shown while the player is new',
 		(await page.textContent('#user-response-hint')).indexOf(
 			'Choose an option'
@@ -118,6 +124,18 @@ async function run() {
 		'sidebar columns are gone',
 		(await page.locator('.left-sidebar, .right-sidebar').count()) === 0
 	);
+	check(
+		'undo lives on the right, next to the menu',
+		await page.evaluate(() => {
+			const right = document.querySelector('.chat-header-right');
+
+			return (
+				!!right.querySelector('#nav-link-undo') &&
+				!!right.querySelector('#nav-link-menu') &&
+				!document.querySelector('.chat-header-left #nav-link-undo')
+			);
+		})
+	);
 	await page.click('#nav-link-menu');
 	await page.waitForSelector('#menu-dialog[open]');
 	check(
@@ -126,11 +144,12 @@ async function run() {
 			.locator('#menu-dialog #menu-container h3')
 			.textContent()) === 'Welcome'
 	);
-	await page.click('[data-menu-close]');
 	check(
-		'menu modal closes',
-		(await page.locator('#menu-dialog[open]').count()) === 0
+		'theme and restart controls moved into the menu',
+		(await page.locator('#menu-dialog #nav-link-theme').count()) === 1 &&
+		(await page.locator('#menu-dialog #nav-link-restart').count()) === 1
 	);
+	// theme toggle now lives in the menu
 	await page.click('#nav-link-theme');
 	check(
 		'theme toggle switches to dark mode',
@@ -152,6 +171,11 @@ async function run() {
 		(await page.evaluate(() =>
 			document.documentElement.getAttribute('data-theme')
 		)) === 'light'
+	);
+	await page.click('[data-menu-close]');
+	check(
+		'menu modal closes',
+		(await page.locator('#menu-dialog[open]').count()) === 0
 	);
 	// clear the explicit choice so later dark-mode screenshots follow
 	// the emulated system scheme again
@@ -749,6 +773,173 @@ async function run() {
 		dotTransforms.length > 3 &&
 		dotTransforms.some((t) => t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)')
 	);
+
+	console.log('multi-conversation inbox');
+
+	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');
+	const inboxPage = await browser.newPage({ viewport: { width: 420, height: 780 } });
+
+	inboxPage.on('pageerror', (err) => errors.push('inbox: ' + err.message));
+	await inboxPage.goto('file://' + INBOX_DEMO);
+	await inboxPage.waitForSelector('.user-response');
+	check(
+		'starts in the start passage thread with inbox nav',
+		(await inboxPage.textContent('#ptitle')) === 'Sam' &&
+		(await inboxPage.locator('#nav-link-inbox:not([hidden])').count()) === 1
+	);
+	check(
+		'one log per declared thread',
+		(await inboxPage.locator('.thread-log').count()) === 3
+	);
+
+	await inboxPage.click('.user-response:has-text("what happened")');
+	await inboxPage.waitForSelector('#meta-notification:not([hidden])', {
+		timeout: 25000
+	});
+	check(
+		'a delivery to another thread raises a banner',
+		(await inboxPage.textContent('#meta-notification-label')) === 'Mom'
+	);
+
+	await inboxPage.click('#nav-link-inbox');
+	await inboxPage.waitForSelector('#inbox:not([hidden])');
+	check(
+		'inbox lists every thread',
+		(await inboxPage.locator('.inbox-row').count()) === 3
+	);
+	check(
+		'unread badge on the delivered thread',
+		(await inboxPage
+			.locator('.inbox-row:has-text("Mom") .inbox-badge')
+			.textContent()) === '1'
+	);
+
+	await inboxPage.click('.inbox-row:has-text("Mom")');
+	await inboxPage.waitForSelector('.thread-log[data-thread="mom"]:not([hidden])');
+	check(
+		'delivered message readable in its thread',
+		(await inboxPage
+			.locator('.thread-log[data-thread="mom"] .chat-passage')
+			.first()
+			.textContent()).indexOf('porch light') !== -1
+	);
+	check(
+		'no responses leak into a thread without the story cursor',
+		(await inboxPage.locator('.user-response').count()) === 0
+	);
+
+	await inboxPage.click('#nav-link-inbox');
+	check(
+		'viewing a thread clears its unread badge',
+		(await inboxPage.locator('.inbox-row:has-text("Mom") .inbox-badge').count()) === 0
+	);
+
+	await inboxPage.click('.inbox-row:has-text("Sam")');
+	await inboxPage.waitForSelector('.user-response:has-text("be careful")');
+	check('returning to the live thread re-offers its choices', true);
+
+	await inboxPage.click('.user-response:has-text("be careful")');
+	await inboxPage.waitForFunction(
+		() =>
+			!document.getElementById('meta-notification').hidden &&
+			document
+				.getElementById('meta-notification-label')
+				.textContent.indexOf('Unknown') === 0,
+		null,
+		{ timeout: 30000 }
+	);
+	await inboxPage.click('.meta-notification-card');
+	await inboxPage.waitForSelector(
+		'.thread-log[data-thread="unknown"]:not([hidden])'
+	);
+	check(
+		'tapping the banner jumps to that conversation',
+		(await inboxPage
+			.locator('.thread-log[data-thread="unknown"] .chat-passage')
+			.first()
+			.textContent()).indexOf('awake') !== -1
+	);
+
+	await inboxPage.click('#nav-link-inbox');
+	await inboxPage.click('.inbox-row:has-text("Sam")');
+	await inboxPage.waitForSelector(".user-response:has-text(\"mom's texting me\")");
+	await inboxPage.click(".user-response:has-text(\"mom's texting me\")");
+	check(
+		'the reply bubble stays in the thread where it was sent',
+		(await inboxPage
+			.locator('.thread-log[data-thread="sam"] .chat-passage[data-speaker="you"]:has-text("texting me")')
+			.count()) === 1
+	);
+	await inboxPage.waitForFunction(
+		() =>
+			!document.getElementById('meta-notification').hidden &&
+			document.getElementById('meta-notification-label').textContent === 'Mom',
+		null,
+		{ timeout: 30000 }
+	);
+	await inboxPage.click('.meta-notification-card');
+	await inboxPage.waitForSelector('.user-response:has-text("stay inside")', {
+		timeout: 25000
+	});
+	check('a cross-thread link moves the conversation there', true);
+
+	await inboxPage.click('.user-response:has-text("stay inside")');
+	await inboxPage.waitForSelector('.thread-log[data-thread="mom"] .chat-reaction', {
+		timeout: 25000
+	});
+	check('reaction lands on the message in its own thread', true);
+	await inboxPage.waitForSelector('.user-response:has-text("tell Sam")', {
+		timeout: 25000
+	});
+
+	await inboxPage.evaluate(() => window.story.save());
+
+	const savedInboxUrl = inboxPage.url();
+	const inboxPage2 = await browser.newPage({
+		viewport: { width: 420, height: 780 }
+	});
+
+	inboxPage2.on('pageerror', (err) => errors.push('inbox2: ' + err.message));
+	await inboxPage2.goto(savedInboxUrl);
+	await inboxPage2.waitForSelector('.user-response:has-text("tell Sam")', {
+		timeout: 25000
+	});
+	check(
+		'restore rebuilds every thread and the viewed screen',
+		(await inboxPage2.locator('.thread-log[data-thread="sam"] .chat-passage').count()) >= 4 &&
+		(await inboxPage2.locator('.thread-log[data-thread="mom"]:not([hidden])').count()) === 1
+	);
+	await inboxPage2.close();
+
+	const bubblesInMom = await inboxPage
+		.locator('.thread-log[data-thread="mom"] .chat-passage')
+		.count();
+
+	await inboxPage.click('#nav-link-undo');
+	check(
+		'undo trims the right thread and restores its choices',
+		(await inboxPage.locator('.thread-log[data-thread="mom"] .chat-passage').count()) < bubblesInMom &&
+		(await inboxPage.locator('.user-response:has-text("stay inside")').count()) === 1
+	);
+
+	await inboxPage.click('#nav-link-inbox');
+	await inboxPage.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+
+	const inboxAxe = await inboxPage.evaluate(async () => {
+		const results = await window.axe.run(document, {
+			resultTypes: ['violations']
+		});
+
+		return results.violations
+			.filter((v) => ['serious', 'critical'].includes(v.impact))
+			.map((v) => v.id);
+	});
+
+	check(
+		'axe: inbox screen has no serious violations (' + inboxAxe.join(',') + ')',
+		inboxAxe.length === 0
+	);
+	await inboxPage.close();
 
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);
 

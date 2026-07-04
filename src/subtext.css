@@ -107,6 +107,8 @@
 	--t-bubble-out-deep: var(--user-color, var(--t-bubble-out-deep-default));
 	--t-bubble-out-text: var(--t-bubble-out-text-default);
 	--t-error: var(--t-error-default);
+	/* a muted that still clears AA at small sizes (inbox previews) */
+	--t-muted-strong: color-mix(in srgb, var(--t-text) 70%, var(--t-bg));
 }
 
 /* Base ==================================================================== */
@@ -630,6 +632,128 @@ a {
 
 .user-response--location svg {
 	flex: none;
+}
+
+/* Multiple conversations: thread logs and the inbox ====================== */
+
+.thread-log {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	animation: t-screen-in 0.22s ease;
+}
+
+.thread-log[hidden] {
+	display: none;
+}
+
+.inbox {
+	animation: t-screen-back 0.22s ease;
+}
+
+.inbox[hidden] {
+	display: none;
+}
+
+/* when the inbox is up, the chat stream and reply chips step aside
+   (the response timer, if any, keeps running in the footer) */
+
+.screen-inbox .chat-stream {
+	display: none;
+}
+
+.screen-inbox .user-reponse-wrapper,
+.screen-inbox .user-response-hint {
+	display: none;
+}
+
+.inbox-list {
+	list-style: none;
+	margin: 0;
+	padding: 0.25rem 0;
+}
+
+.inbox-list li + li .inbox-row {
+	border-top: 1px solid var(--t-border);
+}
+
+.inbox-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	width: 100%;
+	padding: 0.75rem 0.5rem;
+	background: none;
+	border: 0;
+	border-radius: 0;
+	font: inherit;
+	color: var(--t-text);
+	text-align: left;
+	cursor: pointer;
+}
+
+.inbox-row:hover {
+	background: color-mix(in srgb, var(--t-muted) 10%, transparent);
+}
+
+.inbox-avatar {
+	width: 2.9rem;
+	height: 2.9rem;
+	flex: 0 0 2.9rem;
+	font-size: 1.2rem;
+}
+
+.inbox-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.inbox-name {
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.inbox-preview {
+	font-size: 0.85rem;
+	color: var(--t-muted-strong);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-height: 1.2em;
+}
+
+.inbox-preview--typing {
+	color: var(--t-accent);
+	font-style: italic;
+}
+
+.inbox-badge {
+	flex: none;
+	min-width: 1.4rem;
+	height: 1.4rem;
+	padding: 0 0.4rem;
+	border-radius: 999px;
+	background: var(--t-accent);
+	color: #fff;
+	font-size: 0.75rem;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+@keyframes t-screen-in {
+	from {
+		opacity: 0;
+		transform: translateX(1.25rem);
+	}
+}
+
+@keyframes t-screen-back {
+	from {
+		opacity: 0;
+		transform: translateX(-1.25rem);
+	}
 }
 
 /* Read receipts =========================================================== */
@@ -1210,6 +1334,54 @@ a {
 
 .menu-section p:last-child {
 	margin-bottom: 0;
+}
+
+/* app controls (theme, restart) live at the bottom of the menu */
+
+.menu-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	margin-top: 0.85rem;
+	padding-top: 0.6rem;
+	border-top: 1px solid var(--t-border);
+}
+
+.menu-action {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	width: 100%;
+	appearance: none;
+	border: 0;
+	background: none;
+	font: inherit;
+	font-size: 0.95rem;
+	color: var(--t-text);
+	text-align: left;
+	padding: 0.6rem 0.5rem;
+	border-radius: 0.6rem;
+	cursor: pointer;
+}
+
+.menu-action:hover {
+	background: color-mix(in srgb, var(--t-muted) 12%, transparent);
+}
+
+.menu-action-icon {
+	flex: none;
+	width: 1.5rem;
+	height: 1.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.2rem;
+	line-height: 1;
+	color: var(--t-accent);
+}
+
+.menu-action-icon svg {
+	display: block;
 }
 
 /* Dialog ================================================================== */

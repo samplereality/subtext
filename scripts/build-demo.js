@@ -12,8 +12,15 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const input = process.argv[2] || path.join(ROOT, 'docs/subtext-demo.twee');
-const output = process.argv[3] || path.join(ROOT, 'docs/subtext-demo.html');
+// with no arguments, compile every .twee story in docs/
+const inputs = process.argv[2]
+	? [[process.argv[2], process.argv[3] || process.argv[2].replace(/\.twee$/, '.html')]]
+	: fs.readdirSync(path.join(ROOT, 'docs'))
+		.filter((f) => f.endsWith('.twee'))
+		.map((f) => [
+			path.join(ROOT, 'docs', f),
+			path.join(ROOT, 'docs', f.replace(/\.twee$/, '.html'))
+		]);
 
 function escapeHtml(text) {
 	return text
@@ -119,10 +126,9 @@ if (!fs.existsSync(formatPath)) {
 	process.exit(1);
 }
 
-const html = compile(
-	fs.readFileSync(input, 'utf8'),
-	fs.readFileSync(formatPath, 'utf8')
-);
+const formatSource = fs.readFileSync(formatPath, 'utf8');
 
-fs.writeFileSync(output, html);
-console.log('Compiled ' + path.relative(ROOT, input) + ' -> ' + path.relative(ROOT, output));
+for (const [input, output] of inputs) {
+	fs.writeFileSync(output, compile(fs.readFileSync(input, 'utf8'), formatSource));
+	console.log('Compiled ' + path.relative(ROOT, input) + ' -> ' + path.relative(ROOT, output));
+}

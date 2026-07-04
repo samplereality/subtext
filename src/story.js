@@ -255,6 +255,9 @@ var Story = function() {
 		/* app-name label on notification-style narration
 		   (defaults to the story name) */
 		metaNotificationLabel: '',
+		/* in multi-conversation stories, announce messages that arrive
+		   in a thread the player isn't viewing with a tappable banner */
+		threadNotifications: true,
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
 		/* language of the story's interface, applied to <html lang>
@@ -293,6 +296,36 @@ var Story = function() {
 
 	/** Messages received while the tab was hidden. **/
 	this.unseen = 0;
+
+	/**
+	 Conversation threads, parsed from the StoryThreads passage. Entries
+	 are { name, avatar, color } keyed by thread id; also scriptable via
+	 `story.threads`. When at least one thread is declared, the story
+	 runs in multi-conversation mode: an inbox screen lists the threads,
+	 messages route to per-thread logs, and unread badges accumulate on
+	 conversations the player isn't looking at. With no StoryThreads
+	 passage, none of this machinery is active.
+	**/
+	this.threads = {};
+
+	/** Thread ids in declaration order. **/
+	this.threadOrder = [];
+
+	/** Whether multi-conversation mode is on (derived in start()). **/
+	this.multiThread = false;
+
+	/** Unread message counts per thread id. **/
+	this.unread = {};
+
+	/* per-thread log elements, view state, and activity ordering */
+	this._threadLogs = {};
+	this._viewedThread = null;  /* the thread on screen */
+	this._hotThread = null;     /* the thread holding pending responses */
+	this._screen = 'thread';    /* 'thread' | 'inbox' */
+	this._typingThread = null;
+	this._threadActivity = {};
+	this._activitySeq = 0;
+	this._scrollPositions = {};
 
 	this._audioCtx = null;
 	this._playingAudio = null;
@@ -388,6 +421,9 @@ Object.assign(Story.prototype, {
 			menuDialog: byId('menu-dialog'),
 			theme: byId('nav-link-theme'),
 			footer: document.querySelector('.user-response-panel'),
+			inbox: byId('inbox'),
+			inboxList: byId('inbox-list'),
+			inboxButton: byId('nav-link-inbox'),
 			timerText: byId('timer-announcement')
 		};
 
@@ -398,16 +434,32 @@ Object.assign(Story.prototype, {
 		// button does the same for keyboard and screen-reader users
 
 		this.dom.metaNotification.addEventListener('click', function(event) {
-			if (
-				event.target.closest('[data-notification-close]') ||
-				!event.target.closest('button, a')
-			) {
+			if (event.target.closest('[data-notification-close]')) {
+				story.dom.metaNotification.hidden = true;
+				story._bannerThread = null;
+				return;
+			}
+
+			if (!event.target.closest('button, a')) {
+				// a thread banner is an invitation: tapping it jumps to
+				// that conversation
+
+				if (story._bannerThread) {
+					var target = story._bannerThread;
+
+					story._bannerThread = null;
+					story.dom.metaNotification.hidden = true;
+					story.openThread(target);
+					return;
+				}
+
 				story.dom.metaNotification.hidden = true;
 			}
 		});
 
 		this.gallery = this.parseGallery();
 		this.speakers = this.parseSpeakers();
+		this.threads = this.parseThreads();
 
 		// header: title, subtitle, author
 
@@ -434,6 +486,13 @@ Object.assign(Story.prototype, {
 		var story = this;
 		var openDialog = function(event) {
 			event.preventDefault();
+
+			// the restart control lives in the menu modal; close it
+			// first so the confirmation isn't stacked behind it
+
+			if (story.dom.menuDialog.open) {
+				story.dom.menuDialog.close();
+			}
 
 			if (typeof story.dom.dialog.showModal === 'function') {
 				story.dom.dialog.showModal();
@@ -618,6 +677,8 @@ Object.assign(Story.prototype, {
 			});
 		}
 
+		this.initThreads();
+
 		/**
 		 Triggered when the story is finished loading, right before the
 		 first passage is displayed.
@@ -644,6 +705,16 @@ Object.assign(Story.prototype, {
 			if (saved && this.restore(saved)) {
 				return;
 			}
+		}
+
+		if (this.multiThread) {
+			var startPassageObj = this.passage(this.startPassage);
+
+			this._hotThread = startPassageObj
+				? this.getPassageThread(startPassageObj)
+				: this.threadOrder[0];
+			this.bumpThreadActivity(this._hotThread);
+			this.openThread(this._hotThread);
 		}
 
 		this.show(this.startPassage);
@@ -752,15 +823,25 @@ Object.assign(Story.prototype, {
 		var speaker = this.getPassageSpeaker(passage);
 		var metaMode = speaker ? 'chat' : this.getMetaMode(passage);
 
+		// route to the passage's thread; a passage tagged for another
+		// thread pulls the whole conversation over there
+
+		var threadId = this.getPassageThread(passage);
+		var log = this.logFor(threadId);
+		var viewingIt = !this.multiThread ||
+			(this._screen === 'thread' && this._viewedThread === threadId);
+
+		this._hotThread = threadId;
+
 		// any new content replaces active overlay/notification narration
 
 		this.hideMeta();
 
-		// a passage tagged `clear` wipes the visible thread first
-		// (flashbacks, scene changes)
+		// a passage tagged `clear` wipes its thread first (flashbacks,
+		// scene changes)
 
 		if (passage.tags.indexOf('clear') > -1) {
-			this.clearThread();
+			this.clearThread(threadId);
 		}
 
 		// apply [react …] directives to the player's last message
@@ -769,6 +850,19 @@ Object.assign(Story.prototype, {
 			/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
 			function(match, emoji) {
 				story.react(template.unescapeHtml(emoji), 'out');
+				return '';
+			}
+		);
+
+		// apply [deliver …] directives: messages for other threads
+
+		html = html.replace(
+			/<div class="chat-deliver" data-passage="([^"]*)"><\/div>/g,
+			function(match, name) {
+				story.deliver(template.unescapeHtml(name), {
+					instant: opts.instant,
+					record: false
+				});
 				return '';
 			}
 		);
@@ -786,10 +880,10 @@ Object.assign(Story.prototype, {
 				}
 
 				if (node.classList.contains('chat-passage-wrapper')) {
-					story.applyGrouping(node);
+					story.applyGrouping(node, log);
 				}
 
-				story.dom.history.appendChild(node);
+				log.appendChild(node);
 
 				// images finish loading after the initial scroll;
 				// re-scroll so they don't cut off the newest messages
@@ -802,6 +896,21 @@ Object.assign(Story.prototype, {
 			});
 
 			this._currentNodes = nodes;
+
+			if (nodes.length > 0 && speaker && speaker !== 'you') {
+				var probe = document.createElement('div');
+
+				probe.innerHTML = html;
+				this.noteThreadMessage(
+					threadId,
+					probe.textContent.trim(),
+					opts.instant || viewingIt
+				);
+			}
+			else if (this.multiThread) {
+				this.bumpThreadActivity(threadId);
+				this.renderInbox();
+			}
 		}
 
 		// read receipts: explicit tags win, otherwise a speaker's reply
@@ -843,10 +952,24 @@ Object.assign(Story.prototype, {
 		}
 
 		this.clearUserResponses();
-		this.showUserResponses();
+
+		// the passage's choices render only while its thread is on
+		// screen; opening the thread re-offers them (and arms any
+		// response timer then)
+
+		if (viewingIt) {
+			this.showUserResponses();
+		}
+		else {
+			this.updateHint();
+		}
+
 		this.pcolophon();
 		this.persist();
-		this.scrollChatIntoView();
+
+		if (viewingIt) {
+			this.scrollChatIntoView();
+		}
 
 		/**
 		 Triggered after a passage has been shown onscreen.
@@ -1295,8 +1418,8 @@ Object.assign(Story.prototype, {
 	 name/avatar and adjust bubble corners.
 	**/
 
-	applyGrouping: function(wrapper) {
-		var previous = this.dom.history.lastElementChild;
+	applyGrouping: function(wrapper, log) {
+		var previous = (log || this.hotLog()).lastElementChild;
 
 		if (
 			previous &&
@@ -1516,7 +1639,15 @@ Object.assign(Story.prototype, {
 
 		// response timer
 
-		if (timeoutOffer && this.config.timers) {
+		if (
+			timeoutOffer &&
+			this.config.timers &&
+			!(
+				this._responseTimer &&
+				window.passage &&
+				this._responseTimer.pid === window.passage.id
+			)
+		) {
 			this.startResponseTimer(timeoutOffer);
 		}
 
@@ -1646,6 +1777,7 @@ Object.assign(Story.prototype, {
 
 		this._responseTimer = {
 			bar: bar,
+			pid: window.passage ? window.passage.id : null,
 			raf: window.requestAnimationFrame(tick)
 		};
 	},
@@ -1847,8 +1979,15 @@ Object.assign(Story.prototype, {
 			wrapper.classList.add('no-anim');
 		}
 
-		this.applyGrouping(wrapper);
-		this.dom.history.appendChild(wrapper);
+		var outLog = this.hotLog();
+
+		this.applyGrouping(wrapper, outLog);
+		outLog.appendChild(wrapper);
+
+		if (this.multiThread) {
+			this.bumpThreadActivity(this._hotThread);
+			this.renderInbox();
+		}
 
 		var entry = { t: 'l', lat: lat, lon: lon, label: label };
 
@@ -2071,8 +2210,15 @@ Object.assign(Story.prototype, {
 			wrapper.classList.add('no-anim');
 		}
 
-		this.applyGrouping(wrapper);
-		this.dom.history.appendChild(wrapper);
+		var outLog = this.hotLog();
+
+		this.applyGrouping(wrapper, outLog);
+		outLog.appendChild(wrapper);
+
+		if (this.multiThread) {
+			this.bumpThreadActivity(this._hotThread);
+			this.renderInbox();
+		}
 
 		var entry = { t: 'i', name: name };
 
@@ -2145,8 +2291,15 @@ Object.assign(Story.prototype, {
 			wrapper.classList.add('no-anim');
 		}
 
-		this.applyGrouping(wrapper);
-		this.dom.history.appendChild(wrapper);
+		var outLog = this.hotLog();
+
+		this.applyGrouping(wrapper, outLog);
+		outLog.appendChild(wrapper);
+
+		if (this.multiThread) {
+			this.bumpThreadActivity(this._hotThread);
+			this.renderInbox();
+		}
 
 		var entry = { t: 'u', text: text };
 
@@ -2238,7 +2391,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	lastOutgoingWrapper: function() {
-		var wrappers = this.dom.history.querySelectorAll(
+		var wrappers = this.hotLog().querySelectorAll(
 			'.chat-passage-wrapper[data-speaker="you"]'
 		);
 
@@ -2289,7 +2442,7 @@ Object.assign(Story.prototype, {
 			(which === 'in'
 				? ':not([data-speaker="you"])'
 				: '[data-speaker="you"]');
-		var wrappers = this.dom.history.querySelectorAll(selector);
+		var wrappers = this.hotLog().querySelectorAll(selector);
 
 		var wrapper = wrappers[wrappers.length - 1];
 
@@ -2387,12 +2540,16 @@ Object.assign(Story.prototype, {
 	 a cleared thread.
 	**/
 
-	clearThread: function() {
-		this.dom.history.textContent = '';
+	clearThread: function(threadId) {
+		this.logFor(threadId || this._hotThread).textContent = '';
 		this._currentNodes = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
 		this.dom.undo.hidden = true;
+
+		if (this.multiThread) {
+			this.renderInbox();
+		}
 	},
 
 	/**
@@ -2518,18 +2675,21 @@ Object.assign(Story.prototype, {
 				: 'light';
 		};
 
+		var iconSlot = button.querySelector('.menu-action-icon') || button;
+		var labelSlot = button.querySelector('.menu-action-label');
+
 		var updateIcon = function() {
 			var dark = effectiveTheme() === 'dark';
+			var label = dark ? 'Switch to light mode' : 'Switch to dark mode';
 
-			button.innerHTML = dark ? SUN_SVG : MOON_SVG;
-			button.setAttribute(
-				'title',
-				dark ? 'Switch to light mode' : 'Switch to dark mode'
-			);
-			button.setAttribute(
-				'aria-label',
-				dark ? 'Switch to light mode' : 'Switch to dark mode'
-			);
+			iconSlot.innerHTML = dark ? SUN_SVG : MOON_SVG;
+
+			if (labelSlot) {
+				labelSlot.textContent = label;
+			}
+
+			button.setAttribute('title', label);
+			button.setAttribute('aria-label', label);
 		};
 
 		button.addEventListener('click', function() {
@@ -2635,7 +2795,14 @@ Object.assign(Story.prototype, {
 		meta.textContent = message;
 
 		if (this.dom && this.dom.history) {
-			this.dom.history.appendChild(meta);
+			// surface errors wherever the player is looking
+
+			var errorLog =
+				this.multiThread && this._viewedThread
+					? this.logFor(this._viewedThread)
+					: this.hotLog();
+
+			errorLog.appendChild(meta);
 			this._currentNodes.push(meta);
 			this.scrollChatIntoView();
 		}
@@ -2681,6 +2848,13 @@ Object.assign(Story.prototype, {
 		this.checkpoints.push({
 			state: deepClone(this.state),
 			domCount: this.dom.history.children.length,
+			logCounts: this.logCounts(),
+			hotThread: this._hotThread,
+			viewedThread: this._viewedThread,
+			screen: this._screen,
+			unread: deepClone(this.unread),
+			threadActivity: deepClone(this._threadActivity),
+			activitySeq: this._activitySeq,
 			timelineLength: this.timeline.length,
 			passageId: window.passage ? window.passage.id : null,
 			links: window.passage ? window.passage.links.slice() : [],
@@ -2737,14 +2911,38 @@ Object.assign(Story.prototype, {
 			}
 		}
 
-		var history = this.dom.history;
+		if (this.multiThread && checkpoint.logCounts) {
+			var story = this;
 
-		while (history.children.length > checkpoint.domCount) {
-			history.lastElementChild.remove();
+			Object.keys(this._threadLogs).forEach(function(id) {
+				var log = story._threadLogs[id];
+				var keep = checkpoint.logCounts[id] || 0;
+
+				while (log.children.length > keep) {
+					log.lastElementChild.remove();
+				}
+
+				if (log.lastElementChild) {
+					log.lastElementChild.classList.remove('has-follow');
+				}
+			});
+
+			this._hotThread = checkpoint.hotThread;
+			this.unread = checkpoint.unread || {};
+			this._threadActivity = checkpoint.threadActivity || {};
+			this._activitySeq = checkpoint.activitySeq || 0;
+			this.setThreadTyping(null);
 		}
+		else {
+			var history = this.dom.history;
 
-		if (history.lastElementChild) {
-			history.lastElementChild.classList.remove('has-follow');
+			while (history.children.length > checkpoint.domCount) {
+				history.lastElementChild.remove();
+			}
+
+			if (history.lastElementChild) {
+				history.lastElementChild.classList.remove('has-follow');
+			}
 		}
 
 		this.state = checkpoint.state;
@@ -2771,7 +2969,21 @@ Object.assign(Story.prototype, {
 			this.showMeta(checkpoint.meta.html, checkpoint.meta.mode);
 		}
 
-		this.showUserResponses();
+		// restore the screen last, so re-offered responses use the
+		// checkpoint's links (openThread renders them itself)
+
+		if (this.multiThread && checkpoint.logCounts) {
+			if (checkpoint.screen === 'inbox') {
+				this.openInbox();
+			}
+			else {
+				this.openThread(checkpoint.viewedThread || this._hotThread);
+			}
+		}
+		else {
+			this.showUserResponses();
+		}
+
 		this.persist();
 		this.scrollChatIntoView();
 
@@ -2808,7 +3020,7 @@ Object.assign(Story.prototype, {
 
 			meta.className = 'meta-passage meta-passage--colophon';
 			meta.innerHTML = this.passage('StoryColophon').render();
-			this.dom.history.appendChild(meta);
+			this.hotLog().appendChild(meta);
 			this._currentNodes.push(meta);
 		}
 	},
@@ -2886,6 +3098,539 @@ Object.assign(Story.prototype, {
 		}
 
 		return speakers;
+	},
+
+	/* == Multiple conversations ============================================
+
+	 Declared via a StoryThreads passage (same line syntax as
+	 StorySpeakers). Passages tagged thread-<id> belong to that thread;
+	 untagged passages inherit the thread the story is currently in, so
+	 single-thread stories never think about any of this.
+	*/
+
+	parseThreads: function() {
+		var story = this;
+		var threads = {};
+		var threadsPassage = this.passage('StoryThreads');
+
+		this.threadOrder = [];
+
+		if (threadsPassage) {
+			threadsPassage.source.split(/\r?\n/).forEach(function(line) {
+				var match = line.match(/^\s*[-*]?\s*([\w][\w-]*)\s*:\s*(.+)$/);
+
+				if (!match) {
+					return;
+				}
+
+				var profile = {};
+
+				match[2].split(';').forEach(function(part) {
+					var kv = part.match(/^\s*(name|avatar|color)\s*:\s*(.+?)\s*$/);
+
+					if (kv) {
+						profile[kv[1]] = kv[2];
+					}
+					else if (part.trim()) {
+						profile.name = part.trim();
+					}
+				});
+
+				threads[match[1]] = profile;
+				story.threadOrder.push(match[1]);
+			});
+		}
+
+		return threads;
+	},
+
+	getThreadProfile: function(id) {
+		return this.threads[id] || {};
+	},
+
+	getThreadDisplayName: function(id) {
+		var profile = this.getThreadProfile(id);
+
+		return profile.name || String(id).replace(/-+/g, ' ').trim();
+	},
+
+	/**
+	 The thread a passage belongs to: its thread-<id> tag, else the
+	 thread the story is currently in.
+	**/
+
+	getPassageThread: function(passage) {
+		var tag = passage.tags.find(function(t) {
+			return t.indexOf('thread-') === 0;
+		});
+
+		if (tag) {
+			return tag.substring(7);
+		}
+
+		return this._hotThread || this.threadOrder[0] || null;
+	},
+
+	/**
+	 The log element for a thread (the single shared log outside
+	 multi-conversation mode). Unknown thread ids get a log and a
+	 default profile on first use.
+	**/
+
+	logFor: function(threadId) {
+		if (!this.multiThread) {
+			return this.dom.history;
+		}
+
+		if (!this._threadLogs[threadId]) {
+			this.createThreadLog(threadId);
+		}
+
+		return this._threadLogs[threadId];
+	},
+
+	hotLog: function() {
+		return this.logFor(this._hotThread);
+	},
+
+	/**
+	 Child counts of every log, for undo checkpoints.
+	**/
+
+	logCounts: function() {
+		var story = this;
+		var counts = {};
+
+		Object.keys(this._threadLogs).forEach(function(id) {
+			counts[id] = story._threadLogs[id].children.length;
+		});
+
+		return counts;
+	},
+
+	/**
+	 Empties the response panel WITHOUT cancelling a running response
+	 timer — used when the player merely switches screens (the clock,
+	 if any, keeps running on the live conversation).
+	**/
+
+	clearUserResponsesDisplay: function() {
+		this.dom.responses.textContent = '';
+	},
+
+	createThreadLog: function(threadId) {
+		if (this.threadOrder.indexOf(threadId) === -1) {
+			this.threadOrder.push(threadId);
+		}
+
+		var log = document.createElement('div');
+
+		log.className = 'thread-log';
+		log.setAttribute('role', 'log');
+		log.setAttribute(
+			'aria-label',
+			'Conversation with ' + this.getThreadDisplayName(threadId)
+		);
+		log.setAttribute('data-thread', threadId);
+		log.hidden = true;
+		this.dom.history.appendChild(log);
+		this._threadLogs[threadId] = log;
+
+		if (!(threadId in this.unread)) {
+			this.unread[threadId] = 0;
+		}
+
+		return log;
+	},
+
+	/**
+	 Turns multi-conversation mode on: the shared log becomes a stack of
+	 per-thread logs and the inbox becomes reachable. Runs after story
+	 JavaScript so scripts may add threads too.
+	**/
+
+	initThreads: function() {
+		this.multiThread = this.threadOrder.length > 0;
+
+		if (!this.multiThread) {
+			return;
+		}
+
+		var story = this;
+
+		// the parent container stops being a live region itself; each
+		// thread log is its own
+
+		this.dom.history.removeAttribute('role');
+		this.dom.history.removeAttribute('aria-label');
+
+		this.threadOrder.slice().forEach(function(id) {
+			story.createThreadLog(id);
+		});
+
+		this.dom.inboxButton.addEventListener('click', function() {
+			story.openInbox();
+		});
+
+		document.body.classList.add('has-threads');
+	},
+
+	bumpThreadActivity: function(threadId) {
+		this._activitySeq += 1;
+		this._threadActivity[threadId] = this._activitySeq;
+	},
+
+	/**
+	 Shows a thread's conversation.
+	**/
+
+	openThread: function(threadId) {
+		if (!this.multiThread) {
+			return;
+		}
+
+		var story = this;
+		var log = this.logFor(threadId);
+
+		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
+			this._scrollPositions[this._viewedThread] =
+				this.dom.panel.scrollTop;
+			this._threadLogs[this._viewedThread].hidden = true;
+		}
+
+		this._screen = 'thread';
+		this._viewedThread = threadId;
+		log.hidden = false;
+		this.dom.inbox.hidden = true;
+		document.body.classList.remove('screen-inbox');
+		this.dom.inboxButton.hidden = false;
+		this.dom.title.textContent = this.getThreadDisplayName(threadId);
+		this.unread[threadId] = 0;
+		this.renderInbox();
+
+		// typing indicator belongs to whichever thread is being typed in
+
+		this.dom.typing.hidden = this._typingThread !== threadId ||
+			this._typingThread === null;
+
+		// re-offer pending responses when returning to the live thread
+
+		this.clearUserResponsesDisplay();
+
+		if (this._viewedThread === this._hotThread && window.passage) {
+			this.showUserResponses();
+		}
+		else {
+			this.updateHint();
+		}
+
+		window.requestAnimationFrame(function() {
+			story.dom.panel.scrollTop =
+				threadId in story._scrollPositions
+					? story._scrollPositions[threadId]
+					: story.dom.panel.scrollHeight;
+		});
+	},
+
+	/**
+	 Shows the inbox: every conversation with previews and unread
+	 badges, most recent first.
+	**/
+
+	openInbox: function() {
+		if (!this.multiThread) {
+			return;
+		}
+
+		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
+			this._scrollPositions[this._viewedThread] =
+				this.dom.panel.scrollTop;
+			this._threadLogs[this._viewedThread].hidden = true;
+		}
+
+		this._screen = 'inbox';
+		this._viewedThread = null;
+		this.dom.typing.hidden = true;
+		this.dom.inbox.hidden = false;
+		this.dom.inboxButton.hidden = true;
+		document.body.classList.add('screen-inbox');
+		this.dom.title.textContent = this.name;
+		this.renderInbox();
+		this.dom.panel.scrollTop = 0;
+	},
+
+	/**
+	 Rebuilds the inbox rows.
+	**/
+
+	renderInbox: function() {
+		if (!this.multiThread || !this.dom.inboxList) {
+			return;
+		}
+
+		var story = this;
+		var ordered = this.threadOrder.slice().sort(function(a, b) {
+			return (story._threadActivity[b] || 0) -
+				(story._threadActivity[a] || 0);
+		});
+
+		this.dom.inboxList.textContent = '';
+
+		ordered.forEach(function(id) {
+			var profile = story.getThreadProfile(id);
+			var row = document.createElement('li');
+			var button = document.createElement('button');
+
+			button.type = 'button';
+			button.className = 'inbox-row';
+
+			var avatar = document.createElement('div');
+
+			avatar.className = 'chat-avatar inbox-avatar';
+			avatar.setAttribute('aria-hidden', 'true');
+			avatar.style.setProperty('--avatar-hue', story.speakerHue(id));
+
+			if (profile.avatar) {
+				avatar.classList.add('chat-avatar--img');
+				avatar.style.backgroundImage = 'url("' + profile.avatar + '")';
+			}
+			else {
+				if (profile.color) {
+					avatar.style.backgroundColor = profile.color;
+				}
+
+				avatar.textContent = story
+					.getThreadDisplayName(id)
+					.charAt(0)
+					.toUpperCase();
+			}
+
+			var body = document.createElement('div');
+
+			body.className = 'inbox-body';
+
+			var nameEl = document.createElement('div');
+
+			nameEl.className = 'inbox-name';
+			nameEl.textContent = story.getThreadDisplayName(id);
+
+			var preview = document.createElement('div');
+
+			preview.className = 'inbox-preview';
+
+			if (story._typingThread === id) {
+				preview.textContent = 'typing…';
+				preview.classList.add('inbox-preview--typing');
+			}
+			else {
+				var log = story._threadLogs[id];
+				var last = log &&
+					log.querySelector(
+						'.chat-passage-wrapper:last-of-type .chat-passage:last-of-type'
+					);
+
+				preview.textContent = last
+					? last.textContent.trim().slice(0, 80)
+					: '';
+			}
+
+			body.appendChild(nameEl);
+			body.appendChild(preview);
+			button.appendChild(avatar);
+			button.appendChild(body);
+
+			var count = story.unread[id] || 0;
+
+			if (count > 0) {
+				var badge = document.createElement('span');
+
+				badge.className = 'inbox-badge';
+				badge.textContent = count > 9 ? '9+' : count;
+				badge.setAttribute(
+					'aria-label',
+					count + ' unread message' + (count === 1 ? '' : 's')
+				);
+				button.appendChild(badge);
+			}
+
+			button.addEventListener('click', function() {
+				story.openThread(id);
+			});
+
+			row.appendChild(button);
+			story.dom.inboxList.appendChild(row);
+		});
+	},
+
+	/**
+	 Records a message landing in a thread: bumps activity ordering and,
+	 if the player is looking elsewhere, the unread badge — plus a
+	 tap-to-open notification banner.
+	**/
+
+	noteThreadMessage: function(threadId, previewText, instant) {
+		if (!this.multiThread) {
+			return;
+		}
+
+		this.bumpThreadActivity(threadId);
+
+		var viewingIt = this._screen === 'thread' &&
+			this._viewedThread === threadId;
+
+		if (!viewingIt && !instant) {
+			this.unread[threadId] = (this.unread[threadId] || 0) + 1;
+
+			if (this.config.threadNotifications && previewText) {
+				this.showThreadBanner(threadId, previewText);
+			}
+		}
+
+		this.renderInbox();
+	},
+
+	/**
+	 A notification banner announcing a message in another thread;
+	 tapping it opens that conversation.
+	**/
+
+	showThreadBanner: function(threadId, previewText) {
+		var story = this;
+
+		this.dom.metaNotificationLabel.textContent =
+			this.getThreadDisplayName(threadId);
+		this.dom.metaNotificationBody.textContent =
+			previewText.slice(0, 120);
+		this.dom.metaNotification.hidden = false;
+		this._bannerThread = threadId;
+
+		window.clearTimeout(this._bannerTimer);
+		this._bannerTimer = window.setTimeout(function() {
+			if (story._bannerThread === threadId) {
+				story.dom.metaNotification.hidden = true;
+				story._bannerThread = null;
+			}
+		}, 5000);
+	},
+
+	/**
+	 Delivers a passage into its own thread without moving the story
+	 there — the conversation the player is in keeps its choices, and
+	 the other thread gains a message (and an unread badge). Available
+	 as the [deliver passage name] directive or story.deliver(name).
+	 Delivered passages are message-only; their links are not offered.
+	**/
+
+	deliver: function(idOrName, opts) {
+		opts = opts || {};
+
+		var story = this;
+		var passage = this.passage(idOrName);
+
+		if (!passage) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage to deliver named "' + idOrName + '"'
+				)
+			);
+			return;
+		}
+
+		var run = function() {
+			story.renderDelivery(passage, opts);
+		};
+
+		if (opts.instant) {
+			run();
+		}
+		else {
+			this.timers.push(
+				window.setTimeout(run, this.getPassageDelay(passage.id))
+			);
+
+			if (this.multiThread) {
+				this.setThreadTyping(this.getPassageThread(passage));
+			}
+		}
+	},
+
+	renderDelivery: function(passage, opts) {
+		var threadId = this.getPassageThread(passage);
+		var log = this.logFor(threadId);
+
+		this.setThreadTyping(null);
+
+		// render with the delivered passage as the template context,
+		// collecting (and discarding) its links
+
+		var previousPassage = window.passage;
+
+		window.passage = passage;
+		passage.links = [];
+
+		var html;
+
+		try {
+			html = passage.render();
+		}
+		catch (error) {
+			window.passage = previousPassage;
+			this.showError(this.errorMessage.replace('%s', error.message));
+			return;
+		}
+
+		window.passage = previousPassage;
+
+		var speaker = this.getPassageSpeaker(passage);
+		var nodes = this.buildPassageElement(passage, speaker, html);
+		var story = this;
+
+		nodes.forEach(function(node) {
+			if (opts.instant) {
+				node.classList.add('no-anim');
+			}
+
+			node.classList.add('is-history');
+			story.applyGrouping(node, log);
+			log.appendChild(node);
+		});
+
+		if (opts.record !== false) {
+			this.timeline.push({ t: 'd', id: passage.id });
+		}
+
+		if (!opts.instant && speaker && speaker !== 'you') {
+			this.playSound('receive');
+			this.notifyTitle();
+		}
+
+		var probe = document.createElement('div');
+
+		probe.innerHTML = html;
+		this.noteThreadMessage(
+			threadId,
+			probe.textContent.trim(),
+			opts.instant
+		);
+
+		if (this._viewedThread === threadId) {
+			this.scrollChatIntoView();
+		}
+
+		this.persist();
+	},
+
+	/**
+	 Marks a thread as "typing" in the inbox (null clears it).
+	**/
+
+	setThreadTyping: function(threadId) {
+		this._typingThread = threadId;
+
+		if (this.multiThread) {
+			this.renderInbox();
+		}
 	},
 
 	/**
@@ -2983,13 +3728,29 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
+		if (this.multiThread) {
+			var typingThread = this.getPassageThread(passage);
+
+			this.setThreadTyping(typingThread);
+
+			if (
+				this._screen !== 'thread' ||
+				this._viewedThread !== typingThread
+			) {
+				return; // shows as "typing…" in the inbox row instead
+			}
+		}
+
 		var typing = this.dom.typing;
 		var wrapper = typing.querySelector('.chat-passage-wrapper');
 		var avatar = typing.querySelector('.chat-avatar');
 
 		wrapper.setAttribute('data-speaker', speaker);
 
-		var previous = this.dom.history.lastElementChild;
+		var previous = (this.multiThread
+			? this.logFor(this.getPassageThread(passage))
+			: this.dom.history
+		).lastElementChild;
 
 		wrapper.classList.toggle(
 			'chat-follow',
@@ -3046,6 +3807,10 @@ Object.assign(Story.prototype, {
 	hideTyping: function() {
 		this.dom.typing.hidden = true;
 		this.dom.typingText.textContent = '';
+
+		if (this._typingThread !== null) {
+			this.setThreadTyping(null);
+		}
 	},
 
 	/**
@@ -3053,14 +3818,24 @@ Object.assign(Story.prototype, {
 	**/
 
 	saveHash: function() {
-		return LZString.compressToBase64(
-			JSON.stringify({
-				state: this.state,
-				timeline: this.timeline,
-				/* legacy field so old integrations reading history keep working */
-				history: this.history
-			})
-		);
+		var save = {
+			state: this.state,
+			timeline: this.timeline,
+			/* legacy field so old integrations reading history keep working */
+			history: this.history
+		};
+
+		if (this.multiThread) {
+			save.threadState = {
+				unread: this.unread,
+				activity: this._threadActivity,
+				seq: this._activitySeq,
+				screen: this._screen,
+				viewed: this._viewedThread
+			};
+		}
+
+		return LZString.compressToBase64(JSON.stringify(save));
 	},
 
 	/**
@@ -3124,7 +3899,23 @@ Object.assign(Story.prototype, {
 			this.history = [];
 			this.checkpoints = [];
 			this._reactionLog = [];
-			this.dom.history.textContent = '';
+
+			if (this.multiThread) {
+				var storyReset = this;
+
+				Object.keys(this._threadLogs).forEach(function(id) {
+					storyReset._threadLogs[id].textContent = '';
+					storyReset._threadLogs[id].setAttribute('aria-live', 'off');
+					storyReset.unread[id] = 0;
+				});
+				this._threadActivity = {};
+				this._activitySeq = 0;
+				this.setThreadTyping(null);
+			}
+			else {
+				this.dom.history.textContent = '';
+			}
+
 			this._currentNodes = [];
 			this.dom.undo.hidden = true;
 
@@ -3169,6 +3960,18 @@ Object.assign(Story.prototype, {
 					story.state.lastReaction = entry.emoji;
 					story.react(entry.emoji, 'in');
 				}
+				else if (entry.t === 'd') {
+					var delivered = story.passage(entry.id);
+
+					if (delivered) {
+						story.renderDelivery(delivered, {
+							instant: true,
+							record: false
+						});
+					}
+
+					story.timeline.push({ t: 'd', id: entry.id });
+				}
 				else {
 					story.show(entry.id, {
 						record: false,
@@ -3186,11 +3989,42 @@ Object.assign(Story.prototype, {
 				this.state = save.state;
 			}
 
+			if (this.multiThread) {
+				var ts = save.threadState || {};
+				var storyDone = this;
+
+				this.unread = ts.unread || this.unread;
+				this._threadActivity = ts.activity || this._threadActivity;
+				this._activitySeq = ts.seq || this._activitySeq;
+
+				Object.keys(this._threadLogs).forEach(function(id) {
+					storyDone._threadLogs[id].removeAttribute('aria-live');
+				});
+
+				if (ts.screen === 'inbox') {
+					this.openInbox();
+				}
+				else {
+					this.openThread(
+						ts.viewed || this._hotThread || this.threadOrder[0]
+					);
+				}
+			}
+
 			this.persist();
 			this.dom.history.removeAttribute('aria-live');
 		}
 		catch (e) {
 			this.dom.history.removeAttribute('aria-live');
+
+			if (this.multiThread) {
+				var storyFail = this;
+
+				Object.keys(this._threadLogs).forEach(function(id) {
+					storyFail._threadLogs[id].removeAttribute('aria-live');
+				});
+			}
+
 			dispatch('restorefailed', { error: e });
 			return false;
 		}

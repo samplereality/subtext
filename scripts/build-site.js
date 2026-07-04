@@ -106,6 +106,7 @@ const page = `<!DOCTYPE html>
 	<p class="tagline">A story format for Twine 2 that turns a branching narrative into a modern text-message exchange.</p>
 	<div class="actions">
 		<a class="btn" href="demo.html">Play the demo</a>
+		<a class="btn btn--ghost" href="inbox-demo.html">Inbox demo</a>
 		<a class="btn btn--ghost" href="https://github.com/samplereality/subtext">GitHub</a>
 	</div>
 	<div class="install">
@@ -135,6 +136,10 @@ fs.copyFileSync(
 fs.copyFileSync(
 	path.join(ROOT, 'dist/Twine2/Subtext/format.js'),
 	path.join(SITE, 'format.js')
+);
+fs.copyFileSync(
+	path.join(ROOT, 'docs/subtext-inbox-demo.html'),
+	path.join(SITE, 'inbox-demo.html')
 );
 fs.copyFileSync(path.join(ROOT, 'src/icon.svg'), path.join(SITE, 'icon.svg'));
 fs.writeFileSync(path.join(SITE, '.nojekyll'), '');

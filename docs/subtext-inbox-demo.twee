@@ -1,0 +1,113 @@
+:: StoryData
+{
+  "ifid": "7A2E9C41-5B83-4D26-9F0A-8E1C4B7D3A55",
+  "format": "Subtext",
+  "format-version": "2.1.0"
+}
+
+:: StoryTitle
+The Van Outside
+
+:: StorySubtitle
+a Subtext inbox demo
+
+:: Story JavaScript [script]
+
+inject_menu('<h3>About</h3><p>This story demonstrates Subtext\'s multi-conversation mode: three threads, unread badges, and messages that arrive while you\'re talking to someone else.</p>');
+inject_hint('Choose a reply to continue');
+story.config.metaStyle = 'overlay';
+story.config.hintFadeAfter = 3;
+
+
+:: StoryThreads
+sam: Sam
+mom: Mom
+unknown: Unknown Number; color: #52525e
+
+
+:: StorySpeakers
+sam: Sam; color: #148f77
+mom: Mom; color: #8e44ad
+unknown: Unknown; color: #3a3a44
+
+
+:: Start [thread-sam speaker-sam]
+[timestamp Tonight 1:57 AM]
+
+you up?
+
+something happened at the lab
+
+[[what happened??->sam-2]]
+[[it's 2am, Sam->sam-2]]
+
+
+:: sam-2 [speaker-sam]
+not over text
+
+I'm checking something. stay put
+
+[deliver mom-1]
+
+[[be careful->sam-3]]
+[[you're scaring me->sam-3]]
+
+
+:: mom-1 [thread-mom speaker-mom]
+Honey, are you awake? The porch light keeps flickering.
+
+
+:: sam-3 [speaker-sam]
+one more thing
+
+if a number you don't know texts you tonight — do NOT answer
+
+[deliver unknown-1]
+
+[[hold on, mom's texting me->mom-2]]
+
+
+:: unknown-1 [thread-unknown speaker-unknown]
+I know you're awake.
+
+
+:: mom-2 [thread-mom speaker-mom]
+There's a van outside. It was here this morning too.
+
+Should I call someone?
+
+[[stay inside, mom. lock the doors->mom-3]]
+
+
+:: mom-3 [speaker-mom]
+[react ❤️]
+
+Okay. Locked. Your father says hi.
+
+[[tell Sam about the van->sam-4]]
+
+
+:: sam-4 [thread-sam speaker-sam]
+a van?? that matches what I found in the logs
+
+listen carefully
+
+open the other thread. answer the number.
+
+[[answer the unknown number->unknown-2]]
+
+
+:: unknown-2 [thread-unknown speaker-unknown]
+Smart choice.
+
+Your friend is close to the truth. So is the van.
+
+Meet me where this all started. You know the building.
+
+[[…to be continued->the-end]]
+
+
+:: the-end [End]
+THE VAN OUTSIDE — a Subtext inbox demo. Restart to play the other branches.
+
+[[start over?->Start]]

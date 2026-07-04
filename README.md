@@ -23,6 +23,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 - Message reactions: speakers can tapback the player's messages, and players can react as a choice.
 - Optional timed responses (a subtle meter runs as time runs out—hesitate and the story moves without you) and free-text input for password/puzzle beats, with the typed answer available to template logic.
 - Thread clearing for flashbacks and scene changes (`clear` tag + timestamp chips).
+- Optional multi-conversation mode: a contacts inbox with unread badges and background message delivery, for weaving several chats at once (single-conversation stories are unaffected).
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode with a player-facing theme toggle.
 - The story renders as a phone: full-bleed on mobile, a centered phone-width frame on larger screens.
@@ -313,6 +314,56 @@ see? we go way back
 ```
 
 `story.clearThread()` does the same from code. Story state and the save timeline are untouched (saves replay the whole route, clears included) — but undo deliberately cannot reach back across a cleared thread, so each scene's history is self-contained.
+
+### Multiple conversations
+
+Weave several chats at once — a contacts inbox with unread badges, messages that arrive while the player is talking to someone else, the whole mystery/epistolary toolkit. **This is entirely opt-in:** a story with no `StoryThreads` passage behaves exactly as everything above describes — one conversation, no inbox, nothing to think about. Add a `StoryThreads` passage and the format switches on multi-conversation mode.
+
+Declare your conversations like speakers (same `name`/`avatar`/`color` fields):
+
+```
+:: StoryThreads
+sam: Sam
+mom: Mom
+unknown: Unknown Number; color: #52525e
+```
+
+Assign passages to a thread by tagging them `thread-<id>`. Untagged passages stay in whatever thread the story is currently in, so you only tag the *switches*:
+
+```
+:: Start [thread-sam speaker-sam]
+you up? something happened at the lab
+
+[[what happened??->reply]]
+
+:: reply [speaker-sam]
+not over text. I'm checking something
+```
+
+Three things move the story between threads:
+
+- **A link to a passage in another thread** pulls the whole conversation there — the player follows the story's cursor, and the header shows the new contact. This is the normal way to advance.
+- **`[deliver passage-name]`** drops a passage into *its* thread **without** moving the story. The conversation the player is in keeps its choices; the other thread just lights up with a new message and an unread badge. This is the epistolary engine — while you're texting Sam, Mom's thread fills up in the background:
+
+  ```
+  :: reply [speaker-sam]
+  stay put. and whatever you do, don't answer unknown numbers
+
+  [deliver unknown-1]
+
+  [[why?->reply-2]]
+
+  :: unknown-1 [thread-unknown speaker-unknown]
+  I know you're awake.
+  ```
+
+- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. Only the thread holding the story's pending choices shows reply chips; the others are read-only until the story moves there.
+
+The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them.
+
+State for branching: `s`-level nothing is required, but the runtime tracks it all — `story.unread` (per-thread counts), `story.threads`, and the active thread are saved and restored, and undo rewinds thread-by-thread. Config: `story.config.threadNotifications = false` silences the cross-thread banners (the inbox badges still update).
+
+A complete example is [`docs/subtext-inbox-demo.twee`](docs/subtext-inbox-demo.twee) — a three-thread thriller — playable at [the inbox demo](https://samplereality.github.io/subtext/inbox-demo.html).
 
 ### Timestamps
 

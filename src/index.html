@@ -10,11 +10,11 @@
 	<div id="app">
 		<header class="chat-header">
 			<div class="chat-header-side chat-header-left">
-				<a id="nav-link-back" class="content-container header-action" href="/" hidden>Back</a>
-				<button id="nav-link-undo" class="header-action header-action--icon" type="button" title="Undo" hidden>
-					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
-					<span class="visually-hidden">Undo</span>
+				<button id="nav-link-inbox" class="header-action header-action--icon" type="button" title="Conversations" hidden>
+					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<span class="visually-hidden">Back to conversations</span>
 				</button>
+				<a id="nav-link-back" class="content-container header-action" href="/" hidden>Back</a>
 			</div>
 			<div class="chat-header-title">
 				<h1 id="ptitle"></h1>
@@ -24,20 +24,22 @@
 				</div>
 			</div>
 			<div class="chat-header-side chat-header-right">
-				<button id="nav-link-menu" class="content-container header-action header-action--icon" type="button" title="Menu" hidden>
+				<button id="nav-link-undo" class="header-action header-action--icon" type="button" title="Undo" hidden>
+					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
+					<span class="visually-hidden">Undo</span>
+				</button>
+				<button id="nav-link-menu" class="content-container header-action header-action--icon" type="button" title="Menu">
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
 					<span class="visually-hidden">Menu</span>
-				</button>
-				<button id="nav-link-theme" class="header-action header-action--icon" type="button" title="Switch theme"></button>
-				<button id="nav-link-restart" class="header-action header-action--icon" type="button" title="Restart story">
-					<span aria-hidden="true">&#8635;</span>
-					<span class="visually-hidden">Restart story</span>
 				</button>
 			</div>
 		</header>
 
 		<div class="chat-layout">
 			<main id="chat-panel" class="chat-panel" tabindex="0" aria-label="Chat">
+				<nav id="inbox" class="inbox" aria-label="Conversations" hidden>
+					<ul id="inbox-list" class="inbox-list"></ul>
+				</nav>
 				<div class="chat-stream">
 					<div id="phistory" class="chat-history" role="log" aria-label="Conversation"></div>
 					<div id="animation-container" role="status" hidden>
@@ -87,6 +89,16 @@
 		<div id="menu-container" class="content-container menu-section"></div>
 		<div id="left-sidebar-container" class="content-container menu-section"></div>
 		<div id="right-sidebar-container" class="content-container menu-section"></div>
+		<div class="menu-actions">
+			<button id="nav-link-theme" class="menu-action" type="button">
+				<span class="menu-action-icon" aria-hidden="true"></span>
+				<span class="menu-action-label">Switch theme</span>
+			</button>
+			<button id="nav-link-restart" class="menu-action" type="button">
+				<span class="menu-action-icon" aria-hidden="true">&#8635;</span>
+				<span class="menu-action-label">Restart story</span>
+			</button>
+		</div>
 	</dialog>
 
 	<dialog id="photo-picker" class="chat-dialog photo-picker" aria-labelledby="photo-picker-title">

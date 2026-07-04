@@ -81,6 +81,16 @@ function render(source) {
 		}
 	);
 
+	// [deliver passage name] on its own line sends that passage to its
+	// own conversation thread without moving the story there
+
+	result = result.replace(
+		/^[ \t]*\[deliver[ \t]+([^\]]+)\][ \t]*$/gim,
+		function(match, name) {
+			return '<div class="chat-deliver" data-passage="' + template.escapeHtml(name.trim()) + '"></div>';
+		}
+	);
+
 	// [location 52.3676,4.9041 Amsterdam] on its own line becomes a
 	// map-card bubble linking to OpenStreetMap
 
