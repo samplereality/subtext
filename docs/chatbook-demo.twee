@@ -50,7 +50,7 @@ This story shows narration as an overlay above the chat — it can also sit insi
 [[ok]]
 
 :: ok [speaker-2]
-how are you doing?
+<%= either('how are you doing?', 'how are things on your end?', 'how goes it?') %>
 
 [[pretty good]]
 [[not so well]]

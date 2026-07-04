@@ -81,6 +81,27 @@ story.config.sounds = false;       // subtle send/receive sounds (opt-in)
 story.config.titleNotifications = true; // "(2) Story" tab title when hidden
 ```
 
+### Utility functions
+
+The Snowman utility functions are built in (reimplemented without jQuery/Underscore), so snippets from Snowman documentation work in Chatbook:
+
+```js
+either('hey!', 'yo!', ['hiya!', 'hello hello'])  // random pick; arrays are flattened
+hasVisited('some passage')                       // true once shown (array/multiple args = all of them)
+visited('some passage')                          // number of times shown
+renderToSelector('#somewhere', 'passage name')   // render a passage into any element
+getStyles('extra.css')                           // load stylesheet(s); returns a Promise
+```
+
+`either()` is especially handy for making speakers less robotic:
+
+```
+:: ok [speaker-sam]
+<%= either('how are you doing?', 'how are things?', "how's life?") %>
+```
+
+And `hasVisited()`/`visited()` pair naturally with thread clearing — history persists across a `clear`, so characters can reference scenes the player saw in a flashback.
+
 ### Photo messages
 
 Let the player reply with a picture instead of words. First, declare the story's image gallery in a passage named `StoryImages`, one image per line:
@@ -346,7 +367,7 @@ tweego --output=story.html story.twee --format=./dist/Twine2/Chatbook
 
 Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
 
-- jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works.)
+- jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works, and the Snowman utility functions `either()`, `hasVisited()`, `visited()`, `renderToSelector()`, and `getStyles()` are built in.)
 - Story events (`startstory`, `showpassage`, `showpassage:after`, …) are now plain DOM `CustomEvent`s on `window`: `window.addEventListener('showpassage', e => …)` with data in `e.detail`. The Snowman 2 event names (`sm.story.started`, `sm.passage.showing`, `sm.passage.shown`, `sm.passage.hidden`, `sm.story.saved`, `sm.restore.success`, `sm.restore.failed`, `sm.story.error`) are dispatched as aliases, so snippets written for Snowman 2 documentation work too.
 - Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
 - Twine 1 documents are no longer supported.

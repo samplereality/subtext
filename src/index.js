@@ -83,6 +83,119 @@ window.fade_in_content_containers = function() {
 	});
 };
 
+/*
+ * Snowman utility functions, reimplemented without Underscore/jQuery
+ * so scripts and passages written against Snowman 2 documentation work
+ * in Chatbook.
+ */
+
+/**
+ Randomly selects one value from its arguments; array arguments are
+ flattened into the pool first: either('a', 'b', ['c', 'd']).
+**/
+
+window.either = function() {
+	var pool = [];
+
+	for (var i = 0; i < arguments.length; i++) {
+		if (Array.isArray(arguments[i])) {
+			pool = pool.concat(arguments[i]);
+		}
+		else {
+			pool.push(arguments[i]);
+		}
+	}
+
+	if (pool.length === 0) {
+		return undefined;
+	}
+
+	return pool[Math.floor(Math.random() * pool.length)];
+};
+
+/**
+ Returns whether the passage(s) — by name or ID, singly, as an array,
+ or as multiple arguments — have all been visited.
+**/
+
+window.hasVisited = function() {
+	var list = [];
+
+	for (var i = 0; i < arguments.length; i++) {
+		list = list.concat(arguments[i]);
+	}
+
+	if (list.length === 0 || !window.story) {
+		return false;
+	}
+
+	return list.every(function(item) {
+		var p = window.story.passage(item);
+
+		return !!p && window.story.history.indexOf(p.id) !== -1;
+	});
+};
+
+/**
+ Returns the number of times a passage has been visited.
+**/
+
+window.visited = function(search) {
+	if (!window.story || !window.story.history) {
+		return 0;
+	}
+
+	var p = window.story.passage(search);
+
+	if (!p) {
+		return 0;
+	}
+
+	return window.story.history.filter(function(id) {
+		return id === p.id;
+	}).length;
+};
+
+/**
+ Renders a passage into the element matching a DOM selector.
+**/
+
+window.renderToSelector = function(selector, passage) {
+	var p = window.story ? window.story.passage(passage) : null;
+	var el = document.querySelector(selector);
+
+	if (p && el) {
+		el.innerHTML = p.render();
+	}
+};
+
+/**
+ Loads external stylesheet(s); returns a Promise that resolves when
+ all have loaded. (Snowman's version returned a jQuery promise.)
+**/
+
+window.getStyles = function() {
+	var urls = Array.prototype.slice.call(arguments);
+
+	return Promise.all(
+		urls.map(function(url) {
+			return new Promise(function(resolve, reject) {
+				var link = document.createElement('link');
+
+				link.rel = 'stylesheet';
+				link.href = url;
+				link.onload = function() {
+					resolve(url);
+				};
+				link.onerror = function() {
+					reject(new Error('Could not load stylesheet ' + url));
+				};
+				document.head.appendChild(link);
+			});
+		})
+	);
+};
+
 function ready() {
 	window.story = new Story();
 	window.story.start();
