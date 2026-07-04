@@ -1,11 +1,12 @@
 <p align="center"><img src="src/icon.svg" alt="Chatbook logo"></p>
 <h1 align="center">Chatbook</h1>
 
-Chatbook is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat story. Write a non-linear story in the Twine editor, select Chatbook as the story format, and play your story back as a modern text-message exchange.
+Chatbook is a story format for [Twine 2](https://twinery.org/) that turns a branching narrative into an interactive chat or text-message story.
 
-👉 **Docs:** https://samplereality.github.io/chatbook/ · **Play the demo:** https://samplereality.github.io/chatbook/demo.html
+**Docs:** https://samplereality.github.io/chatbook/  
+**Play the demo:** https://samplereality.github.io/chatbook/demo.html
 
-Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trialogue) by Philo van Kemenade — its name a small homage to Twine's [Chapbook](https://klembot.github.io/chapbook/) format. The lineage runs Chatbook → Trialogue → [Paloma](http://mcdemarco.net/tools/scree/paloma/) → [Snowman](https://github.com/videlais/snowman).
+Chatbook is a successor to [Trialogue](https://github.com/phivk/trialogue) by Philo van Kemenade. The name is a small homage to Chris Klimas's [Chapbook](https://klembot.github.io/chapbook/) format. The lineage runs Chatbook → Trialogue → [Paloma](http://mcdemarco.net/tools/scree/paloma/) → [Snowman](https://github.com/videlais/snowman).
 
 ## What's new in 2.0
 
@@ -18,9 +19,9 @@ Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trial
 - Players can send photos from a picker; stories can branch on which image was sent.
 - Voice-memo bubbles with a real player (waveform, play/pause, duration) via `[voice file.mp3]`.
 - Location map cards via `[location lat,lon Label]`, and players can share their *real* coordinates for the story to react to.
-- Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect — including a permanent, red "Not Delivered" failed state.
+- Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect, including a permanent, red "Not Delivered" failed state.
 - Message reactions: speakers can tapback the player's messages, and players can react as a choice.
-- Timed responses (a subtle meter reddens as time runs out — hesitate and the story moves without you) and free-text input for password/riddle beats, with the typed answer available to template logic.
+- Optional timed responses (a subtle meter runs as time runs out—hesitate and the story moves without you) and free-text input for password/puzzle beats, with the typed answer available to template logic.
 - Thread clearing for flashbacks and scene changes (`clear` tag + timestamp chips).
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode with a player-facing theme toggle.
@@ -28,7 +29,7 @@ Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trial
 
 **A more robust format**
 
-- The runtime was rewritten in dependency-free vanilla JavaScript. jQuery, Underscore, and the Bootstrap/jQuery CDN links are gone — published stories are fully self-contained and work offline.
+- The runtime was rewritten in dependency-free vanilla JavaScript. jQuery, Underscore, and the Bootstrap/jQuery CDN links are not necessary. Published stories are fully self-contained and work offline.
 - Save/restore now replays the entire conversation, not just the last passage, and an optional autosave keeps progress across reloads.
 - Undo restores story state correctly (state snapshots are deep-copied per choice).
 - Broken links, render errors, and script errors surface as readable messages in the chat instead of failing silently.
@@ -84,7 +85,7 @@ story.config.titleNotifications = true; // "(2) Story" tab title when hidden
 
 ### Utility functions
 
-The Snowman utility functions are built in (reimplemented without jQuery/Underscore), so snippets from Snowman documentation work in Chatbook:
+Several Snowman utility functions are built in (reimplemented without jQuery/Underscore), so snippets from Snowman documentation work in Chatbook:
 
 ```js
 either('hey!', 'yo!', ['hiya!', 'hello hello'])  // random pick; arrays are flattened
@@ -94,7 +95,7 @@ renderToSelector('#somewhere', 'passage name')   // render a passage into any el
 getStyles('extra.css')                           // load stylesheet(s); returns a Promise
 ```
 
-`either()` is especially handy for making speakers less robotic:
+`either()` is especially handy for introducing variety into responses:
 
 ```
 :: ok [speaker-sam]
@@ -170,7 +171,7 @@ meet me here at midnight
 [[i'll be there]]
 ```
 
-And the player can share their **real** location. A `location` link renders a pin button with the other choices; tapping it asks the browser for the player's coordinates (with the standard permission prompt):
+The player can share their **real** location. A `location` link renders a pin button with the other choices; tapping it asks the browser for the player's coordinates (with the standard permission prompt):
 
 ```
 :: where [speaker-sam]
@@ -195,7 +196,7 @@ story.config.metaStyle = 'overlay';
 story.config.metaStyle = 'notification';
 ```
 
-- **`chat`** — centered system-style text inside the conversation (the classic Trialogue behavior Chatbook inherits). Tight and contained, reads like an iMessage system message.
+- **`chat`** — centered system-style text inside the conversation (the original Trialogue behavior Chatbook inherits). Tight and contained, reads like an iMessage system message.
 - **`overlay`** — the narration floats over the blurred, dimmed chat, like the camera pulling back from the phone. The player's choices stay visible and tappable below it, and the veil lifts as soon as they choose or the next message arrives. Best for scene breaks and interiority that shouldn't pretend to be part of the phone.
 - **`notification`** — the narration drops in as a phone-style notification banner (labeled with the story name by default; change it with `story.config.metaNotificationLabel`). It stays inside the device's fiction — the narrator as an app pinging you. Tapping the banner dismisses it.
 
@@ -255,7 +256,7 @@ One reaction per message; a newer one replaces it. Reactions participate in undo
 
 ### Timed responses
 
-Put the player on the clock. A `timeout:` link arms a timer while the choices are showing — the thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
+Put the player on the clock. A `timeout:` link arms a timer while the choices are showing. The thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
 
 ```
 :: interrogation [speaker-detective]
@@ -277,7 +278,7 @@ Accessibility: the time limit is announced to screen readers when the timer star
 
 ### Free text input
 
-For the moments when picking from a list won't do — passwords, names, incantations — let the player type. An `input:` link renders a real message composer (text field + send button) in the reply panel:
+For the moments when picking from a list won't do, like passwords, names, incantations, there's a free text input option. An `input:` link renders a real message composer (text field + send button) in the reply panel:
 
 ```
 :: gatekeeper [speaker-sam]
@@ -374,7 +375,7 @@ inject_nav_back('← back');                       // shows a back link in the h
 
 The hint is smarter than a static label: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` retires the helper text entirely once the player has made that many moves — training wheels off. (`null` keeps hints forever; `0` never shows them.)
 
-The Menu button (☰) only appears once the menu has content. The Trialogue 1.x helpers `inject_left_sidebar()` / `inject_right_sidebar()` — which used to render desktop side columns — still work as deprecated aliases, each filling an additional section of the menu. The header always includes an Undo button (↩, appears once there is something to undo), a light/dark toggle, and a Restart button that asks for confirmation.
+The Menu button (☰) only appears once the menu has content. The Trialogue 1.x helpers `inject_left_sidebar()` / `inject_right_sidebar()`—which used to render desktop side columns—still work as deprecated aliases, each filling an additional section of the menu. The header always includes an Undo button (↩, appears once there is something to undo), a light/dark toggle, and a Restart button that asks for confirmation.
 
 ### Saving
 
@@ -428,4 +429,4 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 # Credits
 
-Chatbook builds on [Trialogue](https://github.com/phivk/trialogue) by [Philo van Kemenade](https://github.com/phivk), which is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco, a Jonah-style story format based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/). The name is an homage to Klimas's [Chapbook](https://klembot.github.io/chapbook/) format.
+Chatbook is developed by [Mark Sample](https://www.samplereality.com) and builds on [Trialogue](https://github.com/phivk/trialogue) by [Philo van Kemenade](https://github.com/phivk), which in turn is based on [Paloma](http://mcdemarco.net/tools/scree/paloma/) by M. C. DeMarco, a Jonah-style story format based on [Snowman](https://github.com/videlais/snowman) by [Chris Klimas](https://github.com/klembot) and [Dan Cox](https://videlais.com/). The name is an homage to Klimas's [Chapbook](https://klembot.github.io/chapbook/) format.
