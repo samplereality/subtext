@@ -20,6 +20,7 @@ Chatbook is a modernized successor to [Trialogue](https://github.com/phivk/trial
 - Location map cards via `[location lat,lon Label]`, and players can share their *real* coordinates for the story to react to.
 - Read receipts (Delivered/Read) under the player's last message, with author control for dramatic effect — including a permanent, red "Not Delivered" failed state.
 - Message reactions: speakers can tapback the player's messages, and players can react as a choice.
+- Timed responses (a subtle meter reddens as time runs out — hesitate and the story moves without you) and free-text input for password/riddle beats, with the typed answer available to template logic.
 - Thread clearing for flashbacks and scene changes (`clear` tag + timestamp chips).
 - Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.
 - Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode with a player-facing theme toggle.
@@ -251,6 +252,46 @@ right back at you
 ```
 
 One reaction per message; a newer one replaces it. Reactions participate in undo and save/restore.
+
+### Timed responses
+
+Put the player on the clock. A `timeout:` link arms a timer while the choices are showing — the thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
+
+```
+:: interrogation [speaker-detective]
+well?? who were you with last night?
+
+[[someone you don't know->alibi]]
+[[no one->alone]]
+[[timeout:8 …I need a lawyer->lawyer]]
+```
+
+Two flavors, depending on what expiry means:
+
+- `[[timeout:8 some text->Target]]` — after 8 seconds, *an option is chosen for you*: the text is sent as the player's message, then the story continues to the target.
+- `[[timeout:8->Target]]` — after 8 seconds, *the sender loses patience*: no player message is sent; the story simply moves to the target ("you still there??").
+
+Any manual choice cancels the timer. `s.timedOut` is `true` when the last transition came from an expired timer (and `false` after any deliberate choice), so passages can call out the hesitation. A `timeout` event fires on expiry. Undo returns to the moment before — with the clock running again.
+
+Accessibility: the time limit is announced to screen readers when the timer starts, and `story.config.timers = false` disables all timers — worth offering to players for whom time pressure is a barrier (the timeout link is simply ignored, leaving the ordinary choices).
+
+### Free text input
+
+For the moments when picking from a list won't do — passwords, names, incantations — let the player type. An `input:` link renders a real message composer (text field + send button) in the reply panel:
+
+```
+:: gatekeeper [speaker-sam]
+what's the password? hint: it's where my servers live
+
+[[input:type the password…->password-check]]
+
+:: password-check [speaker-sam]
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>✅ you're in<% } else { %>❌ nope. think geography<% } %>
+
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>[[continue]]<% } else { %>[[input:try again…->password-check]]<% } %>
+```
+
+The text after `input:` is the field's placeholder. Whatever the player types is sent as their message and stored in `s.lastInput` (with every entry kept in `s.inputs`), so the target passage does the checking with ordinary template logic — exact match, `.includes()`, regular expressions, whatever the puzzle calls for. Conditional links (as above) let wrong guesses loop back for another try. A `textinput` event fires on every send. One composer per passage; it can sit alongside regular choice chips ("type the answer, or [[give up]]").
 
 ### Clearing the thread
 

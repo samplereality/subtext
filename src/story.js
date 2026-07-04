@@ -12,6 +12,16 @@ var SPEAKER_TAG_PREFIX = 'speaker-';
 var PHOTO_LINK_PREFIX = 'photo:';
 var LOCATION_LINK_PREFIX = 'location:';
 var REACT_LINK_PREFIX = 'react:';
+var INPUT_LINK_PREFIX = 'input:';
+var TIMEOUT_LINK_PREFIX = 'timeout:';
+
+/* Feather Icons arrow-up (MIT) */
+var SEND_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<line x1="12" y1="19" x2="12" y2="5"></line>' +
+	'<polyline points="5 12 12 5 19 12"></polyline></svg>';
 
 /* Feather Icons camera (MIT) */
 var CAMERA_SVG =
@@ -253,6 +263,14 @@ var Story = function() {
 		/* screen-reader announcement while a speaker is typing;
 		   %s is replaced with the speaker's display name */
 		typingLabel: '%s is typing',
+		/* honor [[timeout:...]] links; set false to give every player
+		   unlimited time (an accessibility affordance) */
+		timers: true,
+		/* screen-reader announcement when a response timer starts;
+		   %s is replaced with the number of seconds */
+		timerLabel: 'You have %s seconds to reply',
+		/* accessible label on the free-text send button */
+		inputSendLabel: 'Send',
 		/* default label on a location-share response button */
 		locationButtonLabel: 'Share my location',
 		/* label under the map card of a shared player location */
@@ -361,8 +379,12 @@ Object.assign(Story.prototype, {
 			metaNotificationLabel: byId('meta-notification-label'),
 			metaNotificationBody: byId('meta-notification-body'),
 			menuDialog: byId('menu-dialog'),
-			theme: byId('nav-link-theme')
+			theme: byId('nav-link-theme'),
+			footer: document.querySelector('.user-response-panel'),
+			timerText: byId('timer-announcement')
 		};
+
+		this._responseTimer = null;
 
 		// tapping a notification banner dismisses it (but interactive
 		// content inside it, like a voice memo, stays usable); the ×
@@ -663,6 +685,8 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearUserResponses();
 		this.focusResponses();
+
+		this.state.timedOut = false;
 		this.showUserBubble(displayText);
 		this.playSound('send');
 		this.showDelayed(targetName, { noMove: true });
@@ -1316,6 +1340,8 @@ Object.assign(Story.prototype, {
 		var photoOffers = this.getPhotoOffers(links);
 		var locationOffers = this.getLocationOffers(links);
 		var reactionOffers = [];
+		var inputOffer = null;
+		var timeoutOffer = null;
 
 		links.forEach(function(link) {
 			var display = link.display.trim();
@@ -1326,6 +1352,31 @@ Object.assign(Story.prototype, {
 					target: link.target
 				});
 			}
+			else if (
+				!inputOffer &&
+				(display === 'input' || display.indexOf(INPUT_LINK_PREFIX) === 0)
+			) {
+				inputOffer = {
+					placeholder:
+						display === 'input'
+							? ''
+							: display.substring(INPUT_LINK_PREFIX.length).trim(),
+					target: link.target
+				};
+			}
+			else if (!timeoutOffer && display.indexOf(TIMEOUT_LINK_PREFIX) === 0) {
+				var match = display
+					.substring(TIMEOUT_LINK_PREFIX.length)
+					.match(/^\s*([\d.]+)\s*([\s\S]*)$/);
+
+				if (match && parseFloat(match[1]) > 0) {
+					timeoutOffer = {
+						seconds: parseFloat(match[1]),
+						text: match[2].trim(),
+						target: link.target
+					};
+				}
+			}
 		});
 
 		var textLinks = links.filter(function(link) {
@@ -1335,7 +1386,10 @@ Object.assign(Story.prototype, {
 				display.indexOf(PHOTO_LINK_PREFIX) !== 0 &&
 				display !== 'location' &&
 				display.indexOf(LOCATION_LINK_PREFIX) !== 0 &&
-				display.indexOf(REACT_LINK_PREFIX) !== 0
+				display.indexOf(REACT_LINK_PREFIX) !== 0 &&
+				display !== 'input' &&
+				display.indexOf(INPUT_LINK_PREFIX) !== 0 &&
+				display.indexOf(TIMEOUT_LINK_PREFIX) !== 0
 			);
 		});
 
@@ -1401,6 +1455,213 @@ Object.assign(Story.prototype, {
 			});
 			story.dom.responses.appendChild(button);
 		});
+
+		// free-text composer
+
+		if (inputOffer) {
+			var form = document.createElement('form');
+
+			form.className = 'chat-composer';
+
+			var field = document.createElement('input');
+
+			field.type = 'text';
+			field.className = 'chat-composer-input';
+			field.autocomplete = 'off';
+			field.maxLength = 500;
+			field.placeholder = inputOffer.placeholder;
+			field.setAttribute(
+				'aria-label',
+				inputOffer.placeholder || 'Type a message'
+			);
+
+			var send = document.createElement('button');
+
+			send.type = 'submit';
+			send.className = 'chat-composer-send';
+			send.setAttribute('aria-label', this.config.inputSendLabel);
+			send.setAttribute('title', this.config.inputSendLabel);
+			send.innerHTML = SEND_SVG;
+
+			form.appendChild(field);
+			form.appendChild(send);
+
+			var inputTarget = inputOffer.target;
+
+			form.addEventListener('submit', function(event) {
+				event.preventDefault();
+				story.sendText(field.value, inputTarget);
+			});
+
+			this.dom.responses.appendChild(form);
+
+			// when typing is the only way to reply, put the cursor there
+
+			if (
+				textLinks.length === 0 &&
+				photoOffers.length === 0 &&
+				locationOffers.length === 0 &&
+				reactionOffers.length === 0
+			) {
+				field.focus({ preventScroll: true });
+			}
+		}
+
+		// response timer
+
+		if (timeoutOffer && this.config.timers) {
+			this.startResponseTimer(timeoutOffer);
+		}
+	},
+
+	/**
+	 Sends the player's typed message and shows the target passage.
+	 The text is recorded in s.lastInput (and appended to s.inputs), so
+	 the target passage can react to it:
+
+	   <% if (s.lastInput.trim().toLowerCase() === 'swordfish') { %>…
+	**/
+
+	sendText: function(text, targetName) {
+		text = (text || '').trim();
+
+		if (text === '') {
+			return;
+		}
+
+		if (!this.passage(targetName)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + targetName + '"'
+				)
+			);
+			return;
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+		this.focusResponses();
+
+		this.state.timedOut = false;
+		this.state.lastInput = text;
+		this.state.inputs = (this.state.inputs || []).concat(text);
+
+		this.showUserBubble(text);
+		this.playSound('send');
+
+		/**
+		 Triggered when the player sends a typed message.
+		**/
+
+		dispatch('textinput', { text: text, target: targetName, story: this });
+
+		this.showDelayed(targetName, { noMove: true });
+	},
+
+	/**
+	 Arms the response timer: the thin rule above the reply panel fills
+	 left to right — shifting from the accent color into red — and when
+	 it reaches the end the timeout fires: the offer's text is sent as
+	 the player's forced reply (if given), otherwise the story simply
+	 moves on without one. s.timedOut records which way it went.
+	**/
+
+	startResponseTimer: function(offer) {
+		this.cancelResponseTimer();
+
+		var story = this;
+		var bar = document.createElement('div');
+
+		bar.className = 'response-timer';
+		bar.setAttribute('aria-hidden', 'true');
+		bar.style.backgroundSize = this.dom.footer.clientWidth + 'px 100%';
+		this.dom.footer.appendChild(bar);
+
+		this.dom.timerText.textContent = this.config.timerLabel.replace(
+			'%s',
+			offer.seconds
+		);
+
+		var started = performance.now();
+		var duration = offer.seconds * 1000;
+
+		var tick = function(now) {
+			if (!story._responseTimer) {
+				return;
+			}
+
+			var fraction = Math.min((now - started) / duration, 1);
+
+			bar.style.width = fraction * 100 + '%';
+
+			if (fraction >= 1) {
+				story.fireResponseTimeout(offer);
+			}
+			else {
+				story._responseTimer.raf = window.requestAnimationFrame(tick);
+			}
+		};
+
+		this._responseTimer = {
+			bar: bar,
+			raf: window.requestAnimationFrame(tick)
+		};
+	},
+
+	cancelResponseTimer: function() {
+		if (!this._responseTimer) {
+			return;
+		}
+
+		window.cancelAnimationFrame(this._responseTimer.raf);
+		this._responseTimer.bar.remove();
+		this._responseTimer = null;
+		this.dom.timerText.textContent = '';
+	},
+
+	fireResponseTimeout: function(offer) {
+		this.cancelResponseTimer();
+
+		if (!this.passage(offer.target)) {
+			this.showError(
+				this.errorMessage.replace(
+					'%s',
+					'There is no passage named "' + offer.target + '"'
+				)
+			);
+			return;
+		}
+
+		if (this.dom.picker.open) {
+			this.dom.picker.close();
+		}
+
+		this.movePassageToHistory();
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+
+		this.state.timedOut = true;
+
+		if (offer.text) {
+			this.showUserBubble(offer.text);
+			this.playSound('send');
+		}
+
+		/**
+		 Triggered when a response timer expires.
+		**/
+
+		dispatch('timeout', {
+			target: offer.target,
+			text: offer.text,
+			story: this
+		});
+
+		this.showDelayed(offer.target, { noMove: true });
 	},
 
 	/**
@@ -1457,6 +1718,8 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearUserResponses();
 		this.focusResponses();
+
+		this.state.timedOut = false;
 
 		var story = this;
 
@@ -1712,6 +1975,8 @@ Object.assign(Story.prototype, {
 		this.clearUserResponses();
 		this.focusResponses();
 
+		this.state.timedOut = false;
+
 		this.state.lastPhoto = name;
 		this.state.sentPhotos = (this.state.sentPhotos || []).concat(name);
 
@@ -1789,6 +2054,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	clearUserResponses: function() {
+		this.cancelResponseTimer();
 		this.dom.responses.textContent = '';
 	},
 
@@ -2041,6 +2307,8 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearUserResponses();
 		this.focusResponses();
+
+		this.state.timedOut = false;
 
 		this.state.lastReaction = emoji;
 		this.react(emoji, 'in');

@@ -37,7 +37,7 @@
 		</header>
 
 		<div class="chat-layout">
-			<main id="chat-panel" class="chat-panel">
+			<main id="chat-panel" class="chat-panel" tabindex="0" aria-label="Chat">
 				<div class="chat-stream">
 					<div id="phistory" class="chat-history" role="log" aria-label="Conversation"></div>
 					<div id="animation-container" role="status" hidden>
@@ -73,6 +73,7 @@
 		</div>
 
 		<footer class="user-response-panel">
+			<span id="timer-announcement" class="visually-hidden" role="status"></span>
 			<div id="user-response-hint" class="user-response-hint content-container"></div>
 			<div id="user-response-panel" class="user-reponse-wrapper user-response-wrapper" role="group" aria-label="Your replies" tabindex="-1"></div>
 		</footer>

@@ -54,6 +54,7 @@ This story shows narration as an overlay above the chat — it can also sit insi
 
 [[pretty good]]
 [[not so well]]
+[[timeout:20 um… good, I guess?->pretty good]]
 
 
 :: whatsup?! [speaker-2]
@@ -155,4 +156,18 @@ right back at you
 :: reaction-reply [speaker-2]
 <% if (s.lastReaction === '👍') { %>a 👍 from you is all I need<% } else { %>see you around 👋<% } %>
 
-[[start over?->Start]]
+one last thing — a little test 🔐
+
+what's the password? hint: it's where my servers live
+
+[[input:type the password…->password-check]]
+
+:: password-check [speaker-2]
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>✅ you were paying attention
+
+we're going to get along just fine<% } else { %>❌ "<%= s.lastInput %>"? no…
+
+think geography. I mentioned it earlier 🌍<% } %>
+
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>[[start over?->Start]]<% } else { %>[[input:try again…->password-check]]
+[[give up->Start]]<% } %>

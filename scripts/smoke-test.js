@@ -229,6 +229,10 @@ async function run() {
 		'no DOM removals from the conversation log during normal flow',
 		(await page.evaluate(() => window.__logRemovals)) === 0
 	);
+	check(
+		'response timer meter armed by the timeout link',
+		(await page.locator('.response-timer').count()) === 1
+	);
 
 	console.log('receipt flipping');
 	await page.evaluate(() => window.story.markUnread());
@@ -301,6 +305,10 @@ async function run() {
 
 	console.log('photo picker');
 	await page.click('.user-response:has-text("pretty good")');
+	check(
+		'choosing a reply cancels the response timer',
+		(await page.locator('.response-timer').count()) === 0
+	);
 	await page.waitForSelector('.user-response--photo', { timeout: 15000 });
 	check(
 		'camera button offered alongside text responses',
@@ -560,6 +568,33 @@ async function run() {
 		await page.screenshot({ path: path.join(SHOT_DIR, 'reactions.png') });
 	}
 
+	console.log('free text input');
+	await page.waitForSelector('.chat-composer-input', { timeout: 15000 });
+	await page.fill('.chat-composer-input', 'clogs');
+	await page.click('.chat-composer-send');
+	await page.waitForSelector('.chat-passage:has-text("think geography")', {
+		timeout: 15000
+	});
+	check(
+		'typed reply sent as an outgoing bubble',
+		(await page.locator('.chat-passage[data-speaker="you"]:has-text("clogs")').count()) === 1
+	);
+	check(
+		'typed reply recorded in s.lastInput',
+		(await page.evaluate(() => window.story.state.lastInput)) === 'clogs'
+	);
+	await page.waitForSelector('.chat-composer-input', { timeout: 15000 });
+	await page.fill('.chat-composer-input', 'Amsterdam');
+	await page.press('.chat-composer-input', 'Enter');
+	await page.waitForSelector('.chat-passage:has-text("paying attention")', {
+		timeout: 15000
+	});
+	check('story branched on the secret phrase', true);
+	check(
+		'every typed reply kept in s.inputs',
+		(await page.evaluate(() => window.story.state.inputs.length)) === 2
+	);
+
 	console.log('axe accessibility audit');
 	await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
 
@@ -626,6 +661,28 @@ async function run() {
 			return ok;
 		})
 	);
+
+	console.log('response timer expiry');
+	await page.evaluate(() => {
+		window.passage.links.push({
+			display: 'timeout:0.2 sorry, dozed off 😴',
+			target: 'Start'
+		});
+		window.story.clearUserResponses();
+		window.story.showUserResponses();
+	});
+	await page.waitForSelector('.chat-passage:has-text("sorry, dozed off")', {
+		timeout: 10000
+	});
+	check('expired timer auto-sent the forced reply', true);
+	check(
+		's.timedOut records the expiry',
+		await page.evaluate(() => window.story.state.timedOut === true)
+	);
+	await page.waitForSelector('.user-response:has-text("whatsup")', {
+		timeout: 15000
+	});
+	check('story continued to the timeout target', true);
 
 	check('no page errors (' + errors.join('; ').slice(0, 300) + ')', errors.length === 0);
 
