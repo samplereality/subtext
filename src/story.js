@@ -349,6 +349,9 @@ var Story = function() {
 	this._asides = { left: null, right: null };
 	this._asideRaf = null;
 
+	/** Timestamp chips shown early, while their passage is "typing". **/
+	this._preShownStamps = null;
+
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
 	 (one `name: url` per line). Add or change entries from your story
@@ -1061,19 +1064,32 @@ Object.assign(Story.prototype, {
 			return nodes;
 		}
 
-		// hoist inline [timestamp ...] chips above the message group
+		// hoist inline [timestamp ...] chips above the message group;
+		// chips already shown while the passage was "typing" are skipped
+
+		var pre = this._preShownStamps;
+		var skip = pre && pre.pid === passage.id ? pre.count : 0;
 
 		blocks = blocks.filter(function(block) {
 			if (
 				block.nodeType === Node.ELEMENT_NODE &&
 				block.classList.contains('chat-timestamp')
 			) {
+				if (skip > 0) {
+					skip -= 1;
+					return false;
+				}
+
 				nodes.push(block);
 				return false;
 			}
 
 			return true;
 		});
+
+		if (pre && pre.pid === passage.id) {
+			this._preShownStamps = null;
+		}
 
 		if (blocks.length === 0) {
 			return nodes;
@@ -3241,6 +3257,7 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearAsides();
 		this.clearUserResponses();
+		this._preShownStamps = null;
 
 		// everything since the checkpoint is discarded
 
@@ -4026,6 +4043,14 @@ Object.assign(Story.prototype, {
 			? this.getPassageDelay(idOrName)
 			: this.config.metaDelay;
 
+		// on a real phone the timestamp appears before the reply does:
+		// surface the passage's [timestamp ...] chips now, while the
+		// typing dots bounce, instead of alongside the message
+
+		if (speaker) {
+			this.preShowTimestamps(passage);
+		}
+
 		if (speaker && this.config.typing) {
 			this.timers.push(
 				window.setTimeout(function() {
@@ -4047,6 +4072,53 @@ Object.assign(Story.prototype, {
 			window.clearTimeout(id);
 		});
 		this.timers = [];
+	},
+
+	/**
+	 Appends a delayed passage's [timestamp ...] chips to its thread
+	 immediately, before the message "arrives"; showPassage later skips
+	 rendering the same chips. Bails on labels that need the template
+	 engine, and on `clear`-tagged passages (their thread is wiped at
+	 arrival, which would erase a pre-shown chip).
+	**/
+
+	preShowTimestamps: function(passage) {
+		if (passage.tags.indexOf('clear') > -1) {
+			return;
+		}
+
+		var story = this;
+		var labels = [];
+		var pattern = /^[ \t]*\[timestamp[ \t]+([^\]]+)\][ \t]*$/gim;
+		var match;
+
+		while ((match = pattern.exec(passage.source))) {
+			if (match[1].indexOf('<%') !== -1) {
+				return;
+			}
+
+			labels.push(match[1].trim());
+		}
+
+		if (labels.length === 0) {
+			return;
+		}
+
+		var threadId = this.getPassageThread(passage);
+		var log = this.logFor(threadId);
+
+		labels.forEach(function(label) {
+			log.appendChild(story.buildTimestamp(label));
+		});
+
+		this._preShownStamps = { pid: passage.id, count: labels.length };
+
+		var viewingIt = !this.multiThread ||
+			(this._screen === 'thread' && this._viewedThread === threadId);
+
+		if (viewingIt) {
+			this.scrollChatIntoView();
+		}
 	},
 
 	/**
@@ -4254,6 +4326,7 @@ Object.assign(Story.prototype, {
 			this.hideMeta();
 			this.clearAsides();
 			this.clearUserResponses();
+			this._preShownStamps = null;
 			this.state = {};
 			this.timeline = [];
 			this.history = [];

@@ -918,6 +918,32 @@ async function run() {
 	);
 	await page.evaluate(() => window.story.clearAsides());
 
+	console.log('timestamps appear while typing');
+
+	// choosing back to Start (which opens with [timestamp Today 9:41 AM])
+	// must surface the chip immediately — before the reply "arrives"
+	const stampCounts = await page.evaluate(() => {
+		const count = () =>
+			document.querySelectorAll('.chat-timestamp').length;
+		const before = count();
+
+		window.story.choose('Start', 'one more time');
+
+		// preShowTimestamps runs synchronously inside choose(), long
+		// before the typing delay elapses
+		return { before, rightAfter: count() };
+	});
+	check(
+		'timestamp chip appears as soon as typing begins',
+		stampCounts.rightAfter === stampCounts.before + 1
+	);
+	await page.waitForTimeout(2000); // Start's typing delay is ~500ms
+	check(
+		'chip is not duplicated when the message arrives',
+		(await page.locator('.chat-timestamp').count()) ===
+			stampCounts.before + 1
+	);
+
 	console.log('multi-conversation inbox');
 
 	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');
