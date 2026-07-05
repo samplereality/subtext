@@ -13,6 +13,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 - **Multiple conversations.** An opt-in contacts inbox lets one story weave several chats at once — unread badges, per-conversation threads, live "typing…" states, and messages that arrive in the background while the player is talking to someone else. Perfect for mystery and epistolary structures. Single-conversation stories are completely unaffected: no `StoryThreads` passage, no inbox, no overhead. See [Multiple conversations](#multiple-conversations).
 - **A tidier header.** Controls are now split by register: in-story navigation (the inbox chevron, back link) sits on the left, app controls (undo, menu) on the right. The light/dark toggle and Restart moved into the menu.
 - **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button).
+- **Asides — narration in the margins.** A fourth narration style: tag a speakerless passage `aside-left` or `aside-right` and it appears as a note *outside* the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat's edge like a sticky note on the glass. See [Asides](#asides).
 
 ## What's new in 2.0
 
@@ -209,13 +210,43 @@ Speakerless passages are the narrator's voice, and you choose where that voice l
 story.config.metaStyle = 'chat';         // default
 story.config.metaStyle = 'overlay';
 story.config.metaStyle = 'notification';
+story.config.metaStyle = 'aside';
 ```
 
 - **`chat`** — centered system-style text inside the conversation (the original Trialogue behavior Subtext inherits). Tight and contained, reads like an iMessage system message.
 - **`overlay`** — the narration floats over the blurred, dimmed chat, like the camera pulling back from the phone. The player's choices stay visible and tappable below it, and the veil lifts as soon as they choose or the next message arrives. Best for scene breaks and interiority that shouldn't pretend to be part of the phone.
 - **`notification`** — the narration drops in as a phone-style notification banner (labeled with the story name by default; change it with `story.config.metaNotificationLabel`). It stays inside the device's fiction — the narrator as an app pinging you. Tapping the banner dismisses it.
+- **`aside`** — the narration appears as a note in the margin *beside* the phone, level with the latest message, and rides along as the chat scrolls — marginalia from a narrator standing entirely outside the device. See [Asides](#asides) below.
 
 Mix modes within one story by tagging individual passages `meta-chat`, `meta-overlay`, or `meta-notification` — a tag beats the global setting. Overlay and notification narration is ephemeral by design (it leaves no trace in the transcript), but it still participates in undo and save/restore, and the `read`/`unread` receipt tags work from any mode — narration saying *"hours pass"* over a message stuck on Delivered is exactly the kind of thing this is for.
+
+### Asides
+
+Asides complete the spectrum of narrative distance: `chat` narration lives inside the conversation, `notification` inside the phone's OS, `overlay` interrupts the device — and an aside stands outside it altogether, a serif note pinned in the margin that comments on the exchange without touching it.
+
+Tag a speakerless passage with a side and it becomes an aside:
+
+```
+:: the-observer [aside-right]
+She has no idea who she's really texting.
+
+[[keep reading->next-message]]
+```
+
+The note appears level with the most recent message, tracks it as new messages push the chat upward, and fades away after a few beats (a beat = any new message in that conversation). Fine-tune with additional tags:
+
+| tag | effect |
+| --- | --- |
+| `aside-left` / `aside-right` | which margin the note appears in |
+| `aside-beats-5` | how many messages it survives (default `3`, or `story.config.asideBeats`) |
+| `aside-hold` | never expires on its own — stays until it scrolls off, is replaced, or the thread is cleared |
+| `aside-up-2` / `aside-down-2` | nudge the note up or down by N rem for fine placement |
+
+One aside per side can be live at a time; a new one replaces the old. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so `hasVisited()` works).
+
+**On phones there is no margin**, so the note floats over the chat's edge instead — translucent and slightly tilted, like a sticky note stuck on the glass. If you'd rather it degrade to a centered in-chat chip on small screens, set `story.config.asideMobile = 'chip'`.
+
+For screen readers the aside layer is a polite live region and each note is announced as it appears, so visually-marginal narration is never lost.
 
 ### Speaker profiles
 

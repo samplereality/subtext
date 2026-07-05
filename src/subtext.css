@@ -1065,6 +1065,81 @@ a {
 	}
 }
 
+/* Narration as asides: notes in the margin beside the phone =============== */
+
+.aside-layer {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+}
+
+.chat-aside {
+	position: absolute;
+	max-width: 16rem;
+	padding: 0.7rem 0.95rem;
+	background: var(--t-elevated);
+	color: var(--t-text);
+	border: 1px solid var(--t-border);
+	border-radius: 0.9rem;
+	box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
+	font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+	font-style: italic;
+	font-size: 0.92rem;
+	line-height: 1.5;
+	pointer-events: auto;
+	/* trails its anchor with a slight ease as the chat scrolls */
+	transition: top 0.22s ease, opacity 0.4s ease;
+	animation: t-aside-in 0.45s ease both;
+}
+
+.chat-aside--left {
+	transform: rotate(-0.8deg);
+}
+
+.chat-aside--right {
+	transform: rotate(0.8deg);
+}
+
+/* no margin to sit in: float over the chat's edge like a note
+   stuck on the glass */
+
+.chat-aside--over {
+	background: color-mix(in srgb, var(--t-elevated) 90%, transparent);
+	-webkit-backdrop-filter: blur(12px) saturate(1.4);
+	backdrop-filter: blur(12px) saturate(1.4);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.chat-aside--hidden {
+	opacity: 0;
+	visibility: hidden;
+}
+
+.chat-aside--out {
+	animation: none;
+	opacity: 0;
+}
+
+.chat-aside p {
+	margin: 0 0 0.4em;
+}
+
+.chat-aside p:last-child {
+	margin-bottom: 0;
+}
+
+.chat-aside img {
+	border-radius: 0.5rem;
+}
+
+@keyframes t-aside-in {
+	from {
+		opacity: 0;
+		transform: translateY(0.6rem);
+	}
+}
+
 /* Typing indicator ======================================================== */
 
 #animation-container[hidden] {

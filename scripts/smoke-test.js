@@ -817,6 +817,107 @@ async function run() {
 			bubblesBeforeSilent
 	);
 
+	console.log('asides in the margin');
+
+	// a desktop-sized page: real margins beside the phone
+	const asidePage = await browser.newPage({
+		viewport: { width: 1280, height: 800 }
+	});
+
+	asidePage.on('pageerror', (err) => errors.push('aside: ' + err.message));
+	await asidePage.goto('file://' + DEMO);
+	await asidePage.waitForSelector('.user-response');
+	await asidePage.evaluate(() => window.story.show('one-more-thing'));
+	await asidePage.waitForSelector('#aside-layer .chat-aside--right', {
+		timeout: 15000
+	});
+	await asidePage.waitForTimeout(600);
+	const asideGeom = await asidePage.evaluate(() => {
+		const aside = document.querySelector('.chat-aside');
+		const app = document.getElementById('app');
+		const anchor = document.querySelector(
+			'#phistory .chat-passage-wrapper:last-of-type'
+		);
+		return {
+			role: aside.getAttribute('role'),
+			left: aside.getBoundingClientRect().left,
+			top: aside.getBoundingClientRect().top,
+			appRight: app.getBoundingClientRect().right,
+			over: aside.classList.contains('chat-aside--over'),
+			anchorTop: anchor ? anchor.getBoundingClientRect().top : null
+		};
+	});
+	check(
+		'aside sits in the margin outside the phone',
+		asideGeom.left > asideGeom.appRight && !asideGeom.over
+	);
+	check('aside is a note for assistive tech', asideGeom.role === 'note');
+	check(
+		'aside rides level with the message it follows',
+		asideGeom.anchorTop !== null &&
+			Math.abs(asideGeom.top - asideGeom.anchorTop) < 40
+	);
+
+	// three beats (new messages) age it out
+	await asidePage.evaluate(() => {
+		window.story.showUserBubble('one');
+		window.story.showUserBubble('two');
+		window.story.showUserBubble('three');
+	});
+	await asidePage.waitForTimeout(700);
+	check(
+		'aside fades after its beats run out',
+		(await asidePage.locator('.chat-aside').count()) === 0
+	);
+
+	// the left margin, via tag
+	await asidePage.evaluate(() => window.story.show('aside-demo-left'));
+	await asidePage.waitForSelector('#aside-layer .chat-aside--left', {
+		timeout: 15000
+	});
+	check(
+		'aside-left lands in the left margin',
+		await asidePage.evaluate(() => {
+			const aside = document.querySelector('.chat-aside--left');
+			const app = document.getElementById('app');
+			return (
+				aside.getBoundingClientRect().right <
+				app.getBoundingClientRect().left
+			);
+		})
+	);
+
+	// undo sweeps asides away (they are ephemeral commentary)
+	await asidePage.click('.user-response:has-text("onward")');
+	await asidePage.evaluate(() => window.story.undo());
+	await asidePage.waitForTimeout(700);
+	check(
+		'undo clears any live aside',
+		(await asidePage.locator('.chat-aside').count()) === 0
+	);
+	await asidePage.close();
+
+	// no margin on a phone-sized screen: the aside floats over the
+	// chat's edge instead
+	await page.evaluate(() => window.story.show('one-more-thing'));
+	await page.waitForSelector('#aside-layer .chat-aside', { timeout: 15000 });
+	await page.waitForTimeout(600);
+	check(
+		'on small screens the aside floats over the chat edge',
+		await page.evaluate(() => {
+			const aside = document.querySelector('.chat-aside');
+			const app = document.getElementById('app');
+			const a = aside.getBoundingClientRect();
+			const b = app.getBoundingClientRect();
+			return (
+				aside.classList.contains('chat-aside--over') &&
+				a.left >= b.left - 1 &&
+				a.right <= b.right + 1
+			);
+		})
+	);
+	await page.evaluate(() => window.story.clearAsides());
+
 	console.log('multi-conversation inbox');
 
 	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');
