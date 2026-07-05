@@ -12,6 +12,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 - **Multiple conversations.** An opt-in contacts inbox lets one story weave several chats at once — unread badges, per-conversation threads, live "typing…" states, and messages that arrive in the background while the player is talking to someone else. Perfect for mystery and epistolary structures. Single-conversation stories are completely unaffected: no `StoryThreads` passage, no inbox, no overhead. See [Multiple conversations](#multiple-conversations).
 - **A tidier header.** Controls are now split by register: in-story navigation (the inbox chevron, back link) sits on the left, app controls (undo, menu) on the right. The light/dark toggle and Restart moved into the menu.
+- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button).
 
 ## What's new in 2.0
 

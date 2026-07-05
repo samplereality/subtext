@@ -32,7 +32,28 @@ if (introAt !== -1) {
 	readme = readme.slice(introAt);
 }
 
-const docsHtml = marked.parse(readme);
+let docsHtml = marked.parse(readme);
+
+// marked no longer emits heading ids, so in-page anchors like
+// [Multiple conversations](#multiple-conversations) — which work on
+// GitHub's README render — went nowhere on the site. Add GitHub-style
+// slug ids to headings ourselves.
+
+function slugify(html) {
+	return html
+		.replace(/<[^>]+>/g, '')
+		.replace(/&[a-z#0-9]+;/gi, '')
+		.toLowerCase()
+		.replace(/[^\w\s-]/g, '')
+		.trim()
+		.replace(/\s+/g, '-');
+}
+
+docsHtml = docsHtml.replace(
+	/<h([1-4])>([\s\S]*?)<\/h\1>/g,
+	(match, level, inner) =>
+		`<h${level} id="${slugify(inner)}">${inner}</h${level}>`
+);
 
 const css = `
 :root {
