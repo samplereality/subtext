@@ -15,6 +15,10 @@ var REACT_LINK_PREFIX = 'react:';
 var INPUT_LINK_PREFIX = 'input:';
 var TIMEOUT_LINK_PREFIX = 'timeout:';
 
+/* the minimum margin (px) beside the phone for asides to sit in it;
+   anything tighter and they float over the chat's edge instead */
+var ASIDE_MIN_MARGIN = 170;
+
 /* Feather Icons arrow-up (MIT) */
 var SEND_SVG =
 	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
@@ -284,7 +288,15 @@ var Story = function() {
 		/* default label on a location-share response button */
 		locationButtonLabel: 'Share my location',
 		/* label under the map card of a shared player location */
-		locationBubbleLabel: 'My location'
+		locationBubbleLabel: 'My location',
+		/* how many beats a margin aside survives before fading (a beat
+		   is any new message in its conversation); per-passage override
+		   with aside-beats-N or aside-hold */
+		asideBeats: 3,
+		/* when the screen has no margin beside the phone, asides float
+		   over the chat's edge ('float'); set 'chip' to fall back to
+		   centered in-chat narration instead */
+		asideMobile: 'float'
 	};
 
 	/**
@@ -332,6 +344,10 @@ var Story = function() {
 
 	/** Applied reactions, so undo can revert them. **/
 	this._reactionLog = [];
+
+	/** Live margin asides, one per side. **/
+	this._asides = { left: null, right: null };
+	this._asideRaf = null;
 
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
@@ -424,7 +440,8 @@ Object.assign(Story.prototype, {
 			inbox: byId('inbox'),
 			inboxList: byId('inbox-list'),
 			inboxButton: byId('nav-link-inbox'),
-			timerText: byId('timer-announcement')
+			timerText: byId('timer-announcement'),
+			asideLayer: byId('aside-layer')
 		};
 
 		this._responseTimer = null;
@@ -835,6 +852,17 @@ Object.assign(Story.prototype, {
 		var speaker = this.getPassageSpeaker(passage);
 		var metaMode = speaker ? 'chat' : this.getMetaMode(passage);
 
+		// with no margin and asideMobile 'chip', asides degrade to
+		// centered in-chat narration
+
+		if (
+			metaMode === 'aside' &&
+			this.config.asideMobile === 'chip' &&
+			this.asideMargin() < ASIDE_MIN_MARGIN
+		) {
+			metaMode = 'chat';
+		}
+
 		// route to the passage's thread; a passage tagged for another
 		// thread pulls the whole conversation over there
 
@@ -879,7 +907,16 @@ Object.assign(Story.prototype, {
 			}
 		);
 
-		if (metaMode !== 'chat') {
+		if (metaMode === 'aside') {
+			// asides are ephemeral: never rebuilt from a save replay
+
+			if (!opts.instant) {
+				this.showAside(passage, html, threadId);
+			}
+
+			this._currentNodes = [];
+		}
+		else if (metaMode !== 'chat') {
 			this.showMeta(html, metaMode);
 			this._currentNodes = [];
 		}
@@ -908,6 +945,10 @@ Object.assign(Story.prototype, {
 			});
 
 			this._currentNodes = nodes;
+
+			if (nodes.length > 0) {
+				this.noteAsideBeat(threadId);
+			}
 
 			if (nodes.length > 0 && speaker && speaker !== 'you') {
 				var probe = document.createElement('div');
@@ -2003,6 +2044,7 @@ Object.assign(Story.prototype, {
 
 		this.applyGrouping(wrapper, outLog);
 		outLog.appendChild(wrapper);
+		this.noteAsideBeat(this._hotThread);
 
 		if (this.multiThread) {
 			this.bumpThreadActivity(this._hotThread);
@@ -2234,6 +2276,7 @@ Object.assign(Story.prototype, {
 
 		this.applyGrouping(wrapper, outLog);
 		outLog.appendChild(wrapper);
+		this.noteAsideBeat(this._hotThread);
 
 		if (this.multiThread) {
 			this.bumpThreadActivity(this._hotThread);
@@ -2315,6 +2358,7 @@ Object.assign(Story.prototype, {
 
 		this.applyGrouping(wrapper, outLog);
 		outLog.appendChild(wrapper);
+		this.noteAsideBeat(this._hotThread);
 
 		if (this.multiThread) {
 			this.bumpThreadActivity(this._hotThread);
@@ -2561,7 +2605,18 @@ Object.assign(Story.prototype, {
 	**/
 
 	clearThread: function(threadId) {
-		this.logFor(threadId || this._hotThread).textContent = '';
+		var story = this;
+		var cleared = threadId || this._hotThread;
+
+		['left', 'right'].forEach(function(side) {
+			var aside = story._asides[side];
+
+			if (aside && aside.thread === cleared) {
+				story.removeAside(side);
+			}
+		});
+
+		this.logFor(cleared).textContent = '';
 		this._currentNodes = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
@@ -2756,9 +2811,38 @@ Object.assign(Story.prototype, {
 			return 'chat';
 		}
 
+		if (this.getAsideSide(passage)) {
+			return 'aside';
+		}
+
 		var mode = this.config.metaStyle;
 
+		if (mode === 'aside') {
+			return 'aside';
+		}
+
 		return mode === 'overlay' || mode === 'notification' ? mode : 'chat';
+	},
+
+	/**
+	 Which margin an aside-tagged passage belongs in, or null if it
+	 isn't an aside. A bare `aside` tag (or config.metaStyle = 'aside')
+	 defaults to the right margin.
+	**/
+
+	getAsideSide: function(passage) {
+		if (passage.tags.indexOf('aside-left') > -1) {
+			return 'left';
+		}
+
+		if (
+			passage.tags.indexOf('aside-right') > -1 ||
+			passage.tags.indexOf('aside') > -1
+		) {
+			return 'right';
+		}
+
+		return null;
 	},
 
 	/**
@@ -2800,6 +2884,260 @@ Object.assign(Story.prototype, {
 	hideMeta: function() {
 		this.dom.metaOverlay.hidden = true;
 		this.dom.metaNotification.hidden = true;
+	},
+
+	/**
+	 The margin (px) available beside the phone frame. Below
+	 ASIDE_MIN_MARGIN, asides float over the chat's edge instead.
+	**/
+
+	asideMargin: function() {
+		var app = document.getElementById('app');
+
+		if (!app) {
+			return 0;
+		}
+
+		var rect = app.getBoundingClientRect();
+
+		return Math.min(rect.left, window.innerWidth - rect.right);
+	},
+
+	/**
+	 Presents narration as an aside: a note pinned in the margin beside
+	 the phone, level with the last message, that rides along as the
+	 chat scrolls and fades after a few beats. Asides are ephemeral
+	 commentary — they are not replayed from saves and vanish on undo.
+	**/
+
+	showAside: function(passage, html, threadId) {
+		var probe = document.createElement('div');
+
+		probe.innerHTML = html;
+
+		if (
+			probe.textContent.trim() === '' &&
+			!probe.querySelector('img, video, iframe, svg')
+		) {
+			return;
+		}
+
+		var side = this.getAsideSide(passage) || 'right';
+		var beats = this.config.asideBeats;
+		var nudge = 0;
+		var hold = false;
+
+		passage.tags.forEach(function(tag) {
+			var match;
+
+			if ((match = /^aside-beats-(\d+)$/.exec(tag))) {
+				beats = parseInt(match[1], 10);
+			}
+			else if (tag === 'aside-hold') {
+				hold = true;
+			}
+			else if ((match = /^aside-up-(\d+)$/.exec(tag))) {
+				nudge = -parseInt(match[1], 10);
+			}
+			else if ((match = /^aside-down-(\d+)$/.exec(tag))) {
+				nudge = parseInt(match[1], 10);
+			}
+		});
+
+		// one live aside per side; a newcomer replaces the old one
+
+		this.removeAside(side);
+
+		var el = document.createElement('div');
+
+		el.className = 'chat-aside chat-aside--' + side;
+		el.setAttribute('role', 'note');
+		el.setAttribute('aria-label', 'Aside');
+		el.innerHTML = html;
+		this.buildRichContent(el);
+
+		// pinned level with the message it comments on
+
+		var anchor = this.logFor(threadId).lastElementChild || null;
+
+		this.dom.asideLayer.appendChild(el);
+		this._asides[side] = {
+			el: el,
+			anchor: anchor,
+			thread: threadId,
+			beats: hold ? Infinity : Math.max(1, beats),
+			nudge: nudge
+		};
+
+		this.syncAsides();
+		this.startAsideLoop();
+	},
+
+	/**
+	 Fades out and removes the aside on one side, if any.
+	**/
+
+	removeAside: function(side) {
+		var aside = this._asides[side];
+
+		if (!aside) {
+			return;
+		}
+
+		this._asides[side] = null;
+		aside.el.classList.add('chat-aside--out');
+		window.setTimeout(function() {
+			aside.el.remove();
+		}, 450);
+	},
+
+	clearAsides: function() {
+		this.removeAside('left');
+		this.removeAside('right');
+	},
+
+	/**
+	 A beat: a new message landed in a conversation. Live asides in
+	 that conversation age by one and fade once their beats run out.
+	**/
+
+	noteAsideBeat: function(threadId) {
+		var story = this;
+
+		['left', 'right'].forEach(function(side) {
+			var aside = story._asides[side];
+
+			if (aside && aside.thread === threadId) {
+				aside.beats -= 1;
+
+				if (aside.beats <= 0) {
+					story.removeAside(side);
+				}
+			}
+		});
+	},
+
+	/**
+	 Positions live asides against their anchor message: in the margin
+	 beside the phone when there's room, floating over the chat's edge
+	 when there isn't. Runs every frame while asides exist (anchors
+	 move constantly — smooth scrolling, entrance animations).
+	**/
+
+	syncAsides: function() {
+		var story = this;
+		var app = document.getElementById('app');
+
+		if (!app) {
+			return;
+		}
+
+		var appRect = app.getBoundingClientRect();
+		var margin = Math.min(
+			appRect.left,
+			window.innerWidth - appRect.right
+		);
+		var over = margin < ASIDE_MIN_MARGIN;
+		var panelRect = this.dom.panel.getBoundingClientRect();
+
+		['left', 'right'].forEach(function(side) {
+			var aside = story._asides[side];
+
+			if (!aside) {
+				return;
+			}
+
+			// the message it commented on is gone (undo, clear-thread)
+
+			if (aside.anchor && !aside.anchor.isConnected) {
+				story.removeAside(side);
+				return;
+			}
+
+			var el = aside.el;
+
+			// hidden while another conversation or the inbox is on screen
+
+			var visible = !story.multiThread ||
+				(story._screen === 'thread' &&
+					story._viewedThread === aside.thread);
+
+			el.classList.toggle('chat-aside--hidden', !visible);
+
+			if (!visible) {
+				return;
+			}
+
+			el.classList.toggle('chat-aside--over', over);
+
+			var top = aside.anchor
+				? aside.anchor.getBoundingClientRect().top
+				: panelRect.top + 12;
+
+			top += aside.nudge * 16;
+
+			// it followed its message off the top of the screen: done
+
+			if (top + el.offsetHeight < panelRect.top + 4) {
+				story.removeAside(side);
+				return;
+			}
+
+			el.style.top =
+				Math.min(top, panelRect.bottom - el.offsetHeight - 8) + 'px';
+
+			if (over) {
+				// no margin: hug the phone's inner edge, over the chat
+
+				el.style.maxWidth =
+					Math.min(appRect.width * 0.64, 250) + 'px';
+
+				if (side === 'left') {
+					el.style.left = (appRect.left + 10) + 'px';
+					el.style.right = 'auto';
+				}
+				else {
+					el.style.right =
+						(window.innerWidth - appRect.right + 10) + 'px';
+					el.style.left = 'auto';
+				}
+			}
+			else {
+				var gap = 14;
+
+				el.style.maxWidth =
+					Math.min(margin - gap * 2, 270) + 'px';
+
+				if (side === 'left') {
+					el.style.right =
+						(window.innerWidth - appRect.left + gap) + 'px';
+					el.style.left = 'auto';
+				}
+				else {
+					el.style.left = (appRect.right + gap) + 'px';
+					el.style.right = 'auto';
+				}
+			}
+		});
+	},
+
+	startAsideLoop: function() {
+		if (this._asideRaf) {
+			return;
+		}
+
+		var story = this;
+		var tick = function() {
+			if (!story._asides.left && !story._asides.right) {
+				story._asideRaf = null;
+				return;
+			}
+
+			story.syncAsides();
+			story._asideRaf = window.requestAnimationFrame(tick);
+		};
+
+		this._asideRaf = window.requestAnimationFrame(tick);
 	},
 
 	/**
@@ -2901,6 +3239,7 @@ Object.assign(Story.prototype, {
 		this.cancelTimers();
 		this.hideTyping();
 		this.hideMeta();
+		this.clearAsides();
 		this.clearUserResponses();
 
 		// everything since the checkpoint is discarded
@@ -3913,6 +4252,7 @@ Object.assign(Story.prototype, {
 			this.cancelTimers();
 			this.hideTyping();
 			this.hideMeta();
+			this.clearAsides();
 			this.clearUserResponses();
 			this.state = {};
 			this.timeline = [];
