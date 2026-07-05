@@ -8,12 +8,15 @@ Subtext is a story format for [Twine 2](https://twinery.org/) that turns a branc
 
 Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Philo van Kemenade. The name is what chat fiction runs on: the message left on *Delivered*, the *Read* with no reply, the typing that starts and stops — everything underneath what's actually said. The lineage runs Subtext → Trialogue → [Paloma](http://mcdemarco.net/tools/scree/paloma/) → [Snowman](https://github.com/videlais/snowman).
 
+## What's new in 2.2
+
+- **Asides — narration in the margins.** A fourth narration style: tag a speakerless passage `aside-left` or `aside-right` and it appears as a note *outside* the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat's edge like a sticky note on the glass. See [Asides](#asides).
+- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button).
+
 ## What's new in 2.1
 
 - **Multiple conversations.** An opt-in contacts inbox lets one story weave several chats at once — unread badges, per-conversation threads, live "typing…" states, and messages that arrive in the background while the player is talking to someone else. Perfect for mystery and epistolary structures. Single-conversation stories are completely unaffected: no `StoryThreads` passage, no inbox, no overhead. See [Multiple conversations](#multiple-conversations).
 - **A tidier header.** Controls are now split by register: in-story navigation (the inbox chevron, back link) sits on the left, app controls (undo, menu) on the right. The light/dark toggle and Restart moved into the menu.
-- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button).
-- **Asides — narration in the margins.** A fourth narration style: tag a speakerless passage `aside-left` or `aside-right` and it appears as a note *outside* the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat's edge like a sticky note on the glass. See [Asides](#asides).
 
 ## What's new in 2.0
 
@@ -523,7 +526,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.0.0"
+  "format-version": "2.2.0"
 }
 ```
 
