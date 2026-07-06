@@ -284,11 +284,14 @@ a {
 	scrollbar-color: color-mix(in srgb, var(--t-muted) 45%, transparent) transparent;
 }
 
+/* a new conversation fills from the top, like a real messaging app;
+   once it overflows, scrolling pins to the newest message */
+
 .chat-stream {
 	display: flex;
 	flex-direction: column;
 	min-height: 100%;
-	justify-content: flex-end;
+	justify-content: flex-start;
 }
 
 /* the single conversation log all messages live in */
