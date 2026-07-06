@@ -797,6 +797,10 @@ async function run() {
 			.last()
 			.textContent()).indexOf('now that you explain it') !== -1
 	);
+	check(
+		's.lastChoice records the pill label, not the sent text',
+		(await page.evaluate(() => window.story.state.lastChoice)) === 'sure'
+	);
 	await page.waitForSelector('.chat-passage:has-text("elaborated")', {
 		timeout: 15000
 	});
@@ -815,6 +819,11 @@ async function run() {
 		'an empty (send:) advances without a player bubble',
 		(await page.locator('.chat-passage[data-speaker="you"]').count()) ===
 			bubblesBeforeSilent
+	);
+	check(
+		's.lastChoice records the label even when nothing was sent',
+		(await page.evaluate(() => window.story.state.lastChoice)) ===
+			'just react'
 	);
 
 	console.log('asides in the margin');

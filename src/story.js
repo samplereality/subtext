@@ -598,13 +598,15 @@ Object.assign(Story.prototype, {
 			event.preventDefault();
 
 			// data-sent (if present) overrides what the player "sends";
-			// otherwise the pill's own text is sent
+			// otherwise the pill's own text is sent. The label itself
+			// is recorded as s.lastChoice either way.
 
+			var label = link.textContent.trim();
 			var sent = link.hasAttribute('data-sent')
 				? link.getAttribute('data-sent')
-				: link.textContent.trim();
+				: label;
 
-			story.choose(link.getAttribute('data-passage'), sent);
+			story.choose(link.getAttribute('data-passage'), sent, label);
 		});
 
 		// audio can only start after a user gesture; unlock it on the
@@ -792,9 +794,14 @@ Object.assign(Story.prototype, {
 	 Handles the user choosing a response: checkpoints the current state,
 	 renders the choice as an outgoing message and shows the target
 	 passage after a typing delay.
+
+	 The choice is recorded in s.lastChoice — the pill's label when one
+	 was tapped, otherwise the sent text — so passages can branch on
+	 which reply the player picked even when several pills share a
+	 target.
 	**/
 
-	choose: function(targetName, sentText) {
+	choose: function(targetName, sentText, label) {
 		if (!this.passage(targetName)) {
 			this.showError(
 				this.errorMessage.replace(
@@ -812,6 +819,15 @@ Object.assign(Story.prototype, {
 		this.focusResponses();
 
 		this.state.timedOut = false;
+
+		var chosen =
+			typeof label === 'string' && label.trim() !== ''
+				? label.trim()
+				: (sentText || '').trim();
+
+		if (chosen !== '') {
+			this.state.lastChoice = chosen;
+		}
 
 		// an empty message (from a `(send:)` link) advances the story
 		// without adding a player bubble; `||` in the text splits it

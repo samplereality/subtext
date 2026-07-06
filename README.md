@@ -359,6 +359,19 @@ And `||` inside the sent text breaks it into separate bubbles, fired off in quic
 [[what happened (send: ok || here's the thing || promise you won't be mad)->confession]]
 ```
 
+**Tracking which pill was tapped.** Every choice records its pill label in `s.lastChoice`, so several pills can share a target and the passage can still tell them apart:
+
+```
+:: Start [speaker-you]
+[[hey (send:)->Intro to Dad]]
+[[happy fathers day (send:)->Intro to Dad]]
+
+:: Intro to Dad [speaker-dad]
+<% if (s.lastChoice === 'happy fathers day') { %>you remembered 🥲<% } else { %>hey kiddo<% } %>
+```
+
+The *label* is what's recorded (not the `(send:)` text), even when nothing is sent at all. Matching is exact, so mind capitalization — or compare with `s.lastChoice.toLowerCase()`. Like all state it participates in undo and save/restore. Timed-out forced replies don't overwrite it; check `s.timedOut` for those. (Photos, locations, reactions, and typed input have their own trackers: `s.lastPhoto`, `s.playerLocation`, `s.lastReaction`, `s.lastInput`.)
+
 ### Timed responses
 
 Put the player on the clock. A `timeout:` link arms a timer while the choices are showing. The thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
@@ -714,6 +727,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 - **Debug mode.** Twine's Test button, `tweego -t`, or `?debug` opens a devtools-style panel: watch variables live, run JavaScript, jump to any passage (fast-forward), rewind, and inspect the timeline. Debug autosaves keep your place across `tweego -w` rebuilds — the live-preview tab reloads and you're still in the scene you're editing, even when the rebuild renumbers every passage. See [Debug mode](#debug-mode).
 - **Multi-bubble sends.** `||` in a `(send: …)` label breaks the sent text into separate bubbles fired in quick succession — one tap, a flurry of texts. See [Reply pills and sent text](#reply-pills-and-sent-text).
+- **`s.lastChoice`.** Every tapped pill records its label, so several pills can lead to the same passage and the story can still branch on which one the player picked. See [Reply pills and sent text](#reply-pills-and-sent-text).
 
 ### Version 2.2
 
