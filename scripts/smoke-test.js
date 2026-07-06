@@ -944,6 +944,138 @@ async function run() {
 			stampCounts.before + 1
 	);
 
+	console.log('multi-bubble send');
+
+	await page.evaluate(() => window.story.show('pill-demo'));
+	await page.waitForSelector('.user-response:has-text("the long version")', {
+		timeout: 15000
+	});
+	const bubblesBeforeMulti = await page.locator(
+		'.chat-passage[data-speaker="you"]'
+	).count();
+	await page.click('.user-response:has-text("the long version")');
+	await page.waitForTimeout(700);
+	check(
+		'|| in a (send:) label splits into separate bubbles',
+		(await page.locator('.chat-passage[data-speaker="you"]').count()) ===
+			bubblesBeforeMulti + 3
+	);
+	check(
+		'classic [[display|target]] links still parse',
+		await page.evaluate(() => {
+			window.passage.links = [];
+			window.Passage.render('[[say hi|Start]] [[a || b (send: a || b)->Start]]');
+			const links = window.passage.links;
+			return (
+				links.length === 2 &&
+				links[0].display === 'say hi' &&
+				links[0].target === 'Start' &&
+				links[1].target === 'Start' &&
+				links[1].sent === 'a || b'
+			);
+		})
+	);
+
+	console.log('debug mode');
+
+	const debugPage = await browser.newPage({
+		viewport: { width: 1280, height: 800 }
+	});
+
+	debugPage.on('pageerror', (err) => errors.push('debug: ' + err.message));
+	await debugPage.goto('file://' + DEMO + '?debug');
+	await debugPage.waitForSelector('.user-response');
+
+	// an earlier session's debug autosave would restore mid-story and
+	// skew every assertion below; start from a clean slate
+	if (await debugPage.evaluate(() => window.passage.name !== 'Start')) {
+		await debugPage.evaluate(() => localStorage.clear());
+		await debugPage.reload();
+		await debugPage.waitForSelector('.user-response');
+	}
+	check(
+		'?debug enables debug mode and forces autosave',
+		await debugPage.evaluate(
+			() => window.story.debug && window.story.config.autosave
+		)
+	);
+	await debugPage.click('#debug-toggle');
+	await debugPage.waitForSelector('#debug-panel:not([hidden])');
+	check(
+		'panel reports the current passage',
+		(await debugPage.textContent('#debug-where')).indexOf('Start') > -1
+	);
+
+	// live variable watch via the eval console
+	await debugPage.fill('#debug-eval input', 's.clue = "red herring"');
+	await debugPage.click('#debug-eval button');
+	check(
+		'eval sets state and the variables table shows it',
+		(await debugPage.textContent('#debug-vars')).indexOf('red herring') > -1
+	);
+
+	// fast-forward: filter the passage list and jump
+	await debugPage.fill('#debug-filter', 'pill-demo');
+	await debugPage.click('#debug-passages button:has-text("pill-demo")');
+	await debugPage.waitForSelector('.user-response:has-text("the long version")', {
+		timeout: 15000
+	});
+	check(
+		'jump fast-forwards to the chosen passage',
+		await debugPage.evaluate(() => window.passage.name === 'pill-demo')
+	);
+
+	// the jump is undoable from the panel
+	await debugPage.click('#debug-undo');
+	await debugPage.waitForTimeout(300);
+	check(
+		'panel undo rewinds the jump',
+		await debugPage.evaluate(() => window.passage.name !== 'pill-demo')
+	);
+
+	// resume: a reload (what a `tweego -w` rebuild triggers in a live
+	// preview) restores the current position from the debug autosave —
+	// even when the rebuild renumbers every passage id
+	await debugPage.evaluate(() => window.story.debugJump('pill-demo'));
+	await debugPage.waitForSelector('.user-response:has-text("the long version")', {
+		timeout: 15000
+	});
+	await debugPage.waitForTimeout(300);
+
+	const fs = require('fs');
+	const { execFileSync } = require('child_process');
+	const TWEE = path.join(__dirname, '..', 'docs', 'subtext-demo.twee');
+	const shiftedTwee = path.join(__dirname, '_shifted.twee');
+
+	fs.writeFileSync(
+		shiftedTwee,
+		fs.readFileSync(TWEE, 'utf8').replace(
+			':: Start [speaker-1]',
+			':: brand-new-scene [speaker-1]\nadded mid-session\n\n[[ok->Start]]\n\n:: Start [speaker-1]'
+		)
+	);
+	execFileSync('node', [path.join(__dirname, 'build-demo.js'), shiftedTwee, DEMO]);
+	await debugPage.reload();
+	await debugPage.waitForSelector('.user-response', { timeout: 15000 });
+	check(
+		'reload after a pid-shifting rebuild resumes at the same passage',
+		await debugPage.evaluate(
+			() =>
+				window.passage.name === 'pill-demo' &&
+				!!window.story.passage('brand-new-scene')
+		)
+	);
+	fs.unlinkSync(shiftedTwee);
+	execFileSync('node', [path.join(__dirname, 'build-demo.js')]); // restore
+	await debugPage.evaluate(() => window.story.restart && localStorage.clear());
+	await debugPage.close();
+
+	// debug chrome never appears for players
+	check(
+		'no debug UI outside debug mode',
+		(await page.locator('#debug-toggle').count()) === 0
+	);
+
 	console.log('multi-conversation inbox');
 
 	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');

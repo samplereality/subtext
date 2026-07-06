@@ -167,6 +167,15 @@ var Story = function() {
 	this.creatorVersion = el.getAttribute('creator-version');
 
 	/**
+	 Debug mode. Twine's Test button and `tweego -t` publish with
+	 options="debug"; a ?debug query switch works on any build, and
+	 story.config.debug = true forces it from story JavaScript.
+	**/
+	this.debug =
+		(el.getAttribute('options') || '').indexOf('debug') > -1 ||
+		/[?&]debug\b/.test(window.location.search);
+
+	/**
 	 An object that stores data that persists across a single user session.
 	**/
 	this.state = {};
@@ -296,7 +305,10 @@ var Story = function() {
 		/* when the screen has no margin beside the phone, asides float
 		   over the chat's edge ('float'); set 'chip' to fall back to
 		   centered in-chat narration instead */
-		asideMobile: 'float'
+		asideMobile: 'float',
+		/* force debug mode on (Twine's Test button, `tweego -t`, and a
+		   ?debug URL switch enable it too) */
+		debug: false
 	};
 
 	/**
@@ -686,6 +698,16 @@ Object.assign(Story.prototype, {
 
 		// apply config that user scripts may have changed
 
+		if (this.config.debug) {
+			this.debug = true;
+		}
+
+		if (this.debug) {
+			// autosave keeps your place across `tweego -w` rebuilds
+			this.config.autosave = true;
+			this.enableDebug();
+		}
+
 		if (this.config.lang) {
 			document.documentElement.lang = this.config.lang;
 		}
@@ -792,10 +814,20 @@ Object.assign(Story.prototype, {
 		this.state.timedOut = false;
 
 		// an empty message (from a `(send:)` link) advances the story
-		// without adding a player bubble
+		// without adding a player bubble; `||` in the text splits it
+		// into separate bubbles, fired off in quick succession
 
-		if (sentText && sentText.trim() !== '') {
-			this.showUserBubble(sentText);
+		var story = this;
+		var parts = (sentText || '')
+			.split('||')
+			.map(function(part) { return part.trim(); })
+			.filter(function(part) { return part !== ''; });
+
+		parts.forEach(function(part, index) {
+			story.showUserBubble(part, { delay: index * 160 });
+		});
+
+		if (parts.length > 0) {
 			this.playSound('send');
 		}
 
@@ -2368,6 +2400,12 @@ Object.assign(Story.prototype, {
 
 		if (opts.instant) {
 			wrapper.classList.add('no-anim');
+		}
+
+		// a multi-bubble send staggers its bubbles slightly
+
+		if (opts.delay) {
+			wrapper.style.animationDelay = opts.delay + 'ms';
 		}
 
 		var outLog = this.hotLog();
@@ -4249,9 +4287,31 @@ Object.assign(Story.prototype, {
 	**/
 
 	saveHash: function() {
+		var story = this;
+		var timeline = this.timeline;
+
+		// debug saves reference passages by NAME, not id: Tweego and
+		// Twine renumber passage ids as the story grows, and a debug
+		// autosave has to survive a `tweego -w` rebuild to keep your
+		// place (restore() resolves either form)
+
+		if (this.debug) {
+			timeline = timeline.map(function(entry) {
+				if ((entry.t === 'p' || entry.t === 'd') && entry.id != null) {
+					var p = story.passage(entry.id);
+
+					if (p) {
+						return { t: entry.t, id: p.name };
+					}
+				}
+
+				return entry;
+			});
+		}
+
 		var save = {
 			state: this.state,
-			timeline: this.timeline,
+			timeline: timeline,
 			/* legacy field so old integrations reading history keep working */
 			history: this.history
 		};
@@ -4403,15 +4463,25 @@ Object.assign(Story.prototype, {
 						});
 					}
 
-					story.timeline.push({ t: 'd', id: entry.id });
+					story.timeline.push({
+						t: 'd',
+						id: delivered ? delivered.id : entry.id
+					});
 				}
 				else {
-					story.show(entry.id, {
+					// debug saves store names; resolve back to the
+					// current numeric id so history and hasVisited()
+					// keep working
+
+					var shown = story.passage(entry.id);
+					var pid = shown ? shown.id : entry.id;
+
+					story.show(pid, {
 						record: false,
 						instant: true
 					});
-					story.timeline.push({ t: 'p', id: entry.id });
-					story.history.push(entry.id);
+					story.timeline.push({ t: 'p', id: pid });
+					story.history.push(pid);
 				}
 			});
 
@@ -4482,6 +4552,241 @@ Object.assign(Story.prototype, {
 			window.location.pathname + window.location.search
 		);
 		window.location.reload();
+	},
+
+	/**
+	 Jumps straight to a passage — the debug panel's fast-forward. A
+	 checkpoint is pushed first, so undo returns to where you were.
+	**/
+
+	debugJump: function(idOrName) {
+		this.cancelTimers();
+		this.hideTyping();
+		this.pushCheckpoint();
+		this.show(idOrName);
+	},
+
+	/**
+	 Builds the debug panel: watch variables, run JavaScript, jump to
+	 any passage, review the timeline, undo and restart. Enabled by
+	 Twine's Test button / `tweego -t` (options="debug"), a ?debug URL
+	 switch, story.config.debug = true, or calling this directly.
+	**/
+
+	enableDebug: function() {
+		if (document.getElementById('debug-toggle')) {
+			return;
+		}
+
+		var story = this;
+
+		this.debug = true;
+
+		var toggle = document.createElement('button');
+
+		toggle.type = 'button';
+		toggle.id = 'debug-toggle';
+		toggle.textContent = '🐛 debug';
+		toggle.setAttribute('aria-expanded', 'false');
+		document.body.appendChild(toggle);
+
+		var panel = document.createElement('aside');
+
+		panel.id = 'debug-panel';
+		panel.setAttribute('aria-label', 'Debug tools');
+		panel.hidden = true;
+		panel.innerHTML =
+			'<div class="debug-head">' +
+			'<strong>Debug</strong>' +
+			'<span id="debug-where"></span>' +
+			'<button type="button" id="debug-close" aria-label="Close">&times;</button>' +
+			'</div>' +
+			'<div class="debug-actions">' +
+			'<button type="button" id="debug-undo">↩ undo</button>' +
+			'<button type="button" id="debug-save">save to URL</button>' +
+			'<button type="button" id="debug-restart">restart</button>' +
+			'</div>' +
+			'<details open><summary>Variables</summary>' +
+			'<table id="debug-vars"></table>' +
+			'<form id="debug-eval">' +
+			'<input type="text" placeholder="run JS, e.g. s.key = 1" aria-label="Run JavaScript">' +
+			'<button type="submit">run</button>' +
+			'</form>' +
+			'<div id="debug-eval-out"></div>' +
+			'</details>' +
+			'<details open><summary>Jump to passage</summary>' +
+			'<input type="search" id="debug-filter" placeholder="filter…" aria-label="Filter passages">' +
+			'<ul id="debug-passages"></ul>' +
+			'</details>' +
+			'<details><summary>Timeline</summary>' +
+			'<ol id="debug-timeline"></ol>' +
+			'</details>';
+		document.body.appendChild(panel);
+
+		var vars = panel.querySelector('#debug-vars');
+		var where = panel.querySelector('#debug-where');
+		var timeline = panel.querySelector('#debug-timeline');
+		var passageList = panel.querySelector('#debug-passages');
+		var filter = panel.querySelector('#debug-filter');
+		var evalOut = panel.querySelector('#debug-eval-out');
+
+		var brief = function(value) {
+			var text;
+
+			try {
+				text = JSON.stringify(value);
+			}
+			catch (e) {
+				text = String(value);
+			}
+
+			text = String(text);
+			return text.length > 80 ? text.slice(0, 77) + '…' : text;
+		};
+
+		var refresh = function() {
+			// where we are
+
+			var passageName = window.passage ? window.passage.name : '—';
+
+			where.textContent =
+				passageName +
+				(story.multiThread && story._hotThread
+					? ' · ' + story._hotThread
+					: '') +
+				' · turn ' + story.history.length;
+
+			// state variables
+
+			vars.textContent = '';
+			var keys = Object.keys(story.state);
+
+			if (keys.length === 0) {
+				var empty = vars.insertRow();
+
+				empty.insertCell().textContent = '(no variables set)';
+			}
+
+			keys.sort().forEach(function(key) {
+				var row = vars.insertRow();
+
+				row.insertCell().textContent = key;
+
+				var cell = row.insertCell();
+
+				cell.textContent = brief(story.state[key]);
+				cell.title = String(JSON.stringify(story.state[key]));
+			});
+
+			// recent timeline
+
+			timeline.textContent = '';
+			story.timeline.slice(-20).forEach(function(entry) {
+				var item = document.createElement('li');
+
+				if (entry.t === 'p' || entry.t === 'd') {
+					var p = story.passage(entry.id);
+
+					item.textContent =
+						(entry.t === 'd' ? '[deliver] ' : '') +
+						(p ? p.name : entry.id);
+				}
+				else if (entry.t === 'u') {
+					item.textContent = 'you: ' + brief(entry.text);
+					item.className = 'debug-you';
+				}
+				else {
+					item.textContent = '[' + entry.t + ']';
+					item.className = 'debug-you';
+				}
+
+				timeline.appendChild(item);
+			});
+			timeline.scrollTop = timeline.scrollHeight;
+		};
+
+		var buildPassageList = function() {
+			var query = filter.value.trim().toLowerCase();
+
+			passageList.textContent = '';
+			story.passages
+				.filter(function(p) {
+					return p && p.name.toLowerCase().indexOf(query) > -1;
+				})
+				.sort(function(a, b) { return a.name.localeCompare(b.name); })
+				.forEach(function(p) {
+					var item = document.createElement('li');
+					var button = document.createElement('button');
+
+					button.type = 'button';
+					button.textContent = p.name;
+
+					if (p.tags.length > 0) {
+						var tags = document.createElement('span');
+
+						tags.textContent = ' ' + p.tags.join(' ');
+						button.appendChild(tags);
+					}
+
+					button.addEventListener('click', function() {
+						story.debugJump(p.name);
+					});
+					item.appendChild(button);
+					passageList.appendChild(item);
+				});
+		};
+
+		toggle.addEventListener('click', function() {
+			panel.hidden = !panel.hidden;
+			toggle.setAttribute('aria-expanded', String(!panel.hidden));
+
+			if (!panel.hidden) {
+				refresh();
+				buildPassageList();
+			}
+		});
+		panel.querySelector('#debug-close').addEventListener('click', function() {
+			panel.hidden = true;
+			toggle.setAttribute('aria-expanded', 'false');
+		});
+		panel.querySelector('#debug-undo').addEventListener('click', function() {
+			story.undo();
+			refresh();
+		});
+		panel.querySelector('#debug-restart').addEventListener('click', function() {
+			story.restart();
+		});
+		panel.querySelector('#debug-save').addEventListener('click', function() {
+			story.save();
+			evalOut.textContent = 'progress saved to the URL — bookmark it';
+		});
+		panel.querySelector('#debug-eval').addEventListener('submit', function(event) {
+			event.preventDefault();
+
+			var field = event.target.querySelector('input');
+			var s = story.state; // eslint-disable-line no-unused-vars
+
+			try {
+				/* eslint-disable no-eval */
+				var result = eval(field.value);
+				/* eslint-enable no-eval */
+
+				evalOut.textContent =
+					result === undefined ? '✓' : '→ ' + brief(result);
+				field.value = '';
+				story.persist();
+			}
+			catch (error) {
+				evalOut.textContent = '✗ ' + error.message;
+			}
+
+			refresh();
+		});
+		filter.addEventListener('input', buildPassageList);
+
+		window.addEventListener('showpassage:after', refresh);
+		window.addEventListener('restore:after', refresh);
+		refresh();
 	}
 });
 

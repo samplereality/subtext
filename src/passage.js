@@ -132,11 +132,15 @@ function render(source) {
 	result = result.replace(/\[\[(.*?)\]\]/g, function(match, target) {
 		var display = target;
 
-		// display|target format
+		// display|target format — a single bar only, so `||` (the
+		// multi-bubble separator in a `(send: …)` label) never reads
+		// as a display/target split
 
-		var barIndex = target.indexOf('|');
+		var barMatch = /(^|[^|])\|(?!\|)/.exec(target);
 
-		if (barIndex != -1) {
+		if (barMatch) {
+			var barIndex = barMatch.index + barMatch[1].length;
+
 			display = target.substr(0, barIndex);
 			target = target.substr(barIndex + 1);
 		}

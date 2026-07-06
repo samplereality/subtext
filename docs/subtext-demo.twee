@@ -185,6 +185,7 @@ by the way — a reply pill and the message it sends don't have to match
 tap "sure" 👇
 
 [[sure (send: sure, that makes total sense now that you explain it)->pill-demo-2]]
+[[the long version (send: ok || here's the thing || I never actually read the group chat)->pill-demo-2]]
 [[just react (send:)->pill-demo-2]]
 
 :: pill-demo-2 [speaker-2]

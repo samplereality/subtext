@@ -1569,6 +1569,194 @@ button:focus-visible,
 	}
 }
 
+/* Debug panel ============================================================= */
+/* Deliberately devtools-flavored, never themed like the story, so it
+   can't be mistaken for part of the fiction. */
+
+#debug-toggle {
+	position: fixed;
+	bottom: 0.75rem;
+	left: 0.75rem;
+	z-index: 90;
+	padding: 0.35rem 0.7rem;
+	border: 1px solid #3c4043;
+	border-radius: 999px;
+	background: #202124;
+	color: #e8eaed;
+	font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	cursor: pointer;
+	opacity: 0.75;
+}
+
+#debug-toggle:hover,
+#debug-toggle:focus-visible {
+	opacity: 1;
+}
+
+#debug-panel {
+	position: fixed;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	z-index: 95;
+	width: min(21rem, 85vw);
+	overflow-y: auto;
+	padding: 0.75rem 0.85rem 3rem;
+	background: #202124;
+	color: #e8eaed;
+	border-right: 1px solid #3c4043;
+	box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+	font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#debug-panel .debug-head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.6rem;
+}
+
+#debug-panel .debug-head strong {
+	font-size: 13px;
+}
+
+#debug-where {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #9aa0a6;
+}
+
+#debug-close {
+	border: 0;
+	background: none;
+	color: #9aa0a6;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+#debug-panel .debug-actions {
+	display: flex;
+	gap: 0.4rem;
+	margin-bottom: 0.75rem;
+}
+
+#debug-panel .debug-actions button,
+#debug-eval button {
+	padding: 0.25rem 0.55rem;
+	border: 1px solid #5f6368;
+	border-radius: 0.35rem;
+	background: #303134;
+	color: #e8eaed;
+	font: inherit;
+	cursor: pointer;
+}
+
+#debug-panel .debug-actions button:hover {
+	background: #3c4043;
+}
+
+#debug-panel details {
+	margin-bottom: 0.75rem;
+	border-top: 1px solid #3c4043;
+	padding-top: 0.5rem;
+}
+
+#debug-panel summary {
+	cursor: pointer;
+	color: #8ab4f8;
+	margin-bottom: 0.4rem;
+}
+
+#debug-vars {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+#debug-vars td {
+	padding: 0.15rem 0.4rem 0.15rem 0;
+	border-bottom: 1px solid #303134;
+	vertical-align: top;
+	word-break: break-word;
+}
+
+#debug-vars td:first-child {
+	color: #8ab4f8;
+	white-space: nowrap;
+}
+
+#debug-eval {
+	display: flex;
+	gap: 0.4rem;
+	margin-top: 0.5rem;
+}
+
+#debug-eval input,
+#debug-filter {
+	flex: 1;
+	min-width: 0;
+	padding: 0.3rem 0.5rem;
+	border: 1px solid #5f6368;
+	border-radius: 0.35rem;
+	background: #171717;
+	color: #e8eaed;
+	font: inherit;
+}
+
+#debug-filter {
+	width: 100%;
+	margin-bottom: 0.4rem;
+}
+
+#debug-eval-out {
+	margin-top: 0.35rem;
+	color: #9aa0a6;
+	word-break: break-word;
+}
+
+#debug-passages {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	max-height: 16rem;
+	overflow-y: auto;
+}
+
+#debug-passages button {
+	display: block;
+	width: 100%;
+	padding: 0.25rem 0.4rem;
+	border: 0;
+	border-radius: 0.3rem;
+	background: none;
+	color: #e8eaed;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+#debug-passages button:hover {
+	background: #303134;
+}
+
+#debug-passages button span {
+	color: #81c995;
+}
+
+#debug-timeline {
+	margin: 0;
+	padding-left: 1.4rem;
+	max-height: 12rem;
+	overflow-y: auto;
+}
+
+#debug-timeline .debug-you {
+	color: #9aa0a6;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

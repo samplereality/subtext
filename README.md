@@ -24,7 +24,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Story structure** — [Clearing the thread](#clearing-the-thread) · [Multiple conversations](#multiple-conversations) · [Saving](#saving)
 
-**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus)
+**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus) · [Debug mode](#debug-mode)
 
 **More** — [Accessibility](#accessibility) · [Migrating from Trialogue](#migrating-from-trialogue) · [Changelog](#changelog) · [Credits](#credits)
 
@@ -104,8 +104,11 @@ If you skip the StoryData declaration, pass the format explicitly with `-f subte
 
 ```bash
 tweego -w -o story.html story.twee    # watch mode: recompile on every save
+tweego -t -o story.html story.twee    # test build: enables the debug panel
 tweego -d -o story.twee story.html    # decompile a published story back to Twee
 ```
+
+Watch mode pairs beautifully with [debug mode](#debug-mode): run `tweego -w -t`, open the output in a live-preview browser tab, and every save recompiles while the story keeps your place.
 
 This repository's demo story, [`docs/subtext-demo.twee`](docs/subtext-demo.twee), is a ready-made example of a Tweego-compatible Subtext project.
 
@@ -350,6 +353,12 @@ By default a pill's label is also what gets sent as the player's message. Add a 
 
 An empty `(send:)` sends no bubble at all — the story just advances. (From code, `story.choose(target, text)` does the same; pass an empty string to advance silently.)
 
+And `||` inside the sent text breaks it into separate bubbles, fired off in quick succession — one tap, a flurry of texts:
+
+```
+[[what happened (send: ok || here's the thing || promise you won't be mad)->confession]]
+```
+
 ### Timed responses
 
 Put the player on the clock. A `timeout:` link arms a timer while the choices are showing. The thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:
@@ -537,6 +546,26 @@ The hint is smarter than a static label: `story.config.inputHint` shows differen
 
 The Menu button (☰) only appears once the menu has content. The Trialogue 1.x helpers `inject_left_sidebar()` / `inject_right_sidebar()`—which used to render desktop side columns—still work as deprecated aliases, each filling an additional section of the menu. The header always includes an Undo button (↩, appears once there is something to undo), a light/dark toggle, and a Restart button that asks for confirmation.
 
+## Debug mode
+
+While you're writing, Subtext can run with a debug panel — a devtools-style drawer that stays deliberately outside the story's fiction. Enable it any of four ways:
+
+- **Twine's Test button** (it publishes with `options="debug"`)
+- **`tweego -t`** (Tweego's test mode, same mechanism)
+- **`?debug`** appended to any story's URL
+- **`story.config.debug = true`** in story JavaScript
+
+A `🐛 debug` button appears in the corner; it opens a panel with:
+
+- **Where you are** — current passage, thread, and turn count, always in view.
+- **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
+- **Jump to passage** — a filterable list of every passage; click one to fast-forward straight to it, no need to play through fifty passages to reach the scene you just wrote. Jumps are recorded like normal moves, so **undo** rewinds them.
+- **Timeline** — the recent history of messages and passages, plus undo / restart / save-to-URL buttons.
+
+**Your place survives rebuilds.** Debug mode turns on autosave and — crucially — saves your position by passage *name* rather than id. So with `tweego -w` watching your Twee files and a live-preview browser tab reloading on every rebuild, the story resumes exactly where you were, even after the rebuild renumbers every passage. Combined with jump, this makes the edit-preview loop instant: save the file, the tab reloads, you're still standing in the scene you're editing. (Restart, in the menu or the debug panel, clears the autosave when you *do* want a clean run.)
+
+Players never see any of this: without one of the four switches above, the debug code adds no UI at all.
+
 ## Configuration
 
 Adjust behavior from your story's JavaScript, any time before or during play:
@@ -608,6 +637,7 @@ story.config.autosave = true;
 | `lang` | `''` | Interface language, applied to `<html lang>` (empty = `en`) |
 | `typingLabel` | `'%s is typing'` | Screen-reader announcement while a speaker types |
 | `autosave` | `false` | Persist progress to `localStorage` after every message |
+| `debug` | `false` | Force [debug mode](#debug-mode) on (Twine Test, `tweego -t`, and `?debug` also enable it) |
 
 ## Utility functions
 
@@ -683,7 +713,9 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 ### Version 2.2
 
 - **Asides — narration in the margins.** A fourth narration style: tag a speakerless passage `aside-left` or `aside-right` and it appears as a note *outside* the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat's edge like a sticky note on the glass. See [Asides](#asides).
-- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button). See [Reply pills and sent text](#reply-pills-and-sent-text).
+- **Debug mode.** Twine's Test button, `tweego -t`, or `?debug` opens a devtools-style panel: watch variables live, run JavaScript, jump to any passage (fast-forward), rewind, and inspect the timeline. Debug autosaves keep your place across `tweego -w` rebuilds — the live-preview tab reloads and you're still in the scene you're editing, even when the rebuild renumbers every passage. See [Debug mode](#debug-mode).
+- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button), and `||` in the sent text breaks it into separate bubbles. See [Reply pills and sent text](#reply-pills-and-sent-text).
+- **New conversations fill from the top** of the screen, like a real messaging app, and only pin to the bottom once the chat overflows; the typing indicator now sits directly beneath the last message.
 - **Timestamps appear while typing.** A timestamp chip leading a speaker's reply now shows as soon as the typing indicator starts, the way it would on a real phone.
 
 ### Version 2.1
