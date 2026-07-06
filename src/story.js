@@ -364,6 +364,12 @@ var Story = function() {
 	/** Timestamp chips shown early, while their passage is "typing". **/
 	this._preShownStamps = null;
 
+	/** When the current choices appeared, for s.replySeconds. **/
+	this._responsesShownAt = null;
+
+	/** Cross-playthrough memory cache; see remember()/recall(). **/
+	this._memory = null;
+
 	/**
 	 The story's image gallery, parsed from the StoryImages passage
 	 (one `name: url` per line). Add or change entries from your story
@@ -829,6 +835,18 @@ Object.assign(Story.prototype, {
 			this.state.lastChoice = chosen;
 		}
 
+		/**
+		 Triggered whenever the player picks a reply pill (or code calls
+		 story.choose). detail: { label, sent, target, story }.
+		**/
+
+		dispatch('choice', {
+			label: chosen || null,
+			sent: sentText || '',
+			target: targetName,
+			story: this
+		});
+
 		// an empty message (from a `(send:)` link) advances the story
 		// without adding a player bubble; `||` in the text splits it
 		// into separate bubbles, fired off in quick succession
@@ -884,6 +902,13 @@ Object.assign(Story.prototype, {
 
 		if (!opts.noMove) {
 			this.movePassageToHistory();
+		}
+
+		// how the player got here: passages that several routes lead
+		// into can branch on s.previousPassage
+
+		if (window.passage) {
+			this.state.previousPassage = window.passage.name;
 		}
 
 		window.passage = passage;
@@ -1582,6 +1607,10 @@ Object.assign(Story.prototype, {
 		if (!window.passage) {
 			return;
 		}
+
+		// start the deliberation clock for s.replySeconds
+
+		this._responsesShownAt = Date.now();
 
 		var links = window.passage.links;
 		var photoOffers = this.getPhotoOffers(links);
@@ -3292,6 +3321,15 @@ Object.assign(Story.prototype, {
 		});
 
 		this.dom.undo.hidden = false;
+
+		// how long the player deliberated, in seconds — recorded on
+		// every response (a checkpoint is pushed exactly when one is
+		// applied). Set after the state snapshot above, so undo also
+		// rewinds it.
+
+		this.state.replySeconds = this._responsesShownAt
+			? Math.round((Date.now() - this._responsesShownAt) / 100) / 10
+			: null;
 	},
 
 	/**
@@ -4357,6 +4395,86 @@ Object.assign(Story.prototype, {
 
 	saveKey: function() {
 		return 'subtext-save-' + this.ifid;
+	},
+
+	memoryKey: function() {
+		return 'subtext-memory-' + this.ifid;
+	},
+
+	/**
+	 Cross-playthrough memory: values that survive restarts (and even
+	 finished stories), stored per story in localStorage. Unlike `s`,
+	 nothing here is touched by restart, undo, or save/restore — this
+	 is for endings-seen counters, New Game+ content, and characters
+	 who remember the player's previous run.
+
+	   story.remember('ending', 'the good one');
+	   story.recall('ending')            // 'the good one', next run too
+	   story.recall('missing', 'fallback')
+	   story.forget('ending')            // or story.forget() for all
+	**/
+
+	loadMemory: function() {
+		if (this._memory === null) {
+			this._memory = {};
+
+			try {
+				var raw = window.localStorage.getItem(this.memoryKey());
+
+				if (raw) {
+					this._memory = JSON.parse(raw) || {};
+				}
+			}
+			catch (e) { /* storage unavailable or corrupt */ }
+		}
+
+		return this._memory;
+	},
+
+	remember: function(key, value) {
+		var memory = this.loadMemory();
+
+		memory[key] = value;
+
+		try {
+			window.localStorage.setItem(
+				this.memoryKey(),
+				JSON.stringify(memory)
+			);
+		}
+		catch (e) { /* storage unavailable or full */ }
+
+		return value;
+	},
+
+	recall: function(key, fallback) {
+		var memory = this.loadMemory();
+
+		return key in memory ? memory[key] : fallback;
+	},
+
+	forget: function(key) {
+		var memory = this.loadMemory();
+
+		if (key === undefined) {
+			this._memory = {};
+		}
+		else {
+			delete memory[key];
+		}
+
+		try {
+			if (key === undefined) {
+				window.localStorage.removeItem(this.memoryKey());
+			}
+			else {
+				window.localStorage.setItem(
+					this.memoryKey(),
+					JSON.stringify(memory)
+				);
+			}
+		}
+		catch (e) { /* storage unavailable */ }
 	},
 
 	/**

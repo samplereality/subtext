@@ -953,6 +953,73 @@ async function run() {
 			stampCounts.before + 1
 	);
 
+	console.log('choice tracking');
+
+	const tracked = await page.evaluate(() => {
+		window.__choiceEvents = [];
+		window.addEventListener('choice', (e) =>
+			window.__choiceEvents.push({
+				label: e.detail.label,
+				target: e.detail.target
+			})
+		);
+		return {
+			prev: window.story.state.previousPassage,
+			current: window.passage.name
+		};
+	});
+	check(
+		's.previousPassage tracks how the player arrived',
+		typeof tracked.prev === 'string' &&
+			tracked.prev.length > 0 &&
+			tracked.prev !== tracked.current
+	);
+	await page.evaluate(() => window.story.choose('Start', 'again'));
+	await page.waitForTimeout(200);
+	check(
+		'a choice event fires with label and target',
+		await page.evaluate(
+			() =>
+				window.__choiceEvents.length === 1 &&
+				window.__choiceEvents[0].label === 'again' &&
+				window.__choiceEvents[0].target === 'Start'
+		)
+	);
+	check(
+		's.replySeconds records the deliberation time',
+		await page.evaluate(() => {
+			const t = window.story.state.replySeconds;
+			return typeof t === 'number' && t >= 0 && t < 600;
+		})
+	);
+
+	// cross-playthrough memory: survives restart, unlike s
+	check(
+		'remember/recall round-trips and forget clears',
+		await page.evaluate(() => {
+			window.story.remember('endings', ['bad']);
+			const kept = window.story.recall('endings');
+			const fallback = window.story.recall('missing', 'dflt');
+			window.story.forget('endings');
+			const gone = window.story.recall('endings', 'gone');
+			return (
+				Array.isArray(kept) && kept[0] === 'bad' &&
+				fallback === 'dflt' && gone === 'gone'
+			);
+		})
+	);
+	check(
+		'memory persists in storage while saves stay separate',
+		await page.evaluate(() => {
+			window.story.remember('runs', 2);
+			const raw = localStorage.getItem(
+				'subtext-memory-' + window.story.ifid
+			);
+			window.story.forget();
+			return raw !== null && JSON.parse(raw).runs === 2;
+		})
+	);
+
 	console.log('multi-bubble send');
 
 	await page.evaluate(() => window.story.show('pill-demo'));
