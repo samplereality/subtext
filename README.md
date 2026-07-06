@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.2.0"
+  "format-version": "2.3.0"
 }
 ```
 
@@ -710,11 +710,15 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
+### Version 2.3
+
+- **Debug mode.** Twine's Test button, `tweego -t`, or `?debug` opens a devtools-style panel: watch variables live, run JavaScript, jump to any passage (fast-forward), rewind, and inspect the timeline. Debug autosaves keep your place across `tweego -w` rebuilds — the live-preview tab reloads and you're still in the scene you're editing, even when the rebuild renumbers every passage. See [Debug mode](#debug-mode).
+- **Multi-bubble sends.** `||` in a `(send: …)` label breaks the sent text into separate bubbles fired in quick succession — one tap, a flurry of texts. See [Reply pills and sent text](#reply-pills-and-sent-text).
+
 ### Version 2.2
 
 - **Asides — narration in the margins.** A fourth narration style: tag a speakerless passage `aside-left` or `aside-right` and it appears as a note *outside* the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat's edge like a sticky note on the glass. See [Asides](#asides).
-- **Debug mode.** Twine's Test button, `tweego -t`, or `?debug` opens a devtools-style panel: watch variables live, run JavaScript, jump to any passage (fast-forward), rewind, and inspect the timeline. Debug autosaves keep your place across `tweego -w` rebuilds — the live-preview tab reloads and you're still in the scene you're editing, even when the rebuild renumbers every passage. See [Debug mode](#debug-mode).
-- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button), and `||` in the sent text breaks it into separate bubbles. See [Reply pills and sent text](#reply-pills-and-sent-text).
+- **Reply pills can send different text than they show.** `[[sure (send: sure, that works — see you at midnight)->meet]]` shows a terse pill but sends the full line; an empty `(send:)` advances the story without posting a message at all (perfect for a "start" button). See [Reply pills and sent text](#reply-pills-and-sent-text).
 - **New conversations fill from the top** of the screen, like a real messaging app, and only pin to the bottom once the chat overflows; the typing indicator now sits directly beneath the last message.
 - **Timestamps appear while typing.** A timestamp chip leading a speaker's reply now shows as soon as the typing indicator starts, the way it would on a real phone.
 
