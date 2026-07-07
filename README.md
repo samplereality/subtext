@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.4.2"
+  "format-version": "2.5.0"
 }
 ```
 
@@ -148,6 +148,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | --- | --- | --- |
 | `speaker-<id>` | Marks who sends the message | [Your first passage](#your-first-passage) |
 | `thread-<id>` | Routes the passage to a conversation | [Multiple conversations](#multiple-conversations) |
+| `seed` | Renders the passage into its thread as pre-existing, read history | [Multiple conversations](#multiple-conversations) |
 | `meta-chat` / `meta-overlay` / `meta-notification` | Overrides the narration mode for one passage | [Narration](#narration) |
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
@@ -550,9 +551,31 @@ Three things move the story between threads:
   I know you're awake.
   ```
 
-- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. Only the thread holding the story's pending choices shows reply chips; the others are read-only until the story moves there.
+- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
 
-The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them.
+The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Cross-thread banners cut long messages off with an ellipsis, the way real notifications do.
+
+**Hidden threads.** Declare a thread `hidden: true` and it stays out of the inbox until its first message arrives — no spoiling the Unknown Number that won't text until act two:
+
+```
+:: StoryThreads
+sam: Sam
+unknown: Unknown Number; color: #52525e; hidden: true
+```
+
+The thread reveals itself the moment anything lands in it (a `[deliver]`, the story moving there, a seed) — or reveal it manually with `story.revealThread('unknown')`. Reveal state rides on thread activity, so undo and save/restore handle it automatically.
+
+**Seeding old messages.** A real inbox has history — if Mom's in your contacts, there are old texts from Mom. Tag passages `seed` and they render into their threads at story start: instant, already read, no badges or banners. Seeds alternate speakers freely, so a whole past exchange works:
+
+```
+:: mom-old-1 [thread-mom speaker-mom seed]
+Did you eat today? You never answer me.
+
+:: mom-old-2 [thread-mom speaker-you seed]
+yes mom. going to bed, talk tomorrow ❤️
+```
+
+Seeds follow passage order, survive save/restore, and stay put under undo (they're history, not moves). Note that seeding a hidden thread reveals it — old messages mean the contact isn't a surprise.
 
 State for branching: nothing is required, but the runtime tracks it all — `story.unread` (per-thread counts), `story.threads`, and the active thread are saved and restored, and undo rewinds thread-by-thread. Config: `story.config.threadNotifications = false` silences the cross-thread banners (the inbox badges still update).
 
@@ -695,6 +718,7 @@ story.config.autosave = true;
 | `sounds` | `false` | Subtle synthesized send/receive sounds (needs a user gesture) |
 | `titleNotifications` | `true` | Show `(2) Story Name` in the tab title while hidden |
 | `threadNotifications` | `true` | Announce cross-thread messages with a banner |
+| `threadIdleHint` | `'Nothing to say right now'` | Placeholder in the disabled composer on parked threads (`''` for none) |
 | `themeToggle` | `true` | Show the light/dark toggle in the header |
 | `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
 | `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
@@ -865,6 +889,13 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.5
+
+- **Hidden threads.** `hidden: true` in a `StoryThreads` declaration keeps a conversation out of the inbox until its first message arrives (or `story.revealThread(id)`) — the Unknown Number stays a surprise.
+- **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it.
+- **Diegetic read-only threads.** Viewing a conversation the story isn't in shows a grayed-out composer — *"Nothing to say right now"* (`story.config.threadIdleHint`) — instead of an empty reply area.
+- **Cross-thread banners truncate** long messages with an ellipsis, like real notifications.
 
 ### Version 2.4.2
 

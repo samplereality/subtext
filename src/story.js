@@ -271,6 +271,10 @@ var Story = function() {
 		/* in multi-conversation stories, announce messages that arrive
 		   in a thread the player isn't viewing with a tappable banner */
 		threadNotifications: true,
+		/* placeholder in the grayed-out composer shown when viewing a
+		   conversation the story isn't in right now (set '' to show
+		   nothing instead) */
+		threadIdleHint: 'Nothing to say right now',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
 		/* show the header undo button once there is something to undo
@@ -736,6 +740,7 @@ Object.assign(Story.prototype, {
 		}
 
 		this.initThreads();
+		this.seedThreads();
 
 		/**
 		 Triggered when the story is finished loading, right before the
@@ -1829,6 +1834,13 @@ Object.assign(Story.prototype, {
 			return entry.t !== 'p';
 		}).length;
 		var html = '';
+
+		// the idle composer speaks for itself — no helper text over it
+
+		if (this.dom.responses.querySelector('.chat-composer--idle')) {
+			this.dom.hint.innerHTML = '';
+			return;
+		}
 
 		if (!(typeof fade === 'number' && moves >= fade)) {
 			var hasComposer = !!this.dom.responses.querySelector('.chat-composer');
@@ -3147,6 +3159,10 @@ Object.assign(Story.prototype, {
 				this.config.metaNotificationLabel || this.name;
 			this.dom.metaNotificationBody.innerHTML = html;
 			this.buildRichContent(this.dom.metaNotificationBody);
+			// authored narration is never clamped like a thread banner
+			this.dom.metaNotification.classList.remove(
+				'meta-notification--thread'
+			);
 			this.dom.metaNotification.hidden = false;
 		}
 		else {
@@ -3780,7 +3796,9 @@ Object.assign(Story.prototype, {
 				var profile = {};
 
 				match[2].split(';').forEach(function(part) {
-					var kv = part.match(/^\s*(name|avatar|color)\s*:\s*(.+?)\s*$/);
+					var kv = part.match(
+						/^\s*(name|avatar|color|hidden)\s*:\s*(.+?)\s*$/
+					);
 
 					if (kv) {
 						profile[kv[1]] = kv[2];
@@ -3789,6 +3807,12 @@ Object.assign(Story.prototype, {
 						profile.name = part.trim();
 					}
 				});
+
+				// hidden threads stay out of the inbox until their
+				// first message arrives (or story.revealThread(id))
+
+				profile.hidden =
+					String(profile.hidden).toLowerCase() === 'true';
 
 				threads[match[1]] = profile;
 				story.threadOrder.push(match[1]);
@@ -3872,6 +3896,34 @@ Object.assign(Story.prototype, {
 		this.dom.responses.textContent = '';
 	},
 
+	/**
+	 A disabled composer for threads the story isn't in: diegetic
+	 "read-only" — the message field is there, you just have nothing
+	 to say. Placeholder text via config.threadIdleHint ('' disables).
+	**/
+
+	renderIdleComposer: function() {
+		if (!this.config.threadIdleHint) {
+			this.updateHint();
+			return;
+		}
+
+		var shell = document.createElement('div');
+
+		shell.className = 'chat-composer chat-composer--idle';
+
+		var field = document.createElement('input');
+
+		field.type = 'text';
+		field.className = 'chat-composer-input';
+		field.disabled = true;
+		field.placeholder = this.config.threadIdleHint;
+		field.setAttribute('aria-label', this.config.threadIdleHint);
+		shell.appendChild(field);
+		this.dom.responses.appendChild(shell);
+		this.updateHint();
+	},
+
 	createThreadLog: function(threadId) {
 		if (this.threadOrder.indexOf(threadId) === -1) {
 			this.threadOrder.push(threadId);
@@ -3935,6 +3987,80 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Surfaces a hidden thread in the inbox without sending it anything.
+	 (A thread also reveals itself the moment any message lands in it.)
+	 Reveal state rides on thread activity, so undo and save/restore
+	 handle it like everything else.
+	**/
+
+	revealThread: function(threadId) {
+		this.bumpThreadActivity(threadId);
+		this.renderInbox();
+	},
+
+	/**
+	 Renders the passages tagged `seed` into their threads: the old,
+	 already-read messages a real inbox would hold at story start.
+	 Seeds render instantly and silently — no unread badges, banners,
+	 sounds, or timeline entries — and alternate speakers freely (a
+	 passage tagged [thread-dad speaker-you seed] is an old message the
+	 player "sent"). Order follows passage order in the story.
+	**/
+
+	seedThreads: function() {
+		if (!this.multiThread) {
+			return;
+		}
+
+		var story = this;
+
+		this.passages.forEach(function(passage) {
+			if (!passage || passage.tags.indexOf('seed') === -1) {
+				return;
+			}
+
+			var threadId = story.getPassageThread(passage);
+			var log = story.logFor(threadId);
+			var previousPassage = window.passage;
+
+			window.passage = passage;
+			passage.links = [];
+
+			var html;
+
+			try {
+				html = passage.render();
+			}
+			catch (error) {
+				window.passage = previousPassage;
+				story.showError(
+					story.errorMessage.replace('%s', error.message)
+				);
+				return;
+			}
+
+			window.passage = previousPassage;
+
+			var speaker = story.getPassageSpeaker(passage);
+			var nodes = story.buildPassageElement(passage, speaker, html);
+
+			nodes.forEach(function(node) {
+				node.classList.add('no-anim');
+				node.classList.add('is-history');
+				story.applyGrouping(node, log);
+				log.appendChild(node);
+			});
+
+			// old messages order the inbox (and reveal their thread)
+			// but are already read: no badge, no banner
+
+			story.bumpThreadActivity(threadId);
+		});
+
+		this.renderInbox();
+	},
+
+	/**
 	 Shows a thread's conversation.
 	**/
 
@@ -3967,7 +4093,9 @@ Object.assign(Story.prototype, {
 		this.dom.typing.hidden = this._typingThread !== threadId ||
 			this._typingThread === null;
 
-		// re-offer pending responses when returning to the live thread
+		// re-offer pending responses when returning to the live thread;
+		// parked threads get a grayed-out composer instead — you can
+		// read, but you have nothing to say here right now
 
 		this.clearUserResponsesDisplay();
 
@@ -3975,7 +4103,7 @@ Object.assign(Story.prototype, {
 			this.showUserResponses();
 		}
 		else {
-			this.updateHint();
+			this.renderIdleComposer();
 		}
 
 		window.requestAnimationFrame(function() {
@@ -4032,6 +4160,14 @@ Object.assign(Story.prototype, {
 
 		ordered.forEach(function(id) {
 			var profile = story.getThreadProfile(id);
+
+			// a hidden thread joins the inbox only once something has
+			// happened in it — no spoiling the Unknown Number
+
+			if (profile.hidden && !story._threadActivity[id]) {
+				return;
+			}
+
 			var row = document.createElement('li');
 			var button = document.createElement('button');
 
@@ -4151,10 +4287,18 @@ Object.assign(Story.prototype, {
 	showThreadBanner: function(threadId, previewText) {
 		var story = this;
 
+		// real notifications cut long messages off — so does this one
+
+		var preview = previewText.trim().replace(/\s+/g, ' ');
+
+		if (preview.length > 90) {
+			preview = preview.slice(0, 89).replace(/\s+\S*$/, '') + '…';
+		}
+
 		this.dom.metaNotificationLabel.textContent =
 			this.getThreadDisplayName(threadId);
-		this.dom.metaNotificationBody.textContent =
-			previewText.slice(0, 120);
+		this.dom.metaNotificationBody.textContent = preview;
+		this.dom.metaNotification.classList.add('meta-notification--thread');
 		this.dom.metaNotification.hidden = false;
 		this._bannerThread = threadId;
 
@@ -4746,6 +4890,11 @@ Object.assign(Story.prototype, {
 				this._threadActivity = {};
 				this._activitySeq = 0;
 				this.setThreadTyping(null);
+
+				// the wiped logs get their seed history back before
+				// the timeline replays on top of it
+
+				this.seedThreads();
 			}
 			else {
 				this.dom.history.textContent = '';

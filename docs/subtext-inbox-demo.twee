@@ -2,7 +2,7 @@
 {
   "ifid": "7A2E9C41-5B83-4D26-9F0A-8E1C4B7D3A55",
   "format": "Subtext",
-  "format-version": "2.4.2"
+  "format-version": "2.5.0"
 }
 
 :: StoryTitle
@@ -13,8 +13,8 @@ a Subtext inbox demo
 
 :: Story JavaScript [script]
 
-inject_menu('<h3>About</h3><p>This story demonstrates Subtext\'s multi-conversation mode: three threads, unread badges, and messages that arrive while you\'re talking to someone else.</p>');
-inject_hint('Choose a reply to continue');
+story.setMenu('<h3>About</h3><p>This story demonstrates Subtext\'s multi-conversation mode: three threads, unread badges, hidden contacts, seeded history, and messages that arrive while you\'re talking to someone else.</p>');
+story.config.hint = 'Choose a reply to continue';
 story.config.metaStyle = 'overlay';
 story.config.hintFadeAfter = 3;
 
@@ -22,7 +22,14 @@ story.config.hintFadeAfter = 3;
 :: StoryThreads
 sam: Sam
 mom: Mom
-unknown: Unknown Number; color: #52525e
+unknown: Unknown Number; color: #52525e; hidden: true
+
+
+:: mom-old-1 [thread-mom speaker-mom seed]
+Did you eat today? You never answer me.
+
+:: mom-old-2 [thread-mom speaker-you seed]
+yes mom. going to bed, talk tomorrow ❤️
 
 
 :: StorySpeakers
@@ -54,7 +61,7 @@ I'm checking something. stay put
 
 
 :: mom-1 [thread-mom speaker-mom]
-Honey, are you awake? The porch light keeps flickering.
+Honey, are you awake? The porch light keeps flickering and I can't find the good flashlight, the one your father keeps in the garage, and there is a car outside I don't recognize.
 
 
 :: sam-3 [speaker-sam]

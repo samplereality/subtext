@@ -881,6 +881,23 @@ a {
 	opacity: 1;
 }
 
+/* the read-only composer shown on threads the story isn't in */
+
+.chat-composer--idle {
+	justify-content: center;
+}
+
+.chat-composer--idle .chat-composer-input {
+	background: transparent;
+	border-style: dashed;
+	cursor: default;
+	text-align: center;
+}
+
+.chat-composer--idle .chat-composer-input::placeholder {
+	font-style: italic;
+}
+
 .chat-composer-send {
 	appearance: none;
 	flex: none;
@@ -1059,6 +1076,16 @@ a {
 
 .meta-notification-body p:last-child {
 	margin-bottom: 0;
+}
+
+/* thread banners clamp like real notifications; authored
+   notification narration never does */
+
+.meta-notification--thread .meta-notification-body {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
 }
 
 @keyframes t-drop-in {

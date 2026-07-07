@@ -1359,6 +1359,19 @@ async function run() {
 		(await inboxPage.locator('.thread-log').count()) === 3
 	);
 
+	// seed-tagged passages are already in Mom's thread — old and read
+	check(
+		'seed passages fill a thread with read history at start',
+		await inboxPage.evaluate(() => {
+			const log = document.querySelector('.thread-log[data-thread="mom"]');
+			return (
+				log.querySelectorAll('.chat-passage-wrapper').length === 2 &&
+				log.textContent.indexOf('Did you eat today') > -1 &&
+				(window.story.unread.mom || 0) === 0
+			);
+		})
+	);
+
 	await inboxPage.click('.user-response:has-text("what happened")');
 	await inboxPage.waitForSelector('#meta-notification:not([hidden])', {
 		timeout: 25000
@@ -1367,12 +1380,26 @@ async function run() {
 		'a delivery to another thread raises a banner',
 		(await inboxPage.textContent('#meta-notification-label')) === 'Mom'
 	);
+	check(
+		'long deliveries are cut off like real notifications',
+		await inboxPage.evaluate(() => {
+			const body = document.getElementById('meta-notification-body');
+			return (
+				body.textContent.length <= 92 &&
+				body.textContent.slice(-1) === '…' &&
+				document
+					.getElementById('meta-notification')
+					.classList.contains('meta-notification--thread')
+			);
+		})
+	);
 
 	await inboxPage.click('#nav-link-inbox');
 	await inboxPage.waitForSelector('#inbox:not([hidden])');
 	check(
-		'inbox lists every thread',
-		(await inboxPage.locator('.inbox-row').count()) === 3
+		'a hidden thread stays out of the inbox until it speaks',
+		(await inboxPage.locator('.inbox-row').count()) === 2 &&
+		(await inboxPage.locator('.inbox-row:has-text("Unknown")').count()) === 0
 	);
 	check(
 		'unread badge on the delivered thread',
@@ -1386,13 +1413,29 @@ async function run() {
 	check(
 		'delivered message readable in its thread',
 		(await inboxPage
-			.locator('.thread-log[data-thread="mom"] .chat-passage')
-			.first()
-			.textContent()).indexOf('porch light') !== -1
+			.locator(
+				'.thread-log[data-thread="mom"] .chat-passage:has-text("porch light")'
+			)
+			.count()) === 1
 	);
 	check(
 		'no responses leak into a thread without the story cursor',
 		(await inboxPage.locator('.user-response').count()) === 0
+	);
+	check(
+		'a parked thread shows the disabled idle composer',
+		await inboxPage.evaluate(() => {
+			const idle = document.querySelector(
+				'#user-response-panel .chat-composer--idle input'
+			);
+			return (
+				!!idle &&
+				idle.disabled &&
+				idle.placeholder === 'Nothing to say right now' &&
+				document.getElementById('user-response-hint')
+					.textContent === ''
+			);
+		})
 	);
 
 	await inboxPage.click('#nav-link-inbox');
@@ -1428,6 +1471,10 @@ async function run() {
 	);
 
 	await inboxPage.click('#nav-link-inbox');
+	check(
+		'the hidden thread joins the inbox once it has spoken',
+		(await inboxPage.locator('.inbox-row:has-text("Unknown")').count()) === 1
+	);
 	await inboxPage.click('.inbox-row:has-text("Sam")');
 	await inboxPage.waitForSelector(".user-response:has-text(\"mom's texting me\")");
 	await inboxPage.click(".user-response:has-text(\"mom's texting me\")");
