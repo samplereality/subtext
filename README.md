@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.4.2"
+  "format-version": "2.5.0"
 }
 ```
 
@@ -890,7 +890,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Unreleased
+### Version 2.5
 
 - **Hidden threads.** `hidden: true` in a `StoryThreads` declaration keeps a conversation out of the inbox until its first message arrives (or `story.revealThread(id)`) — the Unknown Number stays a surprise.
 - **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it.
