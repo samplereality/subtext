@@ -1381,6 +1381,34 @@ a {
 	font-size: 1.05rem;
 }
 
+/* story identity, when config.titlePlacement = 'menu' */
+
+.menu-identity {
+	padding-bottom: 0.75rem;
+	margin-bottom: 0.75rem;
+	border-bottom: 1px solid var(--t-border);
+}
+
+.menu-identity[hidden] {
+	display: none;
+}
+
+.menu-identity-title {
+	font-weight: 700;
+	font-size: 1.05rem;
+}
+
+.menu-identity-sub {
+	color: var(--t-muted);
+	font-size: 0.9rem;
+}
+
+.menu-identity-author {
+	color: var(--t-muted);
+	font-size: 0.85rem;
+	margin-top: 0.15rem;
+}
+
 .menu-section {
 	font-size: 0.9rem;
 	color: var(--t-muted);
@@ -1519,10 +1547,6 @@ a {
 }
 
 /* Misc ==================================================================== */
-
-.content-container {
-	transition: opacity 0.4s ease;
-}
 
 @keyframes t-pop {
 	from {

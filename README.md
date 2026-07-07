@@ -12,7 +12,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Getting started** — [Add Subtext to Twine](#add-subtext-to-twine) · [Your first passage](#your-first-passage) · [Using Tweego](#using-tweego) · [Building from source](#building-from-source)
 
-**Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [Events](#events)
+**Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [Events](#events)
 
 **Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [Read receipts](#read-receipts) · [Reactions](#reactions)
 
@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.4.0"
+  "format-version": "2.4.1"
 }
 ```
 
@@ -131,8 +131,8 @@ A handful of passage *names* have special meaning (the Twine convention). Most a
 | --- | --- |
 | `StoryTitle` | The story's name (Twine standard) |
 | `StoryData` | IFID and format metadata (Twine standard) |
-| `StorySubtitle` | Subtitle shown under the story title in the header |
-| `StoryAuthor` | Author credit shown next to the subtitle |
+| `StorySubtitle` | Subtitle shown with the story title (place via [`titlePlacement`](#page-chrome-and-menus)) |
+| `StoryAuthor` | Author credit shown with the subtitle (same placement) |
 | `StoryColophon` | Appended as a meta message when a passage tagged `End` is shown |
 | `StorySpeakers` | Speaker display names, avatars, and colors — see [Speaker profiles](#speaker-profiles) |
 | `StoryImages` | The photo gallery — see [Photo messages](#photo-messages) |
@@ -155,7 +155,34 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `timestamp` | Renders the passage's text as timestamp chips | [Timestamps](#timestamps) |
 | `read` / `unread` | Forces or suppresses the read receipt | [Read receipts](#read-receipts) |
 | `failed` | Marks the player's last message *Not Delivered* | [Read receipts](#read-receipts) |
-| `End` | Appends `StoryColophon` when shown | [Special passages](#special-passages) |
+| `End` (or `end`) | Appends `StoryColophon` when shown | [Special passages](#special-passages) |
+
+## The design language
+
+Everything you write in a passage falls into one of three shapes, each with one job:
+
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`. Square brackets, lowercase, one line.
+2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
+3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
+
+There's a symmetry running through the first two: **incoming is a directive, outgoing is a link prefix.** `[react ❤️]` is the speaker reacting; `react:👍` is the player reacting. `[location …]` is a pin they send; `location:` is the player sharing theirs. If you remember that, you can usually guess the syntax you've never looked up.
+
+## Story state
+
+Everything the format tracks automatically lives in `s` (alias of `story.state`), participates in undo and save/restore, and is watchable live in [debug mode](#debug-mode):
+
+| `s` value | Is | Set by |
+| --- | --- | --- |
+| `s.lastChoice` | Label of the last reply pill tapped | any choice — [details](#reply-pills-and-sent-text) |
+| `s.previousPassage` | Name of the passage shown before this one | every passage |
+| `s.replySeconds` | Seconds the player deliberated over the last choice | any response |
+| `s.timedOut` | Whether the last transition came from an expired timer | [timed responses](#timed-responses) |
+| `s.lastInput` / `s.inputs` | Last typed text / every entry | [free text input](#free-text-input) |
+| `s.lastPhoto` / `s.sentPhotos` | Last photo sent / every photo | [photo messages](#photo-messages) |
+| `s.playerLocation` | `{ lat, lon, accuracy }` or `null` | [location sharing](#location-sharing) |
+| `s.lastReaction` | Emoji of the player's last tapback | [reactions](#reactions) |
+
+For values that should *survive* restart, see [remembering across playthroughs](#remember-across-playthroughs).
 
 ## Messages
 
@@ -184,7 +211,7 @@ what's the weather like where you are? send me a photo!
 [[rather not say->Start]]
 ```
 
-- `[[photo:*->Target]]` offers the whole gallery
+- `[[photo:*->Target]]` (or bare `[[photo->Target]]`) offers the whole gallery
 - `[[photo:sunny->Target]]` offers a single image
 - `[[photo:sunny,rainy->Target]]` offers a subset
 - Several `photo:` links with different targets can branch per image
@@ -259,7 +286,7 @@ A `[timestamp …]` line at the start of any passage renders as a chip above the
 
 ### Read receipts
 
-Player messages show a **Delivered** status that flips to **Read** when a speaker replies (only the most recent message displays its receipt, iMessage-style). The receipt participates in undo and save/restore.
+Player messages show a **Delivered** status that flips to **Read** the moment a speaker's reply is *queued* — before the typing indicator starts, the way a real phone orders it: they read your message, then they started typing. (Only the most recent message displays its receipt, iMessage-style.) The receipt participates in undo and save/restore.
 
 Silence can be louder than a reply — so you control the receipt:
 
@@ -308,7 +335,7 @@ story.config.metaStyle = 'aside';
 - **`notification`** — the narration drops in as a phone-style notification banner (labeled with the story name by default; change it with `story.config.metaNotificationLabel`). It stays inside the device's fiction — the narrator as an app pinging you. Tapping the banner dismisses it.
 - **`aside`** — the narration appears as a note in the margin *beside* the phone, level with the latest message, and rides along as the chat scrolls — marginalia from a narrator standing entirely outside the device. See [Asides](#asides) below.
 
-Mix modes within one story by tagging individual passages `meta-chat`, `meta-overlay`, or `meta-notification` — a tag beats the global setting. Overlay and notification narration is ephemeral by design (it leaves no trace in the transcript), but it still participates in undo and save/restore, and the `read`/`unread` receipt tags work from any mode — narration saying *"hours pass"* over a message stuck on Delivered is exactly the kind of thing this is for.
+Mix modes within one story by tagging individual passages `meta-chat`, `meta-overlay`, `meta-notification`, or `meta-aside` — a tag beats the global setting. Overlay and notification narration is ephemeral by design (it leaves no trace in the transcript), but it still participates in undo and save/restore, and the `read`/`unread` receipt tags work from any mode — narration saying *"hours pass"* over a message stuck on Delivered is exactly the kind of thing this is for.
 
 ### Asides
 
@@ -548,16 +575,37 @@ A complete example is [`docs/subtext-inbox-demo.twee`](docs/subtext-inbox-demo.t
 The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via `--t-chat-width`). Supplementary content lives in a Menu modal; fill it from your story JavaScript:
 
 ```js
-inject_menu('<h3>About</h3><p>…</p>');           // content of the Menu modal
-inject_nav_menu('about');                        // custom label for the Menu button (replaces the ☰ icon)
-inject_hint('Choose an option to continue');     // text above the choices (same as story.config.hint)
-inject_modal('Leave?', '<p>Progress will be lost.</p>', '<button data-dismiss="modal">Stay</button>');
-inject_nav_back('← back');                       // shows a back link in the header
+story.setMenu('<h3>About</h3><p>…</p>');          // content of the Menu modal
+story.setMenu('<p>…</p>', 'About');               // …and retitle the dialog while you're at it
+story.setRestartDialog('Leave?', '<p>Progress will be lost.</p>');
+story.config.hint = 'Choose an option to continue';  // text above the choices
 ```
 
-The hint is smarter than a static label: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` retires the helper text entirely once the player has made that many moves — training wheels off. (`null` keeps hints forever; `0` never shows them.)
+The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. The hint is smarter than a static label: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` retires the helper text entirely once the player has made that many moves — training wheels off. (`null` keeps hints forever; `0` never shows them.)
 
-The Menu button (☰) only appears once the menu has content. The Trialogue 1.x helpers `inject_left_sidebar()` / `inject_right_sidebar()`—which used to render desktop side columns—still work as deprecated aliases, each filling an additional section of the menu. The header always includes an Undo button (↩, appears once there is something to undo), a light/dark toggle, and a Restart button that asks for confirmation.
+The Menu button (☰) only appears once the menu has content. The header always includes an Undo button (↩, appears once there is something to undo) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.
+
+> **Legacy helpers.** The Trialogue-era globals still work as aliases: `inject_menu(html, title)` → `setMenu`, `inject_modal(title, body, footer)` → `setRestartDialog`, `inject_hint(text)` → `config.hint`, plus `inject_nav_menu(label)` (custom label for the ☰ button) and `inject_nav_back(html)` (a back link in the header). `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` are gone — they served a page layout that no longer exists.
+
+**Where the story's identity lives.** By default `StoryTitle`, `StorySubtitle`, and `StoryAuthor` render in the chat header. `story.config.titlePlacement` moves them:
+
+```js
+story.config.titlePlacement = 'header';  // default
+story.config.titlePlacement = 'menu';    // tucked at the top of the menu dialog
+story.config.titlePlacement = 'none';    // handled by you
+```
+
+**The header is a stage, not a label.** Repurpose it mid-story with `story.setHeader()` — chapter titles, in-fiction app names, a slow reveal:
+
+```
+:: chapter-two [speaker-sam clear]
+<% story.setHeader('Part Two', 'three weeks later') %>
+[timestamp Three weeks later]
+
+you didn't call
+```
+
+`setHeader(title, subtitle)` overrides either field (pass `null` to leave one alone, `''` to blank it; a custom subtitle replaces the author credit on that line). It's stored in story state, so undo and save/restore keep the header in step with the story. In multi-conversation stories the thread screens still show the contact's name — the custom title appears on the inbox screen instead.
 
 ## Debug mode
 
@@ -648,6 +696,8 @@ story.config.autosave = true;
 | `titleNotifications` | `true` | Show `(2) Story Name` in the tab title while hidden |
 | `threadNotifications` | `true` | Announce cross-thread messages with a banner |
 | `themeToggle` | `true` | Show the light/dark toggle in the header |
+| `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
+| `menuTitle` | `'Menu'` | Heading of the menu dialog |
 | `lang` | `''` | Interface language, applied to `<html lang>` (empty = `en`) |
 | `typingLabel` | `'%s is typing'` | Screen-reader announcement while a speaker types |
 | `autosave` | `false` | Persist progress to `localStorage` after every message |
@@ -705,13 +755,7 @@ The Snowman 2 names (`sm.story.started`, `sm.passage.showing`, `sm.passage.shown
 
 ## Recipes
 
-Common patterns, built from the pieces documented above. Everything here works today — copy, paste, adapt. Three trackers do most of the work, and like all of `s` they take part in undo and save/restore:
-
-| `s` value | Is |
-| --- | --- |
-| `s.lastChoice` | The label of the last reply pill tapped — see [Reply pills and sent text](#reply-pills-and-sent-text) |
-| `s.previousPassage` | The name of the passage shown just before this one |
-| `s.replySeconds` | How long the player deliberated over the last choice, in seconds |
+Common patterns, built from the pieces documented above. Everything here works today — copy, paste, adapt. Most lean on the automatic trackers in [Story state](#story-state).
 
 ### Branch on how the player arrived
 
@@ -803,6 +847,7 @@ What authors should still do: write alt text in image HTML (`<img src="…" alt=
 Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
 
 - jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works, and the Snowman utility functions `either()`, `hasVisited()`, `visited()`, `renderToSelector()`, and `getStyles()` are built in.)
+- `inject_left_sidebar()` / `inject_right_sidebar()` / `fade_in_content_containers()` were removed — they served a desktop page layout that no longer exists. Move sidebar content into the menu with `story.setMenu()`. The other `inject_*` helpers still work as aliases for the `story.*` methods (see [Page chrome and menus](#page-chrome-and-menus)).
 - Story events are now plain DOM `CustomEvent`s on `window` — see [Events](#events). The Snowman 2 event-name aliases are dispatched too.
 - Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
 - Twine 1 documents are no longer supported.
@@ -815,6 +860,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Cross-playthrough memory.** `story.remember()` / `story.recall()` / `story.forget()` persist values per story across restarts — endings-seen counters, New Game+ unlocks, characters who remember your last run.
 - **A [Recipes](#recipes) section** collecting common patterns: arrival-based branching, hesitation, affinity meters, disappearing hub choices, and playthrough memory.
 - **A sturdier debug panel.** The timeline now sits front and center with every passage tappable to *rewind* to that moment; jumping to a passage is a clean teleport (transcript resets, `s` is kept) instead of piling passages into the log; the panel stays open across reloads; and a Memory section shows what the story has `remember()`ed.
+- **Read receipts flip like a real phone's.** *Delivered* becomes *Read* the moment the reply is queued — before the typing dots — not when the message lands. `read`/`unread`/`failed` tags still override.
+- **The header is a stage.** `story.setHeader('Part Two', 'three weeks later')` repurposes the title line mid-story (undo- and save-aware); `story.config.titlePlacement` moves the StoryTitle/Subtitle/Author identity into the menu (or nowhere); `story.config.menuTitle` / `inject_menu(content, 'About')` retitle the menu dialog.
+- **Trialogue's `inject_left_sidebar()` / `inject_right_sidebar()` / `fade_in_content_containers()` are gone** — there are no side columns on a phone. Use the menu.
+- **A coherence pass over the whole authoring surface.** Canonical camelCase APIs (`story.setMenu`, `story.setRestartDialog`) with the `inject_*` names kept as legacy aliases; a stated [design language](#the-design-language) (directives = in-message content, `prefix:` links = reply kinds, `(send:)` = reply modifier); a complete [Story state](#story-state) reference; bare `[[photo->x]]` shorthand; `end` accepted alongside `End`; `meta-aside` completes the narration-tag family.
 
 ### Version 2.3
 

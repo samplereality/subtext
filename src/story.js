@@ -306,6 +306,13 @@ var Story = function() {
 		   over the chat's edge ('float'); set 'chip' to fall back to
 		   centered in-chat narration instead */
 		asideMobile: 'float',
+		/* where StoryTitle / StorySubtitle / StoryAuthor appear:
+		   'header' (default), 'menu' (tucked into the menu dialog), or
+		   'none' (handle them yourself, e.g. via setHeader) */
+		titlePlacement: 'header',
+		/* heading of the menu dialog (also settable per call via
+		   inject_menu(content, title)) */
+		menuTitle: 'Menu',
 		/* force debug mode on (Twine's Test button, `tweego -t`, and a
 		   ?debug URL switch enable it too) */
 		debug: false
@@ -499,23 +506,8 @@ Object.assign(Story.prototype, {
 		this.speakers = this.parseSpeakers();
 		this.threads = this.parseThreads();
 
-		// header: title, subtitle, author
-
-		if (this.dom.title) {
-			this.dom.title.textContent = this.name;
-		}
-
-		var subtitle = this.passage('StorySubtitle');
-
-		if (subtitle && this.dom.subtitle) {
-			this.dom.subtitle.innerHTML = subtitle.source;
-		}
-
-		var author = this.passage('StoryAuthor');
-
-		if (author && author.source.trim() && this.dom.author) {
-			this.dom.author.textContent = ' by ' + author.source.trim();
-		}
+		// (the header title/subtitle/author render in applyIdentity(),
+		// after user scripts have had their say on config.titlePlacement)
 
 		// undo & restart buttons
 
@@ -714,6 +706,14 @@ Object.assign(Story.prototype, {
 			// autosave keeps your place across `tweego -w` rebuilds
 			this.config.autosave = true;
 			this.enableDebug();
+		}
+
+		this.applyIdentity();
+
+		var menuTitle = byId('menu-dialog-title');
+
+		if (menuTitle) {
+			menuTitle.textContent = this.config.menuTitle;
 		}
 
 		if (this.config.lang) {
@@ -1659,6 +1659,7 @@ Object.assign(Story.prototype, {
 			var display = link.display.trim();
 
 			return (
+				display !== 'photo' &&
 				display.indexOf(PHOTO_LINK_PREFIX) !== 0 &&
 				display !== 'location' &&
 				display.indexOf(LOCATION_LINK_PREFIX) !== 0 &&
@@ -2199,11 +2200,17 @@ Object.assign(Story.prototype, {
 		links.forEach(function(link) {
 			var display = link.display.trim();
 
-			if (display.indexOf(PHOTO_LINK_PREFIX) !== 0) {
+			// bare `photo` offers the whole gallery, like `photo:*` —
+			// the same shorthand `location` and `input` already allow
+
+			if (display !== 'photo' && display.indexOf(PHOTO_LINK_PREFIX) !== 0) {
 				return;
 			}
 
-			var names = display.substring(PHOTO_LINK_PREFIX.length).trim();
+			var names =
+				display === 'photo'
+					? '*'
+					: display.substring(PHOTO_LINK_PREFIX.length).trim();
 			var list =
 				names === '*' || names === ''
 					? Object.keys(story.gallery)
@@ -2893,6 +2900,175 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Places the story's identity (StoryTitle / StorySubtitle /
+	 StoryAuthor) according to config.titlePlacement: in the chat
+	 header (default), tucked into the menu dialog ('menu'), or
+	 nowhere ('none' — style your own via setHeader and inject_menu).
+	**/
+
+	applyIdentity: function() {
+		if (this.config.titlePlacement === 'menu') {
+			var identity = byId('menu-identity');
+
+			if (identity) {
+				var html =
+					'<div class="menu-identity-title">' +
+					template.escapeHtml(this.name) +
+					'</div>';
+				var subtitle = this.passage('StorySubtitle');
+				var author = this.passage('StoryAuthor');
+
+				if (subtitle && subtitle.source.trim()) {
+					html +=
+						'<div class="menu-identity-sub">' +
+						subtitle.source +
+						'</div>';
+				}
+
+				if (author && author.source.trim()) {
+					html +=
+						'<div class="menu-identity-author">by ' +
+						template.escapeHtml(author.source.trim()) +
+						'</div>';
+				}
+
+				identity.innerHTML = html;
+				identity.hidden = false;
+				this.dom.menu.hidden = false;
+			}
+		}
+
+		this.applyHeader();
+	},
+
+	/**
+	 Renders the header's title line: the identity defaults (when
+	 titlePlacement is 'header'), overridden per field by anything the
+	 story has set with setHeader(). In multi-conversation stories the
+	 thread screens overwrite the title with the contact's name.
+	**/
+
+	applyHeader: function() {
+		var custom = this.state._header || {};
+		var inHeader = this.config.titlePlacement === 'header';
+		var subtitle = this.passage('StorySubtitle');
+		var author = this.passage('StoryAuthor');
+
+		if (this.dom.title) {
+			this.dom.title.textContent =
+				typeof custom.title === 'string'
+					? custom.title
+					: inHeader
+						? this.name
+						: '';
+		}
+
+		if (this.dom.subtitle) {
+			this.dom.subtitle.innerHTML =
+				typeof custom.subtitle === 'string'
+					? custom.subtitle
+					: inHeader && subtitle
+						? subtitle.source
+						: '';
+		}
+
+		if (this.dom.author) {
+			this.dom.author.textContent =
+				typeof custom.subtitle !== 'string' &&
+				inHeader &&
+				author &&
+				author.source.trim() !== ''
+					? ' by ' + author.source.trim()
+					: '';
+		}
+	},
+
+	/**
+	 Repurposes the header mid-story — "Prologue", "Three years
+	 earlier", an in-fiction app name. Stored in story state, so undo
+	 and save/restore keep the header in step with the story:
+
+	   story.setHeader('Prologue');
+	   story.setHeader('Prologue', 'part one');
+	   story.setHeader(null, 'part two');   // subtitle only
+
+	 Pass empty strings to blank a field. A custom subtitle replaces
+	 the author credit on that line.
+	**/
+
+	setHeader: function(title, subtitle) {
+		var header = this.state._header || {};
+
+		if (title !== undefined && title !== null) {
+			header.title = String(title);
+		}
+
+		if (subtitle !== undefined && subtitle !== null) {
+			header.subtitle = String(subtitle);
+		}
+
+		this.state._header = header;
+		this.applyHeader();
+	},
+
+	/**
+	 Fills the menu dialog and reveals the header's Menu button. An
+	 optional second argument retitles the dialog:
+
+	   story.setMenu('<h3>About</h3><p>…</p>', 'About');
+
+	 (inject_menu() is the legacy Trialogue-era alias.)
+	**/
+
+	setMenu: function(html, title) {
+		var container = byId('menu-container');
+
+		if (container) {
+			container.innerHTML = html;
+		}
+
+		if (this.dom && this.dom.menu) {
+			this.dom.menu.hidden = false;
+		}
+
+		if (typeof title === 'string') {
+			this.config.menuTitle = title;
+
+			var heading = byId('menu-dialog-title');
+
+			if (heading) {
+				heading.textContent = title;
+			}
+		}
+	},
+
+	/**
+	 Rewords the restart-confirmation dialog — its title, body HTML,
+	 and footer buttons. (inject_modal() is the legacy alias; the
+	 default buttons carry data-dialog-action="cancel" / "restart".)
+	**/
+
+	setRestartDialog: function(title, body, footer) {
+		var dialog = byId('exit-dialog');
+
+		if (!dialog) {
+			return;
+		}
+
+		var apply = function(selector, html) {
+			var el = dialog.querySelector(selector);
+
+			if (el && typeof html === 'string') {
+				el.innerHTML = html;
+			}
+		};
+
+		apply('.modal-title', title);
+		apply('.modal-body', body);
+		apply('.modal-footer', footer);
+	},
+
+	/**
 	 Resolves how a speakerless (narrator) passage should be presented:
 	 a per-passage tag wins, then config.metaStyle, defaulting to 'chat'.
 	**/
@@ -2936,7 +3112,8 @@ Object.assign(Story.prototype, {
 
 		if (
 			passage.tags.indexOf('aside-right') > -1 ||
-			passage.tags.indexOf('aside') > -1
+			passage.tags.indexOf('aside') > -1 ||
+			passage.tags.indexOf('meta-aside') > -1
 		) {
 			return 'right';
 		}
@@ -3437,6 +3614,11 @@ Object.assign(Story.prototype, {
 			this.showMeta(checkpoint.meta.html, checkpoint.meta.mode);
 		}
 
+		// the header follows the restored state (thread screens
+		// overwrite the title again below in multi mode)
+
+		this.applyHeader();
+
 		// restore the screen last, so re-offered responses use the
 		// checkpoint's links (openThread renders them itself)
 
@@ -3481,7 +3663,8 @@ Object.assign(Story.prototype, {
 
 	pcolophon: function() {
 		if (
-			window.passage.tags.indexOf('End') > -1 &&
+			(window.passage.tags.indexOf('End') > -1 ||
+				window.passage.tags.indexOf('end') > -1) &&
 			this.passage('StoryColophon') !== null
 		) {
 			var meta = document.createElement('div');
@@ -4143,6 +4326,28 @@ Object.assign(Story.prototype, {
 			this.preShowTimestamps(passage);
 		}
 
+		// and the read receipt flips when the reply is *queued* — the
+		// sender read the message, then started typing — not when the
+		// reply lands. Explicit unread/failed tags keep full control.
+
+		if (
+			speaker &&
+			speaker !== 'you' &&
+			this.config.readReceipts &&
+			this.config.autoRead &&
+			passage.tags.indexOf('unread') === -1 &&
+			passage.tags.indexOf('failed') === -1
+		) {
+			var lastOutgoing = this.lastOutgoingWrapper();
+
+			if (
+				!lastOutgoing ||
+				lastOutgoing.getAttribute('data-receipt') !== 'failed'
+			) {
+				this.markRead();
+			}
+		}
+
 		if (speaker && this.config.typing) {
 			this.timers.push(
 				window.setTimeout(function() {
@@ -4625,6 +4830,8 @@ Object.assign(Story.prototype, {
 			if (save.state) {
 				this.state = save.state;
 			}
+
+			this.applyHeader();
 
 			if (this.multiThread) {
 				var ts = save.threadState || {};

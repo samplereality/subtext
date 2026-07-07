@@ -2,7 +2,7 @@
 {
   "ifid": "B4A595DB-0D82-4652-99AD-6C801B0F1510",
   "format": "Subtext",
-  "format-version": "2.4.0"
+  "format-version": "2.4.1"
 }
 
 :: StoryTitle
@@ -13,11 +13,10 @@ an interactive chat story
 
 :: Story JavaScript [script]
 
-var menuContent              = '<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/subtext">Subtext</a>.</p><p>Anything passed to <span style="font-family: monospace;">inject_menu()</span> in your Story JavaScript appears here.</p>';
-var userResponseHintContent  = 'Choose an option to continue the conversation';
+var menuContent = '<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/subtext">Subtext</a>.</p><p>Anything passed to <span style="font-family: monospace;">story.setMenu()</span> in your Story JavaScript appears here.</p>';
 
-inject_menu(menuContent);
-inject_hint(userResponseHintContent);
+story.setMenu(menuContent);
+story.config.hint = 'Choose an option to continue the conversation';
 
 // different helper text above the free-text composer, and stop
 // showing hints once the player has made a few moves

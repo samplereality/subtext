@@ -1183,6 +1183,117 @@ async function run() {
 		(await page.locator('#debug-toggle').count()) === 0
 	);
 
+	console.log('page chrome');
+
+	// the read receipt flips when the reply is queued — before the
+	// typing indicator finishes, not when the message lands
+	await page.evaluate(() => {
+		window.story.config.minTypingDelay = 3000;
+		window.story.choose('ok', 'you there?');
+	});
+	await page.waitForSelector('#animation-container:not([hidden])');
+	check(
+		'read receipt flips while the reply is still typing',
+		await page.evaluate(
+			() =>
+				window.story.lastOutgoingWrapper()
+					.getAttribute('data-receipt') === 'read' &&
+				!document.getElementById('animation-container').hidden
+		)
+	);
+	await page.waitForTimeout(3500);
+	await page.evaluate(() => {
+		window.story.config.minTypingDelay = 500;
+	});
+
+	// the header is a stage: repurpose it mid-story
+	await page.evaluate(() => window.story.setHeader('Prologue', 'part one'));
+	check(
+		'setHeader repurposes the title line',
+		(await page.textContent('#ptitle')) === 'Prologue' &&
+			(await page.textContent('#psubtitle')) === 'part one' &&
+			(await page.textContent('#pauthor')) === ''
+	);
+
+	// identity can live in the menu instead of the header
+	await page.evaluate(() => {
+		delete window.story.state._header;
+		window.story.config.titlePlacement = 'menu';
+		window.story.applyIdentity();
+	});
+	check(
+		'titlePlacement "menu" tucks the identity into the menu',
+		(await page.textContent('#ptitle')) === '' &&
+			(await page.textContent('#menu-identity')).indexOf(
+				'Subtext Demo'
+			) > -1
+	);
+	await page.evaluate(() => {
+		window.story.config.titlePlacement = 'header';
+		window.story.applyIdentity();
+	});
+
+	// the menu dialog itself is renameable
+	await page.evaluate(() =>
+		window.inject_menu('<p>about this story</p>', 'About')
+	);
+	check(
+		'inject_menu can retitle the menu dialog',
+		(await page.textContent('#menu-dialog-title')) === 'About'
+	);
+
+	check(
+		'Trialogue sidebar helpers are gone',
+		await page.evaluate(
+			() =>
+				typeof window.inject_left_sidebar === 'undefined' &&
+				typeof window.inject_right_sidebar === 'undefined' &&
+				typeof window.fade_in_content_containers === 'undefined'
+		)
+	);
+
+	// canonical chrome methods, with inject_* as aliases
+	await page.evaluate(() =>
+		window.story.setRestartDialog('Leave?', '<p>All will be lost.</p>')
+	);
+	check(
+		'setRestartDialog rewords the restart confirmation',
+		(await page.textContent('#exit-dialog .modal-title')) === 'Leave?'
+	);
+	check(
+		'setMenu is the canonical menu API (inject_menu delegates)',
+		await page.evaluate(() => {
+			window.story.setMenu('<p>via setMenu</p>', 'Info');
+			return (
+				document.getElementById('menu-container').textContent ===
+					'via setMenu' &&
+				document.getElementById('menu-dialog-title').textContent ===
+					'Info'
+			);
+		})
+	);
+
+	// design-language shorthands and aliases
+	check(
+		'bare [[photo->x]] offers the whole gallery like photo:*',
+		await page.evaluate(() => {
+			window.passage.links = [];
+			window.Passage.render('[[photo->photo-reply]]');
+			return (
+				window.story.getPhotoOffers(window.passage.links).length ===
+				Object.keys(window.story.gallery).length
+			);
+		})
+	);
+	check(
+		'meta-aside completes the narration tag family',
+		await page.evaluate(
+			() =>
+				window.story.getAsideSide({ tags: ['meta-aside'] }) ===
+				'right'
+		)
+	);
+
 	console.log('multi-conversation inbox');
 
 	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');
