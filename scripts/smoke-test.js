@@ -1382,6 +1382,16 @@ async function run() {
 		})
 	);
 	check(
+		'a seeded [react …] lands on the previous seeded message',
+		await inboxPage.evaluate(() => {
+			const badge = document.querySelector(
+				'.thread-log[data-thread="mom"] ' +
+				'.chat-passage-wrapper:not([data-speaker="you"]) .chat-reaction'
+			);
+			return !!badge && badge.textContent === '👍';
+		})
+	);
+	check(
 		'markUnread with no hot thread cannot corrupt the inbox',
 		await inboxPage.evaluate(() => {
 			const prev = window.story._hotThread;
@@ -1445,6 +1455,15 @@ async function run() {
 	check(
 		'no responses leak into a thread without the story cursor',
 		(await inboxPage.locator('.user-response').count()) === 0
+	);
+	check(
+		'the seeded tapback is repositioned once its log is visible',
+		await inboxPage.evaluate(() => {
+			const badge = document.querySelector(
+				'.thread-log[data-thread="mom"] .chat-reaction'
+			);
+			return !!badge && parseFloat(badge.style.left) > 0;
+		})
 	);
 	check(
 		'a parked thread shows the disabled idle composer',

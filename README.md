@@ -584,6 +584,16 @@ yes mom. going to bed, talk tomorrow ❤️
 
 (Use the tags rather than `<% story.markUnread() %>` in a seed — during seeding there's no "last sent message" for the JavaScript form to target.)
 
+Old tapbacks work too: a `[react …]` inside a seed lands on the previous seeded message from the other side. A seed can even be *only* a reaction — no bubble, just the player's old 👍 on an old text:
+
+```
+:: mom-old-1 [thread-mom speaker-mom seed]
+Did you eat today? You never answer me.
+
+:: mom-old-1-react [thread-mom speaker-you seed]
+[react 👍]
+```
+
 Seeds follow passage order, survive save/restore, and stay put under undo (they're history, not moves). Note that seeding a hidden thread reveals it — old messages mean the contact isn't a surprise.
 
 State for branching: nothing is required, but the runtime tracks it all — `story.unread` (per-thread counts), `story.threads`, and the active thread are saved and restored, and undo rewinds thread-by-thread. Config: `story.config.threadNotifications = false` silences the cross-thread banners (the inbox badges still update).
@@ -902,7 +912,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 ### Version 2.5
 
 - **Hidden threads.** `hidden: true` in a `StoryThreads` declaration keeps a conversation out of the inbox until its first message arrives (or `story.revealThread(id)`) — the Unknown Number stays a surprise.
-- **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it. Seeded player messages honor the `read`/`unread`/`failed` receipt tags, so an old text can open the story still sitting on Delivered.
+- **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it. Seeded player messages honor the `read`/`unread`/`failed` receipt tags (an old text can open the story still sitting on Delivered), and `[react …]` in a seed lands an old tapback on the previous seeded message.
 - **Diegetic read-only threads.** Viewing a conversation the story isn't in shows a grayed-out composer — *"Nothing to say right now"* (`story.config.threadIdleHint`) — instead of an empty reply area.
 - **Cross-thread banners truncate** long messages with an ellipsis, like real notifications.
 
