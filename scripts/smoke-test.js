@@ -1308,6 +1308,39 @@ async function run() {
 		})
 	);
 
+	// (send:) strips from the target too in shorthand [[label]] links
+	check(
+		'(send:) works in shorthand links without an arrow',
+		await page.evaluate(() => {
+			window.passage.links = [];
+			window.Passage.render('[[ok (send: hi || there)]]');
+			const link = window.passage.links[0];
+			return (
+				link.target === 'ok' &&
+				link.display === 'ok' &&
+				link.sent === 'hi || there'
+			);
+		})
+	);
+
+	// undo can be disabled by config
+	await page.evaluate(() => {
+		window.story.config.undoButton = false;
+		window.story.choose('Start', 'no takebacks');
+	});
+	await page.waitForTimeout(300);
+	check(
+		'config.undoButton = false keeps the undo button hidden',
+		await page.evaluate(
+			() =>
+				document.getElementById('nav-link-undo').hidden &&
+				window.story.checkpoints.length > 0
+		)
+	);
+	await page.evaluate(() => {
+		window.story.config.undoButton = true;
+	});
+
 	console.log('multi-conversation inbox');
 
 	const INBOX_DEMO = path.join(__dirname, '..', 'docs', 'subtext-inbox-demo.html');

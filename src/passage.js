@@ -188,7 +188,16 @@ function render(source) {
 			var sendMatch = display.match(/\(send:([^)]*)\)\s*$/i);
 
 			if (sendMatch) {
-				link.display = display.slice(0, sendMatch.index).trim();
+				var label = display.slice(0, sendMatch.index).trim();
+
+				// in the shorthand form [[label (send: ...)]] the label
+				// IS the target, so the suffix comes off both
+
+				if (link.target === display) {
+					link.target = label;
+				}
+
+				link.display = label;
 				link.sent = sendMatch[1].trim();
 			}
 

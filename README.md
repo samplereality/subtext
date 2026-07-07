@@ -378,7 +378,7 @@ By default a pill's label is also what gets sent as the player's message. Add a 
 [[start (send:)->intro]]      // pill says "start", sends nothing
 ```
 
-An empty `(send:)` sends no bubble at all — the story just advances. (From code, `story.choose(target, text)` does the same; pass an empty string to advance silently.)
+An empty `(send:)` sends no bubble at all — the story just advances. (From code, `story.choose(target, text)` does the same; pass an empty string to advance silently.) The suffix works in every link form, including the shorthand where the label is the target: `[[what? (send: what? || tell me)]]` targets the passage named `what?`.
 
 And `||` inside the sent text breaks it into separate bubbles, fired off in quick succession — one tap, a flurry of texts:
 
@@ -583,7 +583,7 @@ story.config.hint = 'Choose an option to continue';  // text above the choices
 
 The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. The hint is smarter than a static label: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` retires the helper text entirely once the player has made that many moves — training wheels off. (`null` keeps hints forever; `0` never shows them.)
 
-The Menu button (☰) only appears once the menu has content. The header always includes an Undo button (↩, appears once there is something to undo) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.
+The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.
 
 > **Legacy helpers.** The Trialogue-era globals still work as aliases: `inject_menu(html, title)` → `setMenu`, `inject_modal(title, body, footer)` → `setRestartDialog`, `inject_hint(text)` → `config.hint`, plus `inject_nav_menu(label)` (custom label for the ☰ button) and `inject_nav_back(html)` (a back link in the header). `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` are gone — they served a page layout that no longer exists.
 
@@ -696,6 +696,7 @@ story.config.autosave = true;
 | `titleNotifications` | `true` | Show `(2) Story Name` in the tab title while hidden |
 | `threadNotifications` | `true` | Announce cross-thread messages with a banner |
 | `themeToggle` | `true` | Show the light/dark toggle in the header |
+| `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
 | `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
 | `menuTitle` | `'Menu'` | Heading of the menu dialog |
 | `lang` | `''` | Interface language, applied to `<html lang>` (empty = `en`) |
@@ -864,6 +865,11 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **`(send:)` now works in shorthand links.** `[[what? (send: what? || tell me)]]` correctly targets the passage named `what?` — previously the suffix stayed glued to the target and broke the link.
+- **`story.config.undoButton = false`** hides the header undo button, for stories where choices should be final.
 
 ### Version 2.4
 

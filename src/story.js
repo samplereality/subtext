@@ -273,6 +273,9 @@ var Story = function() {
 		threadNotifications: true,
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
+		/* show the header undo button once there is something to undo
+		   (set false for stories where choices should be final) */
+		undoButton: true,
 		/* language of the story's interface, applied to <html lang>
 		   (leave empty to keep the default "en") */
 		lang: '',
@@ -3497,7 +3500,7 @@ Object.assign(Story.prototype, {
 			reactionLogLength: this._reactionLog.length
 		});
 
-		this.dom.undo.hidden = false;
+		this.dom.undo.hidden = !this.config.undoButton;
 
 		// how long the player deliberated, in seconds — recorded on
 		// every response (a checkpoint is pushed exactly when one is
