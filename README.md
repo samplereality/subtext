@@ -945,6 +945,28 @@ ask me anything.
 
 (The same `<% if (…) { %>[[…]]<% } %>` shape gates any pill — behind a password, a stat, a `recall()`, whatever.)
 
+### A "Delete Thread" reply pill
+
+The Trash verbs compose with reply pills into a player-facing delete. Three pieces: an empty `(send:)` so tapping posts no bubble, a target passage in *another* thread (the pill's consequence is someone else reacting), and the deferred archive-and-exit:
+
+```
+:: unknown-final [thread-unknown speaker-unknown]
+I know what you did.
+
+[[Delete Thread (send:)->deleted-it]]
+[[who is this?->unknown-2]]
+
+:: deleted-it [thread-sam speaker-sam]
+<% $(function() {
+	story.archiveThread('unknown');
+	story.openInbox();
+}) %>did you seriously just delete that whole thread??
+
+[[it felt right->sam-2]]
+```
+
+Tapping **Delete Thread** sends nothing, Sam's reaction pulls the story to Sam's conversation, and once it lands the Unknown thread sweeps into the Trash and the player is standing in the inbox — deleted thread grayed out below, Sam's fresh message waiting above. The player can still dig the "deleted" conversation out of the Trash and reread it, which is exactly the guilt a delete button should carry. (The `$()` wrapper matters: it defers the archive until after the passage's own message lands, which would otherwise recover the thread immediately.)
+
 ### Remember across playthroughs
 
 `story.remember(key, value)` / `story.recall(key, fallback)` persist per-story in `localStorage` and survive **restart** — unlike `s`, which resets. This is how a story counts endings the player has found, unlocks New Game+ content, or has a character remember the last run:
