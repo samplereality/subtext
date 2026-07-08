@@ -1145,27 +1145,35 @@ Object.assign(Story.prototype, {
 			return nodes;
 		}
 
-		// hoist inline [timestamp ...] chips above the message group;
-		// chips already shown while the passage was "typing" are skipped
+		// hoist [timestamp ...] and [system ...] chips out of the
+		// message group: chips before the message render above it,
+		// chips after it (a departure ending a passage) render below.
+		// Pre-shown timestamps are skipped; system events never
+		// pre-show, so they are never skipped.
 
 		var pre = this._preShownStamps;
 		var skip = pre && pre.pid === passage.id ? pre.count : 0;
+		var tailNodes = [];
+		var seenContent = false;
 
 		blocks = blocks.filter(function(block) {
-			if (
+			var isChip =
 				block.nodeType === Node.ELEMENT_NODE &&
-				block.classList.contains('chat-timestamp')
-			) {
-				if (skip > 0) {
-					skip -= 1;
-					return false;
-				}
+				(block.classList.contains('chat-timestamp') ||
+					block.classList.contains('chat-system'));
 
-				nodes.push(block);
+			if (!isChip) {
+				seenContent = true;
+				return true;
+			}
+
+			if (block.classList.contains('chat-timestamp') && skip > 0) {
+				skip -= 1;
 				return false;
 			}
 
-			return true;
+			(seenContent ? tailNodes : nodes).push(block);
+			return false;
 		});
 
 		if (pre && pre.pid === passage.id) {
@@ -1173,6 +1181,7 @@ Object.assign(Story.prototype, {
 		}
 
 		if (blocks.length === 0) {
+			Array.prototype.push.apply(nodes, tailNodes);
 			return nodes;
 		}
 
@@ -1188,6 +1197,7 @@ Object.assign(Story.prototype, {
 			this.buildRichContent(meta);
 
 			nodes.push(meta);
+			Array.prototype.push.apply(nodes, tailNodes);
 			return nodes;
 		}
 
@@ -1288,6 +1298,7 @@ Object.assign(Story.prototype, {
 		});
 
 		nodes.push(wrapper);
+		Array.prototype.push.apply(nodes, tailNodes);
 		return nodes;
 	},
 
@@ -4689,7 +4700,7 @@ Object.assign(Story.prototype, {
 
 		probe.innerHTML = target.source
 			.replace(/\[\[.*?\]\]/g, '')
-			.replace(/\[(voice|location|timestamp)[^\]]*\]/gi, '');
+			.replace(/\[(voice|location|timestamp|system)[^\]]*\]/gi, '');
 
 		var length = probe.textContent.trim().length;
 

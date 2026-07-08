@@ -69,7 +69,8 @@ async function run() {
 						(node.classList.contains('chat-passage-wrapper') ||
 							node.classList.contains('chat-passage') ||
 							node.classList.contains('meta-passage') ||
-							node.classList.contains('chat-timestamp'))
+							node.classList.contains('chat-timestamp') ||
+							node.classList.contains('chat-system'))
 					) {
 						window.__logRemovals += 1;
 					}
@@ -1581,6 +1582,37 @@ async function run() {
 
 	await inboxPage.click('#nav-link-inbox');
 	await inboxPage.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+
+	// [system ...] event chips: never pre-shown, and one that ends a
+	// passage renders BELOW the message group, not hoisted above it
+	check(
+		'[system ...] renders a centered event chip',
+		await page.evaluate(() =>
+			window.Passage.render('[system Sam has left the conversation]')
+				.indexOf('<div class="chat-system">Sam has left the conversation</div>') > -1
+		)
+	);
+	await inboxPage.evaluate(() => window.story.show('unknown-2'));
+	await inboxPage.waitForSelector(
+		'.thread-log[data-thread="unknown"] .chat-system',
+		{ state: 'attached', timeout: 15000 }
+	);
+	check(
+		'a trailing [system ...] chip lands below its message group',
+		await inboxPage.evaluate(() => {
+			const log = document.querySelector(
+				'.thread-log[data-thread="unknown"]'
+			);
+			const chip = log.querySelector('.chat-system');
+			return (
+				chip.textContent === 'Unknown Number has left the conversation' &&
+				chip.previousElementSibling !== null &&
+				chip.previousElementSibling.classList.contains(
+					'chat-passage-wrapper'
+				)
+			);
+		})
+	);
 
 	const inboxAxe = await inboxPage.evaluate(async () => {
 		const results = await window.axe.run(document, {

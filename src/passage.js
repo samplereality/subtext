@@ -61,6 +61,18 @@ function render(source) {
 		}
 	);
 
+	// [system Sam has left the conversation] on its own line becomes a
+	// centered system-event chip — joins, departures, missed calls,
+	// group renames. Unlike a timestamp it is never shown early while
+	// the message is still "typing": events land in sequence.
+
+	result = result.replace(
+		/^[ \t]*\[system[ \t]+([^\]]+)\][ \t]*$/gim,
+		function(match, label) {
+			return '<div class="chat-system">' + template.escapeHtml(label.trim()) + '</div>';
+		}
+	);
+
 	// [voice some.mp3] on its own line becomes a voice-memo bubble
 	// (any audio URL or data URI)
 
