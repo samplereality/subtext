@@ -934,6 +934,18 @@ a {
 	animation: t-pop 0.3s ease both;
 }
 
+/* system events — joins, departures, missed calls */
+
+.chat-system {
+	align-self: center;
+	text-align: center;
+	font-size: 0.72rem;
+	font-style: italic;
+	color: var(--t-muted);
+	margin: 0.9rem auto 0.15rem;
+	animation: t-pop 0.3s ease both;
+}
+
 /* Meta passages =========================================================== */
 
 .meta-passage {
@@ -1614,6 +1626,7 @@ button:focus-visible,
 
 	.chat-speaker-name,
 	.chat-timestamp,
+	.chat-system,
 	.meta-passage,
 	.user-response-hint {
 		color: var(--t-text);

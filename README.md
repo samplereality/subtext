@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [Read receipts](#read-receipts) · [Reactions](#reactions)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -162,7 +162,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 
 Everything you write in a passage falls into one of three shapes, each with one job:
 
-1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`. Square brackets, lowercase, one line.
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`. Square brackets, lowercase, one line.
 2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
 3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
 
@@ -284,6 +284,21 @@ any progress on the case?
 ```
 
 A `[timestamp …]` line at the start of any passage renders as a chip above the message (it also resets message grouping, as a time gap should). Alternatively, tag a whole passage `timestamp` to render its text as chips. Timestamps are purely presentational — write whatever fits your story's clock. When a chip leads a speaker's reply, it appears the moment the reply starts "typing," the way it would on a real phone.
+
+### System messages
+
+The connective tissue of a real messaging app — departures, joins, missed calls, group renames — gets its own chip:
+
+```
+:: sam-goes-dark [speaker-sam]
+I've said too much already
+
+[system Sam has left the conversation]
+
+[[wait—->gone]]
+```
+
+`[system …]` renders as a centered, italic event chip (style it via `.chat-system`). It differs from a timestamp in two deliberate ways: a chip *after* the message lands below it — a departure follows the last word — and it is **never shown early** while the reply is still typing; events land in sequence, only clocks may front-run. Works in [seeds](#multiple-conversations) too, for history like *"Missed call"*.
 
 ### Read receipts
 
@@ -915,6 +930,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it. Seeded player messages honor the `read`/`unread`/`failed` receipt tags (an old text can open the story still sitting on Delivered), and `[react …]` in a seed lands an old tapback on the previous seeded message.
 - **Diegetic read-only threads.** Viewing a conversation the story isn't in shows a grayed-out composer — *"Nothing to say right now"* (`story.config.threadIdleHint`) — instead of an empty reply area.
 - **Cross-thread banners truncate** long messages with an ellipsis, like real notifications.
+- **`[system …]` event chips** — *"Sam has left the conversation"*, missed calls, group renames. Like a timestamp chip but never shown early while a reply is typing, and a trailing one lands below its message. See [System messages](#system-messages).
 
 ### Version 2.4.2
 
