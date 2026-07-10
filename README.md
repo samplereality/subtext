@@ -566,7 +566,7 @@ Three things move the story between threads:
   I know you're awake.
   ```
 
-- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. The chevron itself is yours to stage: `story.config.inboxButton = false` starts the story feeling like a single conversation, and `<% story.showInboxButton() %>` in a later passage reveals that there was a whole inbox all along (`hideInboxButton()` reverses it). Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
+- **The player**, by opening the inbox (the ‹ chevron on the header's left) or tapping a notification banner, can read any thread at any time. The chevron itself is yours to stage: `story.config.inboxButton = false` starts the story feeling like a single conversation, and `<% story.showInboxButton() %>` in a later passage reveals that there was a whole inbox all along (`hideInboxButton()` reverses it). Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
 
 The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Cross-thread banners cut long messages off with an ellipsis, the way real notifications do.
 
@@ -718,7 +718,7 @@ story.config.autosave = true;
 | `msPerChar` | `20` | Simulated typing speed, milliseconds per character |
 | `minTypingDelay` | `500` | Floor for the typing delay (ms) |
 | `maxTypingDelay` | `4000` | Ceiling for the typing delay (ms) |
-| `metaDelay` | `800` | Delay before a narration passage appears (ms) |
+| `metaDelay` | `800` | Delay before a narration passage appears (ms). Skipped when the player taps directly into narration with a silent `(send:)` pill |
 | `splitBubbles` | `true` | Render each paragraph as its own bubble |
 | `bubbleStagger` | `140` | Gap between bubbles of one passage (ms) |
 
@@ -1015,6 +1015,8 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Fixed (game-breaking):** opening the inbox while a narration overlay was up stranded the player under the veil with nothing clickable. The inbox chevron now hides while an overlay is showing.
 - **`story.showInboxButton()` / `hideInboxButton()`** (and `config.inboxButton`) stage the inbox reveal — start the story as one conversation, disclose the wider inbox when the moment lands.
 - The "Delete Thread" reply-pill recipe (missed the 2.6 merge).
+- **Fixed:** a silent `[[Continue (send:)->…]]` pill into narration now shows the narration immediately instead of waiting out `metaDelay` — tapping straight into an overlay feels responsive. (`metaDelay` still paces narration that follows a sent message or a speaker's reply.)
+- **Fixed:** the docs described the inbox button with a ☰ glyph; it's a ‹ chevron.
 
 ### Version 2.6
 

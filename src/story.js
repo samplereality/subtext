@@ -884,7 +884,17 @@ Object.assign(Story.prototype, {
 			this.playSound('send');
 		}
 
-		this.showDelayed(targetName, { noMove: true });
+		// narration the player taps directly into — an empty (send:)
+		// "Continue" pill — appears instantly; metaDelay only paces
+		// narration that follows a sent message
+
+		var target = this.passage(targetName);
+
+		if (parts.length === 0 && target && !this.getPassageSpeaker(target)) {
+			this.show(targetName, { noMove: true });
+		} else {
+			this.showDelayed(targetName, { noMove: true });
+		}
 	},
 
 	/**

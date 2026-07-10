@@ -1053,6 +1053,16 @@ async function run() {
 		})
 	);
 
+	// an empty (send:) into narration is a direct tap — the overlay
+	// must appear in the same tick, not after metaDelay
+	check(
+		'empty (send:) into narration shows the overlay instantly',
+		await page.evaluate(() => {
+			window.story.choose('hello', '');
+			return !document.getElementById('meta-overlay').hidden;
+		})
+	);
+
 	console.log('debug mode');
 
 	const debugPage = await browser.newPage({
