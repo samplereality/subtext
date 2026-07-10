@@ -931,21 +931,23 @@ async function run() {
 	console.log('timestamps appear while typing');
 
 	// choosing back to Start (which opens with [timestamp Today 9:41 AM])
-	// must surface the chip immediately — before the reply "arrives"
-	const stampCounts = await page.evaluate(() => {
-		const count = () =>
-			document.querySelectorAll('.chat-timestamp').length;
-		const before = count();
+	// must surface the chip right away — one tick after choose() (the
+	// pre-show is deferred a tick so it can't front-run the passage
+	// that scheduled it), long before the reply "arrives"
+	const stampCounts = await page.evaluate(
+		() =>
+			new Promise((resolve) => {
+				const count = () =>
+					document.querySelectorAll('.chat-timestamp').length;
+				const before = count();
 
-		window.story.choose('Start', 'one more time');
-
-		// preShowTimestamps runs synchronously inside choose(), long
-		// before the typing delay elapses
-		return { before, rightAfter: count() };
-	});
+				window.story.choose('Start', 'one more time');
+				setTimeout(() => resolve({ before, nextTick: count() }), 0);
+			})
+	);
 	check(
 		'timestamp chip appears as soon as typing begins',
-		stampCounts.rightAfter === stampCounts.before + 1
+		stampCounts.nextTick === stampCounts.before + 1
 	);
 	await page.waitForTimeout(2000); // Start's typing delay is ~500ms
 	check(
@@ -1062,6 +1064,99 @@ async function run() {
 			return !document.getElementById('meta-overlay').hidden;
 		})
 	);
+
+	console.log('message chains');
+
+	const chainPage = await browser.newPage({
+		viewport: { width: 480, height: 800 }
+	});
+
+	chainPage.on('pageerror', (err) => errors.push('chain: ' + err.message));
+	await chainPage.goto('file://' + DEMO);
+	await chainPage.waitForSelector('.user-response');
+
+	// capture a save right as the chain starts, before any link lands —
+	// it should replay and then finish the chain on its own
+	const midChainHash = await chainPage.evaluate(() => {
+		window.story.show('montage');
+		return window.story.saveHash();
+	});
+
+	await chainPage.waitForSelector(
+		'.chat-passage:has-text("thinking about dropping the landline")',
+		{ timeout: 15000 }
+	);
+
+	const chainShape = () =>
+		chainPage.evaluate(() => {
+			const labels = [
+				'Mon, Nov 3, 2008',
+				'Wed, May 27, 2009',
+				'Thu, Dec 12, 2013'
+			];
+
+			return labels.every((label) => {
+				const chips = Array.from(
+					document.querySelectorAll('.chat-timestamp')
+				).filter((chip) => chip.textContent.trim() === label);
+
+				return (
+					chips.length === 1 &&
+					chips[0].nextElementSibling !== null &&
+					chips[0].nextElementSibling.classList.contains(
+						'chat-passage-wrapper'
+					)
+				);
+			});
+		});
+
+	check(
+		'a showDelayed chain renders each [timestamp] chip once, glued above its message',
+		await chainShape()
+	);
+
+	// a completed chain restored from a save must not re-run its
+	// showDelayed echoes on top of the replayed messages
+	await chainPage.evaluate(() =>
+		window.story.restore(window.story.saveHash())
+	);
+	await chainPage.waitForTimeout(2500);
+	check(
+		'restoring a finished chain does not duplicate its messages',
+		await chainShape()
+	);
+
+	// a save made mid-chain replays, then the pending link continues
+	// (the text probe reads the transcript, not body.textContent —
+	// the page's tw-storydata holds the whole twee source)
+	const midState = await chainPage.evaluate((hash) => {
+		window.story.restore(hash);
+
+		const text = Array.from(
+			document.querySelectorAll('.chat-passage-wrapper')
+		)
+			.map((node) => node.textContent)
+			.join(' ');
+
+		return {
+			first: text.indexOf('remember the Palm Pilot?') > -1,
+			rest: text.indexOf('thinking about dropping the landline') > -1
+		};
+	}, midChainHash);
+
+	check(
+		'a mid-chain save replays only what had arrived',
+		midState.first && !midState.rest
+	);
+	await chainPage.waitForSelector(
+		'.chat-passage:has-text("thinking about dropping the landline")',
+		{ timeout: 15000 }
+	);
+	check(
+		'the chain picks up where the save left off, without duplicates',
+		await chainShape()
+	);
+	await chainPage.close();
 
 	console.log('debug mode');
 

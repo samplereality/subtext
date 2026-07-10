@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -334,6 +334,34 @@ right back at you
 ```
 
 One reaction per message; a newer one replaces it. Reactions participate in undo and save/restore.
+
+### Message chains and montages
+
+A passage can send the next one itself — no reply pill in between — by calling `story.showDelayed()` from a template:
+
+```
+:: Tech 1 [speaker-dad]
+[timestamp Mon, Nov 3, 2008]
+How do you download anything to the Palm?
+
+<% story.showDelayed('Tech 2') %>
+
+:: Tech 2 [speaker-dad]
+[timestamp Wed, May 27, 2009]
+Lucky I kept that old router. Works fine.
+
+<% story.showDelayed('Tech 3', 500) %>
+
+:: Tech 3 [speaker-dad]
+[timestamp Sun, Dec 11, 2016]
+Am looking for a 'free' email client for Mom's laptop.
+
+[[He never stopped asking.->Tech Reflection]]
+```
+
+With no second argument each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. Pass a number of milliseconds to set the pace yourself — **`0` shows the next message instantly, with no typing indicator at all**, which turns a chain like the one above into a time-lapse montage: years of texts landing beat after beat. The chips stay glued to their messages either way, and the chain survives saving, undo, and reloading mid-flight.
+
+The same call works anywhere story JavaScript runs — `story.showDelayed('Dad', 2000)` from an event listener recreates Trialogue's old `_.delay(...)` idiom in one line.
 
 ## Narration
 
@@ -1017,6 +1045,9 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - The "Delete Thread" reply-pill recipe (missed the 2.6 merge).
 - **Fixed:** a silent `[[Continue (send:)->…]]` pill into narration now shows the narration immediately instead of waiting out `metaDelay` — tapping straight into an overlay feels responsive. (`metaDelay` still paces narration that follows a sent message or a speaker's reply.)
 - **Fixed:** the docs described the inbox button with a ☰ glyph; it's a ‹ chevron.
+- **`story.showDelayed()` takes a delay** — `story.showDelayed('Tech 2', 0)` shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See [Message chains and montages](#message-chains-and-montages).
+- **Fixed:** chaining passages with `<% story.showDelayed(…) %>` doubled and shuffled the chain's `[timestamp]` chips — the next passage's early chip could land above the current message *and* knock out the bookkeeping that stops the current chip from rendering twice. Chips now stay glued to their messages, once each.
+- **Fixed:** reloading mid-chain duplicated messages — the save replay re-ran each passage's `showDelayed` call on top of the messages already in the timeline. Echoes are now dropped; a chain that was still in flight when the save was made picks up where it left off.
 
 ### Version 2.6
 
