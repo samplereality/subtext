@@ -282,6 +282,10 @@ var Story = function() {
 		/* show the header undo button once there is something to undo
 		   (set false for stories where choices should be final) */
 		undoButton: true,
+		/* show the inbox chevron in multi-conversation stories; set
+		   false to keep the player focused on one conversation, then
+		   story.showInboxButton() to reveal the wider inbox */
+		inboxButton: true,
 		/* language of the story's interface, applied to <html lang>
 		   (leave empty to keep the default "en") */
 		lang: '',
@@ -1042,12 +1046,9 @@ Object.assign(Story.prototype, {
 			}
 
 			if (nodes.length > 0 && speaker && speaker !== 'you') {
-				var probe = document.createElement('div');
-
-				probe.innerHTML = html;
 				this.noteThreadMessage(
 					threadId,
-					probe.textContent.trim(),
+					this.previewText(html),
 					opts.instant || viewingIt
 				);
 			}
@@ -3215,6 +3216,11 @@ Object.assign(Story.prototype, {
 			this.dom.metaOverlayContent.innerHTML = html;
 			this.buildRichContent(this.dom.metaOverlayContent);
 			this.dom.metaOverlay.hidden = false;
+
+			// opening the inbox under the veil would strand the player
+			// with nothing clickable
+
+			this.updateInboxButton();
 		}
 	},
 
@@ -3225,6 +3231,7 @@ Object.assign(Story.prototype, {
 	hideMeta: function() {
 		this.dom.metaOverlay.hidden = true;
 		this.dom.metaNotification.hidden = true;
+		this.updateInboxButton();
 	},
 
 	/**
@@ -4234,6 +4241,43 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 The inbox chevron shows only when there is somewhere for it to go
+	 and nothing in the way: multi-conversation mode, on a thread
+	 screen, no narration overlay up (opening the inbox under the veil
+	 strands the player), and not switched off by config.inboxButton.
+	**/
+
+	updateInboxButton: function() {
+		if (!this.dom || !this.dom.inboxButton) {
+			return;
+		}
+
+		this.dom.inboxButton.hidden = !(
+			this.multiThread &&
+			this._screen === 'thread' &&
+			this.dom.metaOverlay.hidden &&
+			this.config.inboxButton
+		);
+	},
+
+	/**
+	 Reveals the inbox chevron mid-story — e.g. after an opening scene
+	 that should feel like a single conversation:
+
+	   <% story.showInboxButton() %>
+	**/
+
+	showInboxButton: function() {
+		this.config.inboxButton = true;
+		this.updateInboxButton();
+	},
+
+	hideInboxButton: function() {
+		this.config.inboxButton = false;
+		this.updateInboxButton();
+	},
+
+	/**
 	 Shows a thread's conversation.
 	**/
 
@@ -4264,7 +4308,7 @@ Object.assign(Story.prototype, {
 		log.querySelectorAll('.has-reaction').forEach(function(wrapper) {
 			story.positionReactionBadge(wrapper);
 		});
-		this.dom.inboxButton.hidden = false;
+		this.updateInboxButton();
 		this.dom.title.textContent = this.getThreadDisplayName(threadId);
 		this.unread[threadId] = 0;
 		this.renderInbox();
@@ -4315,7 +4359,7 @@ Object.assign(Story.prototype, {
 		this._viewedThread = null;
 		this.dom.typing.hidden = true;
 		this.dom.inbox.hidden = false;
-		this.dom.inboxButton.hidden = true;
+		this.updateInboxButton();
 		document.body.classList.add('screen-inbox');
 		this.dom.title.textContent = this.name;
 		this.renderInbox();
@@ -4495,6 +4539,27 @@ Object.assign(Story.prototype, {
 	 tap-to-open notification banner.
 	**/
 
+	/**
+	 The human text of a rendered passage, for banner and inbox
+	 previews: chips ([timestamp], [system]) and directive leftovers
+	 are dropped — a notification shows the message, not its furniture.
+	**/
+
+	previewText: function(html) {
+		var probe = document.createElement('div');
+
+		probe.innerHTML = html;
+		probe
+			.querySelectorAll(
+				'.chat-timestamp, .chat-system, .chat-react, .chat-deliver'
+			)
+			.forEach(function(el) {
+				el.remove();
+			});
+
+		return probe.textContent.trim().replace(/\s+/g, ' ');
+	},
+
 	noteThreadMessage: function(threadId, previewText, instant) {
 		if (!this.multiThread) {
 			return;
@@ -4640,12 +4705,9 @@ Object.assign(Story.prototype, {
 			this.notifyTitle();
 		}
 
-		var probe = document.createElement('div');
-
-		probe.innerHTML = html;
 		this.noteThreadMessage(
 			threadId,
-			probe.textContent.trim(),
+			this.previewText(html),
 			opts.instant
 		);
 
