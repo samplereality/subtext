@@ -1416,6 +1416,15 @@ async function run() {
 		(await inboxPage.textContent('#meta-notification-label')) === 'Mom'
 	);
 	check(
+		'banner shows the message body, not its [timestamp] chip',
+		await inboxPage.evaluate(() => {
+			const body = document.getElementById(
+				'meta-notification-body'
+			).textContent;
+			return body.indexOf('Honey') === 0 && body.indexOf('2:03') === -1;
+		})
+	);
+	check(
 		'long deliveries are cut off like real notifications',
 		await inboxPage.evaluate(() => {
 			const body = document.getElementById('meta-notification-body');
@@ -1436,6 +1445,32 @@ async function run() {
 		(await inboxPage.locator('.inbox-row:not(.inbox-row--trash)').count()) === 2 &&
 		(await inboxPage.locator('.inbox-row:has-text("Unknown")').count()) === 0
 	);
+	check(
+		'a narration overlay hides the inbox chevron (no stranding)',
+		await inboxPage.evaluate(() => {
+			// back on a thread screen first
+			window.story.openThread(window.story._hotThread);
+			window.story.showMeta('<p>the night stretches on</p>', 'overlay');
+			const hiddenUnderVeil =
+				document.getElementById('nav-link-inbox').hidden;
+			window.story.hideMeta();
+			const backAfter =
+				!document.getElementById('nav-link-inbox').hidden;
+			return hiddenUnderVeil && backAfter;
+		})
+	);
+	check(
+		'hideInboxButton/showInboxButton control the chevron',
+		await inboxPage.evaluate(() => {
+			window.story.hideInboxButton();
+			const gone = document.getElementById('nav-link-inbox').hidden;
+			window.story.showInboxButton();
+			const back = !document.getElementById('nav-link-inbox').hidden;
+			return gone && back;
+		})
+	);
+	await inboxPage.evaluate(() => window.story.openInbox());
+	await inboxPage.waitForSelector('#inbox:not([hidden])');
 	check(
 		'an archived thread waits in the Trash instead of the inbox',
 		(await inboxPage.locator('.inbox-row:has-text("Pizza")').count()) === 0 &&

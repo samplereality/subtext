@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.6.0"
+  "format-version": "2.6.1"
 }
 ```
 
@@ -566,7 +566,7 @@ Three things move the story between threads:
   I know you're awake.
   ```
 
-- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
+- **The player**, by opening the inbox (the ☰-style chevron in the header) or tapping a notification banner, can read any thread at any time. The chevron itself is yours to stage: `story.config.inboxButton = false` starts the story feeling like a single conversation, and `<% story.showInboxButton() %>` in a later passage reveals that there was a whole inbox all along (`hideInboxButton()` reverses it). Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
 
 The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Cross-thread banners cut long messages off with an ellipsis, the way real notifications do.
 
@@ -771,6 +771,7 @@ story.config.autosave = true;
 | `trashLabel` | `'Trash'` | Label on the inbox's archived-conversations section |
 | `themeToggle` | `true` | Show the light/dark toggle in the header |
 | `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
+| `inboxButton` | `true` | Show the inbox chevron; reveal later with `story.showInboxButton()` |
 | `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
 | `menuTitle` | `'Menu'` | Heading of the menu dialog |
 | `lang` | `''` | Interface language, applied to `<html lang>` (empty = `en`) |
@@ -1007,6 +1008,13 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.6.1
+
+- **Fixed:** a `[timestamp]` leading a delivered message no longer leaks into its notification banner — the banner shows the message body only.
+- **Fixed (game-breaking):** opening the inbox while a narration overlay was up stranded the player under the veil with nothing clickable. The inbox chevron now hides while an overlay is showing.
+- **`story.showInboxButton()` / `hideInboxButton()`** (and `config.inboxButton`) stage the inbox reveal — start the story as one conversation, disclose the wider inbox when the moment lands.
+- The "Delete Thread" reply-pill recipe (missed the 2.6 merge).
 
 ### Version 2.6
 

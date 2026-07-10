@@ -2,7 +2,7 @@
 {
   "ifid": "7A2E9C41-5B83-4D26-9F0A-8E1C4B7D3A55",
   "format": "Subtext",
-  "format-version": "2.6.0"
+  "format-version": "2.6.1"
 }
 
 :: StoryTitle
@@ -69,6 +69,8 @@ I'm checking something. stay put
 
 
 :: mom-1 [thread-mom speaker-mom]
+[timestamp Tonight 2:03 AM]
+
 Honey, are you awake? The porch light keeps flickering and I can't find the good flashlight, the one your father keeps in the garage, and there is a car outside I don't recognize.
 
 
