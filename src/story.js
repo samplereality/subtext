@@ -386,7 +386,7 @@ var Story = function() {
 	this._asides = { left: null, right: null };
 	this._asideRaf = null;
 
-	/** Timestamp chips shown early, while their passage is "typing". **/
+	/** Timestamp chips shown early, counted per passage id. **/
 	this._preShownStamps = null;
 
 	/** When the current choices appeared, for s.replySeconds. **/
@@ -1170,7 +1170,7 @@ Object.assign(Story.prototype, {
 		// pre-show, so they are never skipped.
 
 		var pre = this._preShownStamps;
-		var skip = pre && pre.pid === passage.id ? pre.count : 0;
+		var skip = (pre && pre[passage.id]) || 0;
 		var tailNodes = [];
 		var seenContent = false;
 
@@ -1194,8 +1194,8 @@ Object.assign(Story.prototype, {
 			return false;
 		});
 
-		if (pre && pre.pid === passage.id) {
-			this._preShownStamps = null;
+		if (pre && pre[passage.id]) {
+			delete pre[passage.id];
 		}
 
 		if (blocks.length === 0) {
@@ -4756,13 +4756,23 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
-	 Shows a passage after a delay proportional to its length, with a
-	 typing indicator while "typing" it.
+	 Shows a passage after a delay, with a typing indicator while it is
+	 "typed". The delay defaults to one proportional to the passage's
+	 length (config.metaDelay for narration); pass a number as the
+	 second argument — story.showDelayed('next', 2000) — to set the
+	 pace yourself. A delay of 0 shows the passage instantly, with no
+	 typing indicator or early timestamp.
 	**/
 
 	showDelayed: function(idOrName, opts) {
 		var story = this;
 		var passage = this.passage(idOrName);
+
+		if (typeof opts === 'number') {
+			opts = { delay: opts };
+		}
+
+		opts = opts || {};
 
 		if (!passage) {
 			this.show(idOrName, opts); // surfaces the error message
@@ -4770,16 +4780,25 @@ Object.assign(Story.prototype, {
 		}
 
 		var speaker = this.getPassageSpeaker(passage);
-		var delay = speaker
-			? this.getPassageDelay(idOrName)
-			: this.config.metaDelay;
+		var delay =
+			typeof opts.delay === 'number' && opts.delay >= 0
+				? opts.delay
+				: speaker
+					? this.getPassageDelay(idOrName)
+					: this.config.metaDelay;
 
 		// on a real phone the timestamp appears before the reply does:
-		// surface the passage's [timestamp ...] chips now, while the
-		// typing dots bounce, instead of alongside the message
+		// surface the passage's [timestamp ...] chips while the typing
+		// dots bounce. Deferred a tick so a showDelayed() call inside a
+		// passage template queues its chips *behind* that passage's own
+		// bubbles instead of in front of them.
 
-		if (speaker) {
-			this.preShowTimestamps(passage);
+		if (speaker && delay > 0) {
+			this.timers.push(
+				window.setTimeout(function() {
+					story.preShowTimestamps(passage);
+				}, 0)
+			);
 		}
 
 		// and the read receipt flips when the reply is *queued* — the
@@ -4804,7 +4823,7 @@ Object.assign(Story.prototype, {
 			}
 		}
 
-		if (speaker && this.config.typing) {
+		if (speaker && delay > 0 && this.config.typing) {
 			this.timers.push(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);
@@ -4864,7 +4883,11 @@ Object.assign(Story.prototype, {
 			log.appendChild(story.buildTimestamp(label));
 		});
 
-		this._preShownStamps = { pid: passage.id, count: labels.length };
+		if (!this._preShownStamps) {
+			this._preShownStamps = {};
+		}
+
+		this._preShownStamps[passage.id] = labels.length;
 
 		var viewingIt = !this.multiThread ||
 			(this._screen === 'thread' && this._viewedThread === threadId);
@@ -5227,6 +5250,15 @@ Object.assign(Story.prototype, {
 			var story = this;
 
 			timeline.forEach(function(entry) {
+				// a replayed passage's template re-runs its side effects,
+				// re-arming any story.showDelayed() chain it started. The
+				// timeline already holds everything that arrived before
+				// the save, so those echoes are dropped; only the newest
+				// entry's timers survive, to carry a chain that was still
+				// in flight when the save was made.
+
+				story.cancelTimers();
+
 				var receipt = entry.r
 					? { status: entry.r, label: entry.rl }
 					: null;

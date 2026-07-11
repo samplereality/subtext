@@ -194,6 +194,27 @@ handy for a "start" button, or a terse choice that reads fuller in the thread
 
 [[start over?->Start]]
 
+:: montage [speaker-2]
+[timestamp Mon, Nov 3, 2008]
+
+remember the Palm Pilot?
+
+<% story.showDelayed('montage-2', 400) %>
+
+:: montage-2 [speaker-2]
+[timestamp Wed, May 27, 2009]
+
+that router is still going strong
+
+<% story.showDelayed('montage-3', 0) %>
+
+:: montage-3 [speaker-2]
+[timestamp Thu, Dec 12, 2013]
+
+thinking about dropping the landline
+
+[[start over?->Start]]
+
 :: one-more-thing [aside-right aside-beats-3]
 Somewhere outside the phone, a narrator leans in: *this* is an aside. It rides along in the margin for a few messages, then slips away.
 
