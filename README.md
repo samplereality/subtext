@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.6.1"
+  "format-version": "2.6.2"
 }
 ```
 
@@ -152,6 +152,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `meta-chat` / `meta-overlay` / `meta-notification` | Overrides the narration mode for one passage | [Narration](#narration) |
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
+| `instant` | The passage arrives immediately, with no typing indicator | [Message chains and montages](#message-chains-and-montages) |
 | `clear` | Wipes the visible thread before rendering | [Clearing the thread](#clearing-the-thread) |
 | `timestamp` | Renders the passage's text as timestamp chips | [Timestamps](#timestamps) |
 | `read` / `unread` | Forces or suppresses the read receipt | [Read receipts](#read-receipts) |
@@ -340,28 +341,46 @@ One reaction per message; a newer one replaces it. Reactions participate in undo
 A passage can send the next one itself — no reply pill in between — by calling `story.showDelayed()` from a template:
 
 ```
-:: Tech 1 [speaker-dad]
-[timestamp Mon, Nov 3, 2008]
-How do you download anything to the Palm?
+:: Hobby 1 [speaker-jo]
+[timestamp Mar 14, 2011]
+picked up a ukulele at a yard sale. how hard can it be
 
-<% story.showDelayed('Tech 2') %>
+<% story.showDelayed('Hobby 2') %>
 
-:: Tech 2 [speaker-dad]
-[timestamp Wed, May 27, 2009]
-Lucky I kept that old router. Works fine.
+:: Hobby 2 [speaker-jo]
+[timestamp Aug 2, 2014]
+update: the ukulele is now decorative
 
-<% story.showDelayed('Tech 3', 500) %>
+<% story.showDelayed('Hobby 3', 500) %>
 
-:: Tech 3 [speaker-dad]
-[timestamp Sun, Dec 11, 2016]
-Am looking for a 'free' email client for Mom's laptop.
+:: Hobby 3 [speaker-jo]
+[timestamp Jan 9, 2019]
+guess who just joined a ukulele band
 
-[[He never stopped asking.->Tech Reflection]]
+[[Eight years, three texts.->Hobby Reflection]]
 ```
 
 With no second argument each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. Pass a number of milliseconds to set the pace yourself — **`0` shows the next message instantly, with no typing indicator at all**, which turns a chain like the one above into a time-lapse montage: years of texts landing beat after beat. The chips stay glued to their messages either way, and the chain survives saving, undo, and reloading mid-flight.
 
-The same call works anywhere story JavaScript runs — `story.showDelayed('Dad', 2000)` from an event listener recreates Trialogue's old `_.delay(...)` idiom in one line.
+The same call works anywhere story JavaScript runs — `story.showDelayed('Jo', 2000)` from an event listener recreates Trialogue's old `_.delay(...)` idiom in one line.
+
+To let the *player* pace the montage instead — a beat between texts so each one can be read — put a silent pill between passages and tag each incoming passage `instant`, so tapping the pill lands the next message immediately, with no typing indicator:
+
+```
+:: Hobby 1 [speaker-jo]
+[timestamp Mar 14, 2011]
+picked up a ukulele at a yard sale. how hard can it be
+
+[[and then?(send:)->Hobby 2]]
+
+:: Hobby 2 [speaker-jo instant]
+[timestamp Aug 2, 2014]
+update: the ukulele is now decorative
+
+[[and then?(send:)->Hobby 3]]
+```
+
+The `instant` tag means "this message never keeps the player waiting," however the passage is reached — a pill, a chain, a `story.show()`. An explicit delay passed to `showDelayed()` still wins over the tag.
 
 ## Narration
 
@@ -434,11 +453,11 @@ And `||` inside the sent text breaks it into separate bubbles, fired off in quic
 
 ```
 :: Start [speaker-you]
-[[hey (send:)->Intro to Dad]]
-[[happy fathers day (send:)->Intro to Dad]]
+[[hey (send:)->roomie replies]]
+[[did you eat my leftovers (send:)->roomie replies]]
 
-:: Intro to Dad [speaker-dad]
-<% if (s.lastChoice === 'happy fathers day') { %>you remembered 🥲<% } else { %>hey kiddo<% } %>
+:: roomie replies [speaker-jesse]
+<% if (s.lastChoice === 'did you eat my leftovers') { %>...i can explain<% } else { %>oh hey what's up<% } %>
 ```
 
 The *label* is what's recorded (not the `(send:)` text), even when nothing is sent at all. Matching is exact, so mind capitalization — or compare with `s.lastChoice.toLowerCase()`. Like all state it participates in undo and save/restore. Timed-out forced replies don't overwrite it; check `s.timedOut` for those. (Photos, locations, reactions, and typed input have their own trackers: `s.lastPhoto`, `s.playerLocation`, `s.lastReaction`, `s.lastInput`.)
@@ -1037,6 +1056,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
+### Version 2.6.2
+
+- **The `instant` passage tag** — a tagged passage always arrives immediately, with no typing indicator, however it's reached. Made for a silent "and then?" pill paging through a montage at the player's own speed. See [Message chains and montages](#message-chains-and-montages).
+
 ### Version 2.6.1
 
 - **Fixed:** a `[timestamp]` leading a delivered message no longer leaks into its notification banner — the banner shows the message body only.
@@ -1045,7 +1068,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - The "Delete Thread" reply-pill recipe (missed the 2.6 merge).
 - **Fixed:** a silent `[[Continue (send:)->…]]` pill into narration now shows the narration immediately instead of waiting out `metaDelay` — tapping straight into an overlay feels responsive. (`metaDelay` still paces narration that follows a sent message or a speaker's reply.)
 - **Fixed:** the docs described the inbox button with a ☰ glyph; it's a ‹ chevron.
-- **`story.showDelayed()` takes a delay** — `story.showDelayed('Tech 2', 0)` shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See [Message chains and montages](#message-chains-and-montages).
+- **`story.showDelayed()` takes a delay** — `story.showDelayed('next', 0)` shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See [Message chains and montages](#message-chains-and-montages).
 - **Fixed:** chaining passages with `<% story.showDelayed(…) %>` doubled and shuffled the chain's `[timestamp]` chips — the next passage's early chip could land above the current message *and* knock out the bookkeeping that stops the current chip from rendering twice. Chips now stay glued to their messages, once each.
 - **Fixed:** reloading mid-chain duplicated messages — the save replay re-ran each passage's `showDelayed` call on top of the messages already in the timeline. Echoes are now dropped; a chain that was still in flight when the save was made picks up where it left off.
 
@@ -1058,7 +1081,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 ### Version 2.5
 
 - **Hidden threads.** `hidden: true` in a `StoryThreads` declaration keeps a conversation out of the inbox until its first message arrives (or `story.revealThread(id)`) — the Unknown Number stays a surprise.
-- **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a Dad thread with actual texts from Dad in it. Seeded player messages honor the `read`/`unread`/`failed` receipt tags (an old text can open the story still sitting on Delivered), and `[react …]` in a seed lands an old tapback on the previous seeded message.
+- **Seeded history.** Passages tagged `seed` render into their threads at story start as old, already-read messages — a conversation that visibly existed before the story began. Seeded player messages honor the `read`/`unread`/`failed` receipt tags (an old text can open the story still sitting on Delivered), and `[react …]` in a seed lands an old tapback on the previous seeded message.
 - **Diegetic read-only threads.** Viewing a conversation the story isn't in shows a grayed-out composer — *"Nothing to say right now"* (`story.config.threadIdleHint`) — instead of an empty reply area.
 - **Cross-thread banners truncate** long messages with an ellipsis, like real notifications.
 - **`[system …]` event chips** — *"Sam has left the conversation"*, missed calls, group renames. Like a timestamp chip but never shown early while a reply is typing, and a trailing one lands below its message. See [System messages](#system-messages).

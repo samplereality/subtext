@@ -1083,16 +1083,16 @@ async function run() {
 	});
 
 	await chainPage.waitForSelector(
-		'.chat-passage:has-text("thinking about dropping the landline")',
+		'.chat-passage:has-text("twelve missed calls on here from 2013")',
 		{ timeout: 15000 }
 	);
 
 	const chainShape = () =>
 		chainPage.evaluate(() => {
 			const labels = [
-				'Mon, Nov 3, 2008',
-				'Wed, May 27, 2009',
-				'Thu, Dec 12, 2013'
+				'Mon, Mar 5, 2012',
+				'Fri, Jul 18, 2014',
+				'Sat, Feb 3, 2018'
 			];
 
 			return labels.every((label) => {
@@ -1139,8 +1139,8 @@ async function run() {
 			.join(' ');
 
 		return {
-			first: text.indexOf('remember the Palm Pilot?') > -1,
-			rest: text.indexOf('thinking about dropping the landline') > -1
+			first: text.indexOf('found my old flip phone') > -1,
+			rest: text.indexOf('twelve missed calls on here from 2013') > -1
 		};
 	}, midChainHash);
 
@@ -1149,12 +1149,45 @@ async function run() {
 		midState.first && !midState.rest
 	);
 	await chainPage.waitForSelector(
-		'.chat-passage:has-text("thinking about dropping the landline")',
+		'.chat-passage:has-text("twelve missed calls on here from 2013")',
 		{ timeout: 15000 }
 	);
 	check(
 		'the chain picks up where the save left off, without duplicates',
 		await chainShape()
+	);
+
+	// an instant-tagged passage lands right after its pill, no dots
+	await chainPage.waitForSelector('.user-response:has-text("and then?")');
+	const instantState = await chainPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				const pill = Array.from(
+					document.querySelectorAll('.user-response')
+				).find((p) => p.textContent.indexOf('and then?') > -1);
+
+				pill.click();
+				setTimeout(() => {
+					const transcript = Array.from(
+						document.querySelectorAll('.chat-passage-wrapper')
+					)
+						.map((node) => node.textContent)
+						.join(' ');
+
+					resolve({
+						arrived:
+							transcript.indexOf('flip phone is going back') > -1,
+						typing: !document.getElementById(
+							'animation-container'
+						).hidden
+					});
+				}, 50);
+			})
+	);
+
+	check(
+		'an [instant] passage arrives without a typing indicator',
+		instantState.arrived && !instantState.typing
 	);
 	await chainPage.close();
 

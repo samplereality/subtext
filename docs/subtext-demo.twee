@@ -2,7 +2,7 @@
 {
   "ifid": "B4A595DB-0D82-4652-99AD-6C801B0F1510",
   "format": "Subtext",
-  "format-version": "2.6.1"
+  "format-version": "2.6.2"
 }
 
 :: StoryTitle
@@ -195,23 +195,30 @@ handy for a "start" button, or a terse choice that reads fuller in the thread
 [[start over?->Start]]
 
 :: montage [speaker-2]
-[timestamp Mon, Nov 3, 2008]
+[timestamp Mon, Mar 5, 2012]
 
-remember the Palm Pilot?
+found my old flip phone in a drawer
 
 <% story.showDelayed('montage-2', 400) %>
 
 :: montage-2 [speaker-2]
-[timestamp Wed, May 27, 2009]
+[timestamp Fri, Jul 18, 2014]
 
-that router is still going strong
+the charger still works?!
 
 <% story.showDelayed('montage-3', 0) %>
 
 :: montage-3 [speaker-2]
-[timestamp Thu, Dec 12, 2013]
+[timestamp Sat, Feb 3, 2018]
 
-thinking about dropping the landline
+twelve missed calls on here from 2013
+
+[[and then?(send:)->montage-4]]
+
+:: montage-4 [speaker-2 instant]
+[timestamp Sun, Oct 6, 2019]
+
+ok the flip phone is going back in the drawer
 
 [[start over?->Start]]
 

@@ -4780,12 +4780,19 @@ Object.assign(Story.prototype, {
 		}
 
 		var speaker = this.getPassageSpeaker(passage);
+
+		// an explicit delay wins; an `instant` tag on the target means
+		// it always lands with no typing pause (a silent pill paging
+		// through a montage); otherwise pace by message length
+
 		var delay =
 			typeof opts.delay === 'number' && opts.delay >= 0
 				? opts.delay
-				: speaker
-					? this.getPassageDelay(idOrName)
-					: this.config.metaDelay;
+				: passage.tags.indexOf('instant') > -1
+					? 0
+					: speaker
+						? this.getPassageDelay(idOrName)
+						: this.config.metaDelay;
 
 		// on a real phone the timestamp appears before the reply does:
 		// surface the passage's [timestamp ...] chips while the typing
