@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.6.1"
+  "format-version": "2.6.2"
 }
 ```
 
@@ -1056,6 +1056,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
+### Version 2.6.2
+
+- **The `instant` passage tag** — a tagged passage always arrives immediately, with no typing indicator, however it's reached. Made for a silent "and then?" pill paging through a montage at the player's own speed. See [Message chains and montages](#message-chains-and-montages).
+
 ### Version 2.6.1
 
 - **Fixed:** a `[timestamp]` leading a delivered message no longer leaks into its notification banner — the banner shows the message body only.
@@ -1065,7 +1069,6 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Fixed:** a silent `[[Continue (send:)->…]]` pill into narration now shows the narration immediately instead of waiting out `metaDelay` — tapping straight into an overlay feels responsive. (`metaDelay` still paces narration that follows a sent message or a speaker's reply.)
 - **Fixed:** the docs described the inbox button with a ☰ glyph; it's a ‹ chevron.
 - **`story.showDelayed()` takes a delay** — `story.showDelayed('next', 0)` shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See [Message chains and montages](#message-chains-and-montages).
-- **The `instant` passage tag** — a tagged passage always arrives immediately, with no typing indicator, however it's reached. Made for a silent "and then?" pill paging through a montage at the player's own speed.
 - **Fixed:** chaining passages with `<% story.showDelayed(…) %>` doubled and shuffled the chain's `[timestamp]` chips — the next passage's early chip could land above the current message *and* knock out the bookkeeping that stops the current chip from rendering twice. Chips now stay glued to their messages, once each.
 - **Fixed:** reloading mid-chain duplicated messages — the save replay re-ran each passage's `showDelayed` call on top of the messages already in the timeline. Echoes are now dropped; a chain that was still in flight when the save was made picks up where it left off.
 
