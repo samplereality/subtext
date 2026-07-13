@@ -1156,6 +1156,39 @@ async function run() {
 		'the chain picks up where the save left off, without duplicates',
 		await chainShape()
 	);
+
+	// an instant-tagged passage lands right after its pill, no dots
+	await chainPage.waitForSelector('.user-response:has-text("And…")');
+	const instantState = await chainPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				const pill = Array.from(
+					document.querySelectorAll('.user-response')
+				).find((p) => p.textContent.indexOf('And…') > -1);
+
+				pill.click();
+				setTimeout(() => {
+					const transcript = Array.from(
+						document.querySelectorAll('.chat-passage-wrapper')
+					)
+						.map((node) => node.textContent)
+						.join(' ');
+
+					resolve({
+						arrived:
+							transcript.indexOf('the landline is gone') > -1,
+						typing: !document.getElementById(
+							'animation-container'
+						).hidden
+					});
+				}, 50);
+			})
+	);
+
+	check(
+		'an [instant] passage arrives without a typing indicator',
+		instantState.arrived && !instantState.typing
+	);
 	await chainPage.close();
 
 	console.log('debug mode');

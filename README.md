@@ -152,6 +152,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `meta-chat` / `meta-overlay` / `meta-notification` | Overrides the narration mode for one passage | [Narration](#narration) |
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
+| `instant` | The passage arrives immediately, with no typing indicator | [Message chains and montages](#message-chains-and-montages) |
 | `clear` | Wipes the visible thread before rendering | [Clearing the thread](#clearing-the-thread) |
 | `timestamp` | Renders the passage's text as timestamp chips | [Timestamps](#timestamps) |
 | `read` / `unread` | Forces or suppresses the read receipt | [Read receipts](#read-receipts) |
@@ -362,6 +363,24 @@ Am looking for a 'free' email client for Mom's laptop.
 With no second argument each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. Pass a number of milliseconds to set the pace yourself — **`0` shows the next message instantly, with no typing indicator at all**, which turns a chain like the one above into a time-lapse montage: years of texts landing beat after beat. The chips stay glued to their messages either way, and the chain survives saving, undo, and reloading mid-flight.
 
 The same call works anywhere story JavaScript runs — `story.showDelayed('Dad', 2000)` from an event listener recreates Trialogue's old `_.delay(...)` idiom in one line.
+
+To let the *player* pace the montage instead — a beat between texts so each one can be read — put a silent pill between passages and tag each incoming passage `instant`, so tapping the pill lands the next message immediately, with no typing indicator:
+
+```
+:: Tech 1 [speaker-dad]
+[timestamp Mon, Nov 3, 2008]
+How do you download anything to the Palm?
+
+[[And…(send:)->Tech 2]]
+
+:: Tech 2 [speaker-dad instant]
+[timestamp Wed, May 27, 2009]
+Lucky I kept that old router. Works fine.
+
+[[And…(send:)->Tech 3]]
+```
+
+The `instant` tag means "this message never keeps the player waiting," however the passage is reached — a pill, a chain, a `story.show()`. An explicit delay passed to `showDelayed()` still wins over the tag.
 
 ## Narration
 
@@ -1046,6 +1065,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Fixed:** a silent `[[Continue (send:)->…]]` pill into narration now shows the narration immediately instead of waiting out `metaDelay` — tapping straight into an overlay feels responsive. (`metaDelay` still paces narration that follows a sent message or a speaker's reply.)
 - **Fixed:** the docs described the inbox button with a ☰ glyph; it's a ‹ chevron.
 - **`story.showDelayed()` takes a delay** — `story.showDelayed('Tech 2', 0)` shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See [Message chains and montages](#message-chains-and-montages).
+- **The `instant` passage tag** — a tagged passage always arrives immediately, with no typing indicator, however it's reached. Made for a silent "And…" pill paging through a montage at the player's own speed.
 - **Fixed:** chaining passages with `<% story.showDelayed(…) %>` doubled and shuffled the chain's `[timestamp]` chips — the next passage's early chip could land above the current message *and* knock out the bookkeeping that stops the current chip from rendering twice. Chips now stay glued to their messages, once each.
 - **Fixed:** reloading mid-chain duplicated messages — the save replay re-ran each passage's `showDelayed` call on top of the messages already in the timeline. Echoes are now dropped; a chain that was still in flight when the save was made picks up where it left off.
 
