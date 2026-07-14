@@ -4844,14 +4844,17 @@ Object.assign(Story.prototype, {
 
 		var speaker = this.getPassageSpeaker(passage);
 
-		// an explicit delay wins; an `instant` tag on the target means
-		// it always lands with no typing pause (a silent pill paging
-		// through a montage); otherwise pace by message length
+		// the delay says WHEN the message arrives, the `instant` tag
+		// says HOW: with no typing indicator. An explicit delay on an
+		// instant-tagged passage is a silent wait — ten quiet seconds,
+		// then the message just lands. With no explicit delay the tag
+		// also means "now"; otherwise pace by message length.
 
+		var instant = passage.tags.indexOf('instant') > -1;
 		var delay =
 			typeof opts.delay === 'number' && opts.delay >= 0
 				? opts.delay
-				: passage.tags.indexOf('instant') > -1
+				: instant
 					? 0
 					: speaker
 						? this.getPassageDelay(idOrName)
@@ -4861,9 +4864,10 @@ Object.assign(Story.prototype, {
 		// surface the passage's [timestamp ...] chips while the typing
 		// dots bounce. Deferred a tick so a showDelayed() call inside a
 		// passage template queues its chips *behind* that passage's own
-		// bubbles instead of in front of them.
+		// bubbles instead of in front of them. (A silent wait keeps its
+		// chips with the message — nothing announces what's coming.)
 
-		if (speaker && delay > 0) {
+		if (speaker && delay > 0 && !instant) {
 			this.timers.push(
 				window.setTimeout(function() {
 					story.preShowTimestamps(passage);
@@ -4893,7 +4897,7 @@ Object.assign(Story.prototype, {
 			}
 		}
 
-		if (speaker && delay > 0 && this.config.typing) {
+		if (speaker && delay > 0 && !instant && this.config.typing) {
 			this.timers.push(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);

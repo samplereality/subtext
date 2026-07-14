@@ -152,7 +152,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `meta-chat` / `meta-overlay` / `meta-notification` | Overrides the narration mode for one passage | [Narration](#narration) |
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
-| `instant` | The passage arrives immediately, with no typing indicator | [Message chains and montages](#message-chains-and-montages) |
+| `instant` | The passage arrives with no typing indicator (with an explicit delay: a silent wait) | [Message chains and montages](#message-chains-and-montages) |
 | `clear` | Wipes the visible thread before rendering | [Clearing the thread](#clearing-the-thread) |
 | `timestamp` | Renders the passage's text as timestamp chips | [Timestamps](#timestamps) |
 | `read` / `unread` | Forces or suppresses the read receipt | [Read receipts](#read-receipts) |
@@ -380,7 +380,7 @@ update: the ukulele is now decorative
 [[and then?(send:)->Hobby 3]]
 ```
 
-The `instant` tag means "this message never keeps the player waiting," however the passage is reached — a pill, a chain, a `story.show()`. An explicit delay passed to `showDelayed()` still wins over the tag.
+The `instant` tag means "this message never shows typing dots," however the passage is reached — a pill, a chain, a `story.show()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. So `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — ten quiet seconds, no typing indicator, then the message just lands. Without the tag, the same call shows the speaker typing for the whole delay.
 
 ## Narration
 
@@ -1062,7 +1062,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.6.2
 
-- **The `instant` passage tag** — a tagged passage always arrives immediately, with no typing indicator, however it's reached. Made for a silent "and then?" pill paging through a montage at the player's own speed. See [Message chains and montages](#message-chains-and-montages).
+- **The `instant` passage tag** — a tagged passage never shows typing dots, however it's reached: on its own it arrives immediately (a silent "and then?" pill paging through a montage), and combined with an explicit `showDelayed()` delay it becomes a silent wait — the pause happens, then the message just lands. See [Message chains and montages](#message-chains-and-montages).
 - **Delivered messages carry their reply pills.** A `[deliver]`ed passage with links used to discard them; now the story's pending choices travel with the message and appear when the player opens its thread — `[deliver]` can hand the story off to another conversation.
 - **Fixed: group messages are attributed to their sender.** A cross-speaker delivery (`speaker-matt` into `thread-family`) used to look like it came from the whole thread; the notification banner and inbox preview now read "Matt: …" under the thread's name, like a real phone.
 

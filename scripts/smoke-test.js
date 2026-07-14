@@ -1189,6 +1189,45 @@ async function run() {
 		'an [instant] passage arrives without a typing indicator',
 		instantState.arrived && !instantState.typing
 	);
+
+	// an explicit delay on an [instant] passage is a silent wait: no
+	// dots during the pause, the message simply lands when it's over
+	const silentWait = await chainPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				const count = () =>
+					document.querySelectorAll('.chat-passage').length;
+				const typing = () =>
+					!document.getElementById('animation-container').hidden;
+				const before = count();
+
+				window.story.showDelayed('montage-4', 600);
+				setTimeout(() => {
+					const during = {
+						typing: typing(),
+						arrived: count() > before
+					};
+
+					setTimeout(
+						() =>
+							resolve({
+								during,
+								after: count() > before,
+								typingAfter: typing()
+							}),
+						600
+					);
+				}, 300);
+			})
+	);
+
+	check(
+		'an [instant] passage with an explicit delay waits silently, then lands',
+		!silentWait.during.typing &&
+			!silentWait.during.arrived &&
+			silentWait.after &&
+			!silentWait.typingAfter
+	);
 	await chainPage.close();
 
 	console.log('debug mode');
