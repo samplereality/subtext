@@ -1389,6 +1389,65 @@ async function run() {
 	);
 	fs.unlinkSync(shiftedTwee);
 	execFileSync('node', [path.join(__dirname, 'build-demo.js')]); // restore
+	await debugPage.reload(); // back onto the unshifted build
+	await debugPage.waitForSelector('.user-response', { timeout: 15000 });
+
+	// the story check: the demo lints clean, and planted problems
+	// (bad targets, unprofiled speaker, an orphan) are all caught
+	check(
+		'story check: the demo lints clean',
+		await debugPage.evaluate(() => window.story.lint().length === 0)
+	);
+	check(
+		'story check catches broken targets, bad tags, and orphans',
+		await debugPage.evaluate(() => {
+			window.story.passages.push(
+				new window.Passage(
+					9999,
+					'lint-bait',
+					['speaker-nobody'],
+					'[[nowhere]]\n[deliver ghost]\n' +
+						'<% story.showDelayed("phantom") %>'
+				)
+			);
+
+			const findings = window.story.lint();
+
+			window.story.passages.pop();
+
+			const msgs = findings.map((f) => f.message).join('; ');
+
+			return (
+				msgs.indexOf('missing passage "nowhere"') > -1 &&
+				msgs.indexOf('missing passage "ghost"') > -1 &&
+				msgs.indexOf('missing passage "phantom"') > -1 &&
+				msgs.indexOf(
+					'"nobody" has no StorySpeakers profile'
+				) > -1 &&
+				msgs.indexOf('nothing links to "lint-bait"') > -1
+			);
+		})
+	);
+	check(
+		'debug panel reports the story check result',
+		(await debugPage.textContent('#debug-lint')).indexOf(
+			'no problems'
+		) > -1
+	);
+
+	// the transcript export flattens what's on screen to Markdown
+	check(
+		'transcript export flattens the conversation to Markdown',
+		await debugPage.evaluate(() => {
+			const text = window.story.exportTranscript();
+
+			return (
+				text.indexOf('# Subtext Demo') === 0 &&
+				text.indexOf(':**') > -1
+			);
+		})
+	);
+
 	await debugPage.evaluate(() => window.story.restart && localStorage.clear());
 	await debugPage.close();
 
@@ -2054,6 +2113,19 @@ async function run() {
 				fam
 					.querySelector('.inbox-preview')
 					.textContent.indexOf('Matt: not me') === 0
+			);
+		})
+	);
+
+	check(
+		'transcript export sections multi-thread stories by conversation',
+		await inboxPage.evaluate(() => {
+			const text = window.story.exportTranscript();
+
+			return (
+				text.indexOf('## Sam') > -1 &&
+				text.indexOf('## Mom') > -1 &&
+				text.indexOf('**Mom:**') > -1
 			);
 		})
 	);

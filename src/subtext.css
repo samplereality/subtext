@@ -1994,6 +1994,41 @@ button:focus-visible,
 	color: #8ab4f8;
 }
 
+.debug-lint-list {
+	margin: 0;
+	padding-left: 1.1rem;
+	max-height: 12rem;
+	overflow-y: auto;
+}
+
+.debug-lint-list li {
+	margin: 0.25rem 0;
+}
+
+.debug-lint-list button {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #8ab4f8;
+	font: inherit;
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-color: #3c4043;
+	text-underline-offset: 2px;
+}
+
+.debug-lint-error {
+	color: #f28b82;
+}
+
+.debug-lint-warn {
+	color: #fdd663;
+}
+
+.debug-lint-note {
+	color: #9aa0a6;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

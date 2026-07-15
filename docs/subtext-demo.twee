@@ -175,7 +175,8 @@ we're going to get along just fine<% } else { %>❌ "<%= s.lastInput %>"? no…
 
 think geography. I mentioned it earlier 🌍<% } %>
 
-<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>[[start over?->Start]]<% } else { %>[[input:try again…->password-check]]
+<% if ((s.lastInput || '').trim().toLowerCase() === 'amsterdam') { %>[[one more trick->pill-demo]]
+[[start over?->Start]]<% } else { %>[[input:try again…->password-check]]
 [[give up->Start]]<% } %>
 
 :: pill-demo [speaker-2]
@@ -192,6 +193,7 @@ see? the first pill elaborated; the second sent nothing at all
 
 handy for a "start" button, or a terse choice that reads fuller in the thread
 
+[[montage time->montage]]
 [[start over?->Start]]
 
 :: montage [speaker-2]
@@ -225,6 +227,7 @@ ok the flip phone is going back in the drawer
 :: one-more-thing [aside-right aside-beats-3]
 Somewhere outside the phone, a narrator leans in: *this* is an aside. It rides along in the margin for a few messages, then slips away.
 
+[[one more note->aside-demo-left]]
 [[take it from the top->Start]]
 
 :: aside-demo-left [aside-left aside-beats-1 aside-down-2]

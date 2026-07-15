@@ -5849,6 +5849,269 @@ Object.assign(Story.prototype, {
 	 switch, story.config.debug = true, or calling this directly.
 	**/
 
+	/**
+	 A static story check: broken pill targets, unresolved [deliver]
+	 and show()/showDelayed() names, speakers without a StorySpeakers
+	 profile, thread tags never declared in StoryThreads, and passages
+	 nothing points to. Returns an array of findings:
+	   { level: 'error' | 'warn' | 'note', message, passage }
+	 Dynamic names (anything containing template syntax) are skipped —
+	 the linter reads source, it never runs it.
+	**/
+
+	lint: function() {
+		var story = this;
+		var findings = [];
+		var isSpecial = function(p) {
+			return (
+				p.name.indexOf('Story') === 0 ||
+				p.tags.indexOf('script') > -1 ||
+				p.tags.indexOf('stylesheet') > -1
+			);
+		};
+		var content = this.passages.filter(function(p) {
+			return p && !isSpecial(p);
+		});
+
+		// pill targets, mirroring the link parser: display->target,
+		// a single-bar display|target, and the shorthand form where a
+		// trailing (send: …) comes off the target
+
+		var linkTargets = function(source) {
+			var targets = [];
+			var re = /\[\[(.*?)\]\]/g;
+			var match;
+
+			while ((match = re.exec(source))) {
+				var inner = match[1];
+				var target = inner;
+				var arrow = inner.lastIndexOf('->');
+
+				if (arrow > -1) {
+					target = inner.slice(arrow + 2);
+				}
+				else {
+					var bar = /(^|[^|])\|(?!\|)/.exec(inner);
+
+					if (bar) {
+						target = inner.slice(bar.index + bar[1].length + 1);
+					}
+					else {
+						var send = /\(send:[^)]*\)\s*$/i.exec(inner);
+
+						if (send) {
+							target = inner.slice(0, send.index);
+						}
+					}
+				}
+
+				targets.push(target.trim());
+			}
+
+			return targets;
+		};
+
+		var reachable = {};
+		var refs = {}; // passage name -> outbound names
+
+		content.forEach(function(p) {
+			var out = linkTargets(p.source);
+			var re = /\[deliver[ \t]+([^\]]+)\]/g;
+			var match;
+
+			while ((match = re.exec(p.source))) {
+				out.push(match[1].trim());
+			}
+
+			// names passed to the API from templates count as links
+			// for both existence and reachability
+
+			var call = /\b(?:show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\1/g;
+
+			while ((match = call.exec(p.source))) {
+				out.push(match[2]);
+			}
+
+			refs[p.name] = out;
+
+			out.forEach(function(name) {
+				if (name.indexOf('<%') > -1 || name === '') {
+					return;
+				}
+
+				if (!story.passage(name)) {
+					findings.push({
+						level: 'error',
+						message: 'links to missing passage "' + name + '"',
+						passage: p.name
+					});
+				}
+			});
+		});
+
+		// speakers without a profile (only once authors opt into
+		// StorySpeakers) and threads never declared in StoryThreads
+
+		var flaggedSpeakers = {};
+		var flaggedThreads = {};
+
+		content.forEach(function(p) {
+			p.tags.forEach(function(tag) {
+				if (
+					tag.indexOf('speaker-') === 0 &&
+					story.passage('StorySpeakers')
+				) {
+					var speaker = tag.slice('speaker-'.length);
+
+					if (
+						speaker !== 'you' &&
+						!story.speakers[speaker] &&
+						!flaggedSpeakers[speaker]
+					) {
+						flaggedSpeakers[speaker] = true;
+						findings.push({
+							level: 'warn',
+							message:
+								'speaker "' + speaker +
+								'" has no StorySpeakers profile',
+							passage: p.name
+						});
+					}
+				}
+
+				if (tag.indexOf('thread-') === 0 && story.multiThread) {
+					var thread = tag.slice('thread-'.length);
+
+					if (
+						story.threadOrder.indexOf(thread) === -1 &&
+						!flaggedThreads[thread]
+					) {
+						flaggedThreads[thread] = true;
+						findings.push({
+							level: 'warn',
+							message:
+								'thread "' + thread +
+								'" is not declared in StoryThreads',
+							passage: p.name
+						});
+					}
+				}
+			});
+		});
+
+		// reachability: walk out from the start passage; seeds are
+		// reachable by definition (they render at story start)
+
+		var start = this.passage(this.startPassage);
+		var queue = start ? [start.name] : [];
+
+		// seeds render at story start, and `unlinked`-tagged passages
+		// are declared reachable by dynamic means — both are roots
+
+		content.forEach(function(p) {
+			if (
+				p.tags.indexOf('seed') > -1 ||
+				p.tags.indexOf('unlinked') > -1
+			) {
+				queue.push(p.name);
+			}
+		});
+
+		while (queue.length) {
+			var name = queue.pop();
+
+			if (reachable[name]) {
+				continue;
+			}
+
+			reachable[name] = true;
+			(refs[name] || []).forEach(function(next) {
+				if (story.passage(next) && !reachable[next]) {
+					queue.push(next);
+				}
+			});
+		}
+
+		// deliberately unlinked passages (reached by dynamic names the
+		// linter can't see) opt out with the `unlinked` tag
+
+		content.forEach(function(p) {
+			if (!reachable[p.name] && p.tags.indexOf('unlinked') === -1) {
+				findings.push({
+					level: 'note',
+					message: 'nothing links to "' + p.name + '"',
+					passage: p.name
+				});
+			}
+		});
+
+		return findings;
+	},
+
+	/**
+	 Flattens the visible transcript to Markdown — every thread, every
+	 message, chips and narration included. Reads the DOM (what the
+	 player actually saw), so it never re-runs template side effects.
+	**/
+
+	exportTranscript: function() {
+		var story = this;
+		var lines = ['# ' + (this.name || 'Transcript'), ''];
+
+		var renderLog = function(log) {
+			Array.prototype.forEach.call(log.children, function(node) {
+				if (!node.classList) {
+					return;
+				}
+
+				if (node.classList.contains('chat-timestamp')) {
+					lines.push('*— ' + node.textContent.trim() + ' —*', '');
+				}
+				else if (node.classList.contains('chat-system')) {
+					lines.push('*' + node.textContent.trim() + '*', '');
+				}
+				else if (node.classList.contains('meta-passage')) {
+					lines.push('> ' + node.textContent.trim(), '');
+				}
+				else if (node.classList.contains('chat-passage-wrapper')) {
+					var speaker = node.getAttribute('data-speaker');
+					var name =
+						!speaker || speaker === 'you'
+							? 'You'
+							: story.getSpeakerDisplayName(speaker);
+
+					node.querySelectorAll('.chat-passage').forEach(
+						function(bubble) {
+							var text = story.messagePreview(bubble);
+
+							if (text) {
+								lines.push('**' + name + ':** ' + text, '');
+							}
+						}
+					);
+				}
+			});
+		};
+
+		if (this.multiThread) {
+			this.threadOrder.forEach(function(threadId) {
+				var log = story._threadLogs[threadId];
+
+				if (!log || log.children.length === 0) {
+					return;
+				}
+
+				lines.push('## ' + story.getThreadDisplayName(threadId), '');
+				renderLog(log);
+			});
+		}
+		else {
+			renderLog(this.dom.history);
+		}
+
+		return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+	},
+
 	enableDebug: function() {
 		if (document.getElementById('debug-toggle')) {
 			return;
@@ -5880,6 +6143,7 @@ Object.assign(Story.prototype, {
 			'<div class="debug-actions">' +
 			'<button type="button" id="debug-undo">↩ undo</button>' +
 			'<button type="button" id="debug-save">save to URL</button>' +
+			'<button type="button" id="debug-export">transcript</button>' +
 			'<button type="button" id="debug-restart">restart</button>' +
 			'</div>' +
 			'<details open><summary>Variables</summary>' +
@@ -5899,6 +6163,9 @@ Object.assign(Story.prototype, {
 			'<input type="search" id="debug-filter" placeholder="filter by name or tag…" aria-label="Filter passages">' +
 			'<ul id="debug-passages"></ul>' +
 			'</details>' +
+			'<details><summary id="debug-lint-summary">Story check</summary>' +
+			'<div id="debug-lint"></div>' +
+			'</details>' +
 			'<details><summary>Memory (survives restart)</summary>' +
 			'<table id="debug-memory" class="debug-table"></table>' +
 			'<button type="button" id="debug-forget">forget all</button>' +
@@ -5912,7 +6179,64 @@ Object.assign(Story.prototype, {
 		var filter = panel.querySelector('#debug-filter');
 		var evalOut = panel.querySelector('#debug-eval-out');
 		var memoryTable = panel.querySelector('#debug-memory');
+		var lintBox = panel.querySelector('#debug-lint');
+		var lintSummary = panel.querySelector('#debug-lint-summary');
 		var OPEN_KEY = 'subtext-debug-open-' + this.ifid;
+
+		// the story check reads source, not state — run it once
+
+		var renderLint = function() {
+			var findings = story.lint();
+			var problems = findings.filter(function(f) {
+				return f.level !== 'note';
+			}).length;
+
+			lintSummary.textContent =
+				'Story check' +
+				(findings.length ? ' (' + findings.length + ')' : '');
+
+			if (problems > 0) {
+				lintSummary.parentElement.open = true;
+			}
+
+			lintBox.textContent = '';
+
+			if (findings.length === 0) {
+				lintBox.textContent = '✓ no problems found';
+				return;
+			}
+
+			var list = document.createElement('ul');
+
+			list.className = 'debug-lint-list';
+			findings.forEach(function(f) {
+				var item = document.createElement('li');
+				var level = document.createElement('strong');
+
+				level.textContent = f.level;
+				level.className = 'debug-lint-' + f.level;
+				item.appendChild(level);
+				item.appendChild(
+					document.createTextNode(' ' + f.message + ' ')
+				);
+
+				if (f.passage && story.passage(f.passage)) {
+					var jump = document.createElement('button');
+
+					jump.type = 'button';
+					jump.textContent = 'in “' + f.passage + '”';
+					jump.addEventListener('click', function() {
+						story.debugJump(f.passage);
+					});
+					item.appendChild(jump);
+				}
+
+				list.appendChild(item);
+			});
+			lintBox.appendChild(list);
+		};
+
+		renderLint();
 
 		var brief = function(value) {
 			var text;
@@ -6103,6 +6427,18 @@ Object.assign(Story.prototype, {
 		panel.querySelector('#debug-save').addEventListener('click', function() {
 			story.save();
 			evalOut.textContent = 'progress saved to the URL — bookmark it';
+		});
+		panel.querySelector('#debug-export').addEventListener('click', function() {
+			var blob = new Blob([story.exportTranscript()], {
+				type: 'text/markdown'
+			});
+			var link = document.createElement('a');
+
+			link.href = URL.createObjectURL(blob);
+			link.download = (story.name || 'story') + ' transcript.md';
+			link.click();
+			URL.revokeObjectURL(link.href);
+			evalOut.textContent = 'transcript downloaded';
 		});
 		panel.querySelector('#debug-eval').addEventListener('submit', function(event) {
 			event.preventDefault();
