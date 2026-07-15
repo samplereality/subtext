@@ -1408,6 +1408,15 @@ a {
 	background: color-mix(in srgb, var(--t-muted) 15%, transparent);
 }
 
+/* a deleted message: the bubble stays, its content is a tombstone */
+
+.chat-passage.chat-passage--redacted {
+	background: transparent !important;
+	border: 1px dashed color-mix(in srgb, var(--t-muted) 60%, transparent);
+	color: var(--t-muted) !important;
+	font-style: italic;
+}
+
 /* fullscreen photo viewer */
 
 img[role="button"] {

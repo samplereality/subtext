@@ -1267,6 +1267,68 @@ async function run() {
 		)
 	);
 
+	console.log('deleted messages');
+
+	// redactMessage tombstones in place — the node is never removed,
+	// so the role="log" MutationObserver guard stays quiet
+	const redacted = await page.evaluate(() => {
+		window.story.showUserBubble('you did NOT just say that');
+		window.story.pushCheckpoint();
+		window.story.redactMessage('out');
+
+		const bubbles = document.querySelectorAll(
+			'.chat-passage[data-speaker="you"]'
+		);
+		const last = bubbles[bubbles.length - 1];
+
+		return {
+			tombstoned:
+				last.classList.contains('chat-passage--redacted') &&
+				last.textContent === 'This message was deleted',
+			logged: window.story._redactionLog.length > 0
+		};
+	});
+
+	check(
+		'redactMessage tombstones the player message in place',
+		redacted.tombstoned && redacted.logged
+	);
+
+	check(
+		'undo restores a deleted message',
+		await page.evaluate(() => {
+			window.story.undo();
+
+			const bubbles = document.querySelectorAll(
+				'.chat-passage[data-speaker="you"]'
+			);
+			const last = bubbles[bubbles.length - 1];
+
+			return (
+				!last.classList.contains('chat-passage--redacted') &&
+				last.textContent.indexOf('you did NOT just say that') > -1
+			);
+		})
+	);
+
+	check(
+		'a deleted message stays deleted through save/restore',
+		await page.evaluate(() => {
+			window.story.redactMessage('out', 'You deleted this message');
+			window.story.restore(window.story.saveHash());
+
+			const bubbles = document.querySelectorAll(
+				'.chat-passage[data-speaker="you"]'
+			);
+			const last = bubbles[bubbles.length - 1];
+
+			return (
+				last.classList.contains('chat-passage--redacted') &&
+				last.textContent === 'You deleted this message'
+			);
+		})
+	);
+
 	console.log('debug mode');
 
 	const debugPage = await browser.newPage({
@@ -2113,6 +2175,39 @@ async function run() {
 				fam
 					.querySelector('.inbox-preview')
 					.textContent.indexOf('Matt: not me') === 0
+			);
+		})
+	);
+
+	check(
+		'a seeded [tombstone] renders as a deleted message',
+		await inboxPage.evaluate(() => {
+			const log = document.querySelector(
+				'.thread-log[data-thread="family"]'
+			);
+			const bubble = log.querySelector('.chat-passage--redacted');
+
+			return (
+				!!bubble &&
+				bubble.textContent === 'This message was deleted' &&
+				bubble
+					.closest('.chat-passage-wrapper')
+					.getAttribute('data-speaker') === 'matt'
+			);
+		})
+	);
+
+	check(
+		'[tombstone] parses bare and with a custom label',
+		await inboxPage.evaluate(() => {
+			const bare = window.Passage.render('[tombstone]');
+			const custom = window.Passage.render(
+				'[tombstone You deleted this message]'
+			);
+
+			return (
+				bare.indexOf('chat-tombstone') > -1 &&
+				custom.indexOf('You deleted this message') > -1
 			);
 		})
 	);

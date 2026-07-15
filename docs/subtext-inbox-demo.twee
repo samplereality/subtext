@@ -30,6 +30,9 @@ pizza: Pizza Palace; color: #b3541e; archived: true
 :: pizza-old [thread-pizza speaker-pizza seed]
 Your order is ready for pickup! Rate your experience?
 
+:: family-old-0 [thread-family speaker-matt seed]
+[tombstone]
+
 :: family-old-1 [thread-family speaker-mom seed]
 Someone bring chairs on Sunday.
 

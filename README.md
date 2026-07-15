@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [API index](#api-index) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -164,7 +164,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 
 Everything you write in a passage falls into one of three shapes, each with one job:
 
-1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`. Square brackets, lowercase, one line.
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`, `[tombstone]`. Square brackets, lowercase, one line.
 2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
 3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
 
@@ -303,6 +303,36 @@ I've said too much already
 ```
 
 `[system …]` renders as a centered, italic event chip (style it via `.chat-system`). It differs from a timestamp in two deliberate ways: a chip *after* the message lands below it — a departure follows the last word — and it is **never shown early** while the reply is still typing; events land in sequence, only clocks may front-run. Works in [seeds](#multiple-conversations) too, for history like *"Missed call"*.
+
+### Deleted messages
+
+Real chat apps don't erase a deleted message — they leave a scar: *"This message was deleted."* Subtext does the same, in both directions:
+
+**Deleting live.** `story.redactMessage()` turns the newest message into a tombstone in place — the bubble stays, its content becomes the italic ghost. `redactMessage('out')` (the default) targets the player's newest message in the current thread, `redactMessage('in')` the other side's; calling it again deletes the one before, and so on. Wire it to a reply pill and the player can do the deleting:
+
+```
+:: regret [speaker-you]
+[[Delete message (send:)->they noticed]]
+[[leave it->brazen it out]]
+
+:: they noticed [speaker-sam]
+<% story.redactMessage('out') %>um. I saw that before you deleted it
+
+[[you saw nothing->denial]]
+```
+
+Tapping **Delete message** posts nothing, the player's last text collapses into the tombstone, and Sam reacts — which is the point: a delete another character notices is a *scene*. A `redact` event fires, and deletions participate in undo and save/restore. The wording comes from `story.config.redactedLabel`; pass a one-off override as the second argument — `story.redactMessage('out', 'You deleted this message')`.
+
+**Seeding old deletions.** In pre-existing history (or anywhere else), the `[tombstone]` directive renders a message that was already deleted before the story began:
+
+```
+:: family-history [thread-family speaker-matt seed]
+[tombstone]
+```
+
+Bare `[tombstone]` uses the configured wording; `[tombstone You deleted this message]` overrides it. A tombstone among the old texts is a question the player can't ask anyone — use accordingly.
+
+(Why redaction instead of removal: the conversation is a screen-reader live region, and removing nodes from it makes assistive tech re-announce the log. The tombstone keeps the DOM stable and reads exactly like the real thing.)
 
 ### Read receipts
 
@@ -794,6 +824,7 @@ story.config.autosave = true;
 | `readReceipts` | `true` | Show Delivered/Read under the player's last message |
 | `autoRead` | `true` | A speaker's reply marks the last message read |
 | `receiptLabels` | `{ delivered, read, failed }` | Receipt wording — localize or restyle |
+| `redactedLabel` | `'This message was deleted'` | What a deleted message's tombstone says |
 
 **Narration**
 
@@ -897,6 +928,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `openInbox()` / `openThread(id)` | Switch between the inbox and a conversation | [Multiple conversations](#multiple-conversations) |
 | `passage(idOrName)` | Fetch a passage object | [The story and passage globals](#the-story-and-passage-globals) |
 | `react(emoji, direction)` | Land a tapback on the last message | [Reactions](#reactions) |
+| `redactMessage(direction, label)` | Delete a message: the bubble stays, a tombstone replaces it | [Deleted messages](#deleted-messages) |
 | `remember(key, value)` / `recall(key, fallback)` / `forget(key)` | Cross-playthrough memory (survives restart) | [Recipes](#remember-across-playthroughs) |
 | `revealThread(id)` | Bring a hidden thread into the inbox | [Multiple conversations](#multiple-conversations) |
 | `save()` / `restore(hash)` | Write progress to the URL / replay a save | [Saving](#saving) |
@@ -927,6 +959,7 @@ window.addEventListener('photosent', function (e) {
 | `photosent` | the player sends a photo | `{ name, target, story }` |
 | `locationshared` | the player shares real coordinates | `{ lat, lon, story }` |
 | `reaction` | the player reacts with a tapback | `{ emoji, story }` |
+| `redact` | a message is deleted via `redactMessage` | `{ direction, story }` |
 | `timeout` | a response timer expires | `{ target, text, story }` |
 | `textinput` | the player sends free-text input | `{ text, target, story }` |
 | `threadarchived` | a conversation moves to the Trash | `{ thread, story }` |
@@ -1122,6 +1155,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - **Photos open in a lightbox.** Tap any chat image to view it fullscreen; tap again or press Esc to close. Keyboard- and screen-reader-accessible; opt out per image with `data-lightbox="off"`.
 - **Media previews.** Banners and inbox previews for media-only messages now read as their kind — `📷 Photo`, `🎤 Voice message`, `📍 Location` (wording via `config.previewLabels`) — instead of arriving blank.
 - **Banners queue.** Several messages arriving at once announce themselves one banner at a time (`config.bannerSeconds` each) instead of overwriting each other; a newer message from the same thread updates its banner in place.
+- **Deleted messages.** `story.redactMessage()` deletes a message the way real chat apps do — the bubble stays, its content becomes a *"This message was deleted"* tombstone (wording via `config.redactedLabel`; `'out'`/`'in'` picks whose message). The `[tombstone]` directive seeds a message that was already deleted before the story began. Deletions fire a `redact` event and participate in undo and save/restore. See [Deleted messages](#deleted-messages).
 - **The story check.** Debug mode now lints the whole story on load: broken pill targets, unresolved `[deliver]`/`showDelayed()` names, speakers without profiles, undeclared threads, and orphaned passages (opt out per passage with the `unlinked` tag). Each finding links to the passage. Also callable as `story.lint()`.
 - **Transcript export.** One debug-panel click flattens the visible conversation — every thread, chips and narration included — to a downloadable Markdown file; also `story.exportTranscript()`. Read your chat story as prose to proofread it.
 - **An [API index](#api-index)**: every public `story.*` method in one alphabetical table, each linked to its docs.

@@ -93,6 +93,22 @@ function render(source) {
 		}
 	);
 
+	// [tombstone] on its own line becomes a deleted-message bubble —
+	// "This message was deleted" — for seeding history that was
+	// scrubbed before the story began. An optional label overrides
+	// the wording: [tombstone You deleted this message]
+
+	result = result.replace(
+		/^[ \t]*\[tombstone(?:[ \t]+([^\]]+))?\][ \t]*$/gim,
+		function(match, label) {
+			return (
+				'<div class="chat-tombstone" data-label="' +
+				template.escapeHtml((label || '').trim()) +
+				'"></div>'
+			);
+		}
+	);
+
 	// [deliver passage name] on its own line sends that passage to its
 	// own conversation thread without moving the story there
 

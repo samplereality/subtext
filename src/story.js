@@ -248,6 +248,8 @@ var Story = function() {
 		readReceipts: true,
 		/* a speaker's reply automatically marks the last message read */
 		autoRead: true,
+		/* what a deleted message's tombstone says (localize here) */
+		redactedLabel: 'This message was deleted',
 		/* receipt wording (localize or restyle here) */
 		receiptLabels: {
 			delivered: 'Delivered',
@@ -400,6 +402,9 @@ var Story = function() {
 
 	/** Thread banners waiting their turn; one shows at a time. **/
 	this._bannerQueue = [];
+
+	/** Redacted messages, so undo can restore their content. **/
+	this._redactionLog = [];
 
 	/** When the current choices appeared, for s.replySeconds. **/
 	this._responsesShownAt = null;
@@ -1394,6 +1399,23 @@ Object.assign(Story.prototype, {
 		});
 		root.querySelectorAll('.chat-location').forEach(function(el) {
 			story.buildLocationCard(el);
+		});
+
+		// [tombstone] placeholders become deleted-message bubbles
+
+		root.querySelectorAll('.chat-tombstone').forEach(function(el) {
+			var label = el.getAttribute('data-label');
+			var bubble = el.closest('.chat-passage');
+
+			if (bubble) {
+				story.applyRedaction(
+					bubble,
+					label || story.config.redactedLabel
+				);
+			}
+			else {
+				el.textContent = label || story.config.redactedLabel;
+			}
 		});
 
 		// chat photos open in a lightbox on tap; make them reachable
@@ -2801,6 +2823,78 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Deletes a message the way real chat apps do: the bubble stays,
+	 its content becomes a tombstone — "This message was deleted".
+	 direction 'out' (the default) redacts the player's newest
+	 unredacted message in the current thread; 'in' the other side's.
+	 Calling it again deletes the one before, and so on. The node is
+	 modified in place, never removed (removals make screen readers
+	 re-announce the log), and the redaction participates in undo and
+	 save/restore. An optional label overrides config.redactedLabel
+	 for this one message. Returns whether a message was redacted.
+
+	 Triggered event: `redact`, detail { direction, story }.
+	**/
+
+	redactMessage: function(direction, label) {
+		var which = direction === 'in' ? 'in' : 'out';
+		var selector =
+			'.chat-passage-wrapper' +
+			(which === 'in'
+				? ':not([data-speaker="you"])'
+				: '[data-speaker="you"]');
+		var candidates = [];
+
+		this.hotLog()
+			.querySelectorAll(selector + ' .chat-passage')
+			.forEach(function(bubble) {
+				if (!bubble.classList.contains('chat-passage--redacted')) {
+					candidates.push(bubble);
+				}
+			});
+
+		var bubble = candidates[candidates.length - 1];
+
+		if (!bubble) {
+			return false;
+		}
+
+		this._redactionLog.push({
+			bubble: bubble,
+			html: bubble.innerHTML,
+			className: bubble.className
+		});
+
+		this.applyRedaction(bubble, label || this.config.redactedLabel);
+		this.timeline.push({
+			t: 'x',
+			which: which,
+			l: label || undefined
+		});
+		dispatch('redact', { direction: which, story: this });
+
+		if (this.multiThread) {
+			this.renderInbox();
+		}
+
+		this.persist();
+		return true;
+	},
+
+	/**
+	 Turns a message bubble into a deleted-message tombstone in place.
+	 Used by redactMessage() and by the [tombstone] directive.
+	**/
+
+	applyRedaction: function(bubble, label) {
+		bubble.classList.remove('chat-passage--media');
+		bubble.classList.remove('chat-passage--voice');
+		bubble.classList.remove('chat-passage--location');
+		bubble.classList.add('chat-passage--redacted');
+		bubble.textContent = label;
+	},
+
+	/**
 	 Puts a tapback badge on a message wrapper. Used by react() (which
 	 also records it for undo) and by seeded reactions (which don't —
 	 they're history, not moves).
@@ -2915,6 +3009,7 @@ Object.assign(Story.prototype, {
 		this._currentNodes = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
+		this._redactionLog = [];
 		this.dom.undo.hidden = true;
 
 		if (this.multiThread) {
@@ -3706,7 +3801,8 @@ Object.assign(Story.prototype, {
 			links: window.passage ? window.passage.links.slice() : [],
 			lastReceipt: lastReceipt,
 			meta: meta,
-			reactionLogLength: this._reactionLog.length
+			reactionLogLength: this._reactionLog.length,
+			redactionLogLength: this._redactionLog.length
 		});
 
 		this.dom.undo.hidden = !this.config.undoButton;
@@ -3767,6 +3863,17 @@ Object.assign(Story.prototype, {
 					reactedWrapper.classList.remove('has-reaction');
 				}
 			}
+		}
+
+		// un-delete messages redacted since the checkpoint
+
+		while (
+			this._redactionLog.length > (checkpoint.redactionLogLength || 0)
+		) {
+			var redaction = this._redactionLog.pop();
+
+			redaction.bubble.innerHTML = redaction.html;
+			redaction.bubble.className = redaction.className;
 		}
 
 		if (this.multiThread && checkpoint.logCounts) {
@@ -4812,6 +4919,10 @@ Object.assign(Story.prototype, {
 			return labels.location;
 		}
 
+		if (root.querySelector('.chat-tombstone')) {
+			return this.config.redactedLabel;
+		}
+
 		var text = root.textContent.trim().replace(/\s+/g, ' ');
 
 		if (text) {
@@ -5596,6 +5707,7 @@ Object.assign(Story.prototype, {
 			this.history = [];
 			this.checkpoints = [];
 			this._reactionLog = [];
+			this._redactionLog = [];
 
 			if (this.multiThread) {
 				var storyReset = this;
@@ -5676,6 +5788,10 @@ Object.assign(Story.prototype, {
 				else if (entry.t === 'r') {
 					story.state.lastReaction = entry.emoji;
 					story.react(entry.emoji, 'in');
+				}
+				else if (entry.t === 'x') {
+					// redactMessage re-records its own timeline entry
+					story.redactMessage(entry.which, entry.l);
 				}
 				else if (entry.t === 'd') {
 					var delivered = story.passage(entry.id);
@@ -5818,6 +5934,7 @@ Object.assign(Story.prototype, {
 		this.timeline = [];
 		this.checkpoints = [];
 		this._reactionLog = [];
+		this._redactionLog = [];
 		this.dom.undo.hidden = true;
 
 		this.show(idOrName);
