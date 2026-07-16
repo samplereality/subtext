@@ -1543,6 +1543,51 @@ async function run() {
 		})
 	);
 
+	// fast-forward: play to a passage through the written link graph,
+	// auto-choosing along the way — history, bubbles, checkpoints and
+	// state fill in like a real playthrough
+	const ffwd = await debugPage.evaluate(() => {
+		const bubblesBefore = document.querySelectorAll(
+			'.chat-passage[data-speaker="you"]'
+		).length;
+		const ok = window.story.debugFastForward('montage-4');
+
+		return {
+			ok,
+			cursor: window.passage.name,
+			visitedMontage2: window.story.history.some(
+				(id) => (window.story.passage(id) || {}).name === 'montage-2'
+			),
+			grewBubbles:
+				document.querySelectorAll('.chat-passage[data-speaker="you"]')
+					.length > bubblesBefore,
+			checkpoints: window.story.checkpoints.length
+		};
+	});
+
+	check(
+		'play-to fast-forwards through the graph as a real playthrough',
+		ffwd.ok &&
+			ffwd.cursor === 'montage-4' &&
+			ffwd.visitedMontage2 &&
+			ffwd.grewBubbles &&
+			ffwd.checkpoints > 0
+	);
+
+	check(
+		'play-to reports no route rather than guessing',
+		await debugPage.evaluate(
+			() => window.story.debugFastForward('margin-note') === false
+		)
+	);
+
+	await debugPage.selectOption('#debug-passages', 'Start');
+	await debugPage.click('#debug-playto');
+	check(
+		'the play-to button drives the fast-forward',
+		await debugPage.evaluate(() => window.passage.name === 'Start')
+	);
+
 	// resume: a reload (what a `tweego -w` rebuild triggers in a live
 	// preview) restores the current position from the debug autosave —
 	// even when the rebuild renumbers every passage id

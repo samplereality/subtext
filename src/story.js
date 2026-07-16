@@ -6047,6 +6047,314 @@ Object.assign(Story.prototype, {
 	**/
 
 	/**
+	 Parses a passage's source into its outbound edges — every way the
+	 story can move on from it. Pill links carry their kind (text,
+	 react, photo, location, input, timeout), display label, and sent
+	 text; showDelayed()/show()/deliver() calls and [deliver …]
+	 directives are 'auto' edges (the story advances by itself).
+	 Static only: template code is not evaluated, so a target that
+	 contains template syntax comes back verbatim.
+	**/
+
+	passageEdges: function(source) {
+		var edges = [];
+		var re = /\[\[(.*?)\]\]/g;
+		var match;
+
+		while ((match = re.exec(source))) {
+			var inner = match[1];
+			var display = inner;
+			var target = inner;
+			var arrow = inner.lastIndexOf('->');
+
+			if (arrow > -1) {
+				display = inner.slice(0, arrow);
+				target = inner.slice(arrow + 2);
+			}
+			else {
+				var bar = /(^|[^|])\|(?!\|)/.exec(inner);
+
+				if (bar) {
+					display = inner.slice(0, bar.index + bar[1].length);
+					target = inner.slice(bar.index + bar[1].length + 1);
+				}
+			}
+
+			var sent;
+			var send = /\(send:([^)]*)\)\s*$/i.exec(display);
+
+			if (send) {
+				sent = send[1].trim();
+				display = display.slice(0, send.index);
+
+				// shorthand [[label (send: …)]]: the label IS the target
+				if (arrow === -1 && target === inner) {
+					target = display;
+				}
+			}
+
+			display = display.trim();
+			target = target.trim();
+
+			var kind = 'text';
+			var text = display;
+
+			if (display.indexOf(REACT_LINK_PREFIX) === 0) {
+				kind = 'react';
+				text = display.slice(REACT_LINK_PREFIX.length).trim();
+			}
+			else if (
+				display === 'input' ||
+				display.indexOf(INPUT_LINK_PREFIX) === 0
+			) {
+				kind = 'input';
+				text = display === 'input'
+					? ''
+					: display.slice(INPUT_LINK_PREFIX.length).trim();
+			}
+			else if (display.indexOf(TIMEOUT_LINK_PREFIX) === 0) {
+				kind = 'timeout';
+
+				var timed = display
+					.slice(TIMEOUT_LINK_PREFIX.length)
+					.match(/^\s*[\d.]+\s*([\s\S]*)$/);
+
+				text = timed ? timed[1].trim() : '';
+			}
+			else if (
+				display === 'photo' ||
+				display.indexOf(PHOTO_LINK_PREFIX) === 0
+			) {
+				kind = 'photo';
+				text = display === 'photo'
+					? '*'
+					: display.slice(PHOTO_LINK_PREFIX.length).trim();
+			}
+			else if (
+				display === 'location' ||
+				display.indexOf(LOCATION_LINK_PREFIX) === 0
+			) {
+				kind = 'location';
+				text = '';
+			}
+
+			edges.push({
+				target: target,
+				kind: kind,
+				display: display,
+				text: text,
+				sent: sent
+			});
+		}
+
+		var deliverRe = /\[deliver[ \t]+([^\]]+)\]/g;
+
+		while ((match = deliverRe.exec(source))) {
+			edges.push({ target: match[1].trim(), kind: 'auto' });
+		}
+
+		// names passed to the API from templates count as edges too
+
+		var call = /\b(?:show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\1/g;
+
+		while ((match = call.exec(source))) {
+			edges.push({ target: match[2], kind: 'auto' });
+		}
+
+		return edges;
+	},
+
+	/**
+	 Fast-forwards: plays the story from the current passage to the
+	 target, instantly. The route is found in the written link graph —
+	 pills, chains, deliveries — and at each fork the pill that leads
+	 toward the target is taken for you, so bubbles, state trackers,
+	 events, checkpoints, and history all fill in the way a (very
+	 fast) real playthrough would. The route follows links as written:
+	 template conditions aren't evaluated when picking it, typed-input
+	 gates are answered with a placeholder, and photo pills send the
+	 first image they offer. Returns false when no written route
+	 exists — callers can fall back to debugJump.
+	**/
+
+	debugFastForward: function(idOrName) {
+		var story = this;
+		var target = this.passage(idOrName);
+
+		if (!target || !window.passage || target.id === window.passage.id) {
+			return false;
+		}
+
+		// breadth-first through the written graph = fewest moves
+
+		var seen = {};
+		var cameBy = {};
+		var frontier = [window.passage.name];
+		var found = false;
+
+		seen[window.passage.name] = true;
+
+		while (frontier.length && !found) {
+			var nextFrontier = [];
+
+			for (var f = 0; f < frontier.length && !found; f++) {
+				var passage = this.passage(frontier[f]);
+				var edges = passage ? this.passageEdges(passage.source) : [];
+
+				for (var i = 0; i < edges.length; i++) {
+					var edge = edges[i];
+
+					if (!this.passage(edge.target) || seen[edge.target]) {
+						continue;
+					}
+
+					seen[edge.target] = true;
+					cameBy[edge.target] = {
+						from: frontier[f],
+						edge: edge
+					};
+
+					if (edge.target === target.name) {
+						found = true;
+						break;
+					}
+
+					nextFrontier.push(edge.target);
+				}
+			}
+
+			frontier = nextFrontier;
+		}
+
+		if (!found) {
+			return false;
+		}
+
+		var steps = [];
+		var at = target.name;
+
+		while (at !== window.passage.name) {
+			steps.unshift(cameBy[at]);
+			at = cameBy[at].from;
+		}
+
+		// play the route: cancel chain timers as we pass (we're the
+		// ones driving), make each move, show each passage instantly.
+		// The final passage keeps any timers it arms — arriving by
+		// fast-forward behaves like arriving normally.
+
+		steps.forEach(function(step) {
+			story.cancelTimers();
+			story.hideTyping();
+			story.playEdge(step.edge);
+			story.show(step.edge.target, { instant: true });
+		});
+
+		this.scrollChatIntoView();
+		this.persist();
+		return true;
+	},
+
+	/**
+	 Makes the player move an edge describes — bubble, state trackers,
+	 event, checkpoint — without any pacing. Auto edges (chains,
+	 deliveries) post nothing. Used by debugFastForward.
+	**/
+
+	playEdge: function(edge) {
+		if (edge.kind === 'auto') {
+			return;
+		}
+
+		this.pushCheckpoint();
+		this.hideMeta();
+		this.clearUserResponses();
+		this.state.timedOut = edge.kind === 'timeout';
+
+		var story = this;
+
+		if (edge.kind === 'react') {
+			this.state.lastReaction = edge.text;
+			this.react(edge.text, 'in');
+			this.timeline.push({ t: 'r', emoji: edge.text });
+			dispatch('reaction', { emoji: edge.text, story: this });
+			return;
+		}
+
+		if (edge.kind === 'photo') {
+			var name = edge.text.split(',')[0].trim();
+
+			if (name === '*' || name === '') {
+				name = Object.keys(this.gallery)[0] || '';
+			}
+
+			if (name) {
+				this.state.lastPhoto = name;
+				this.state.sentPhotos =
+					(this.state.sentPhotos || []).concat(name);
+				this.showPhotoBubble(name, { instant: true });
+				dispatch('photosent', {
+					name: name,
+					target: edge.target,
+					story: this
+				});
+			}
+
+			return;
+		}
+
+		if (edge.kind === 'input') {
+			var typed = edge.text || '…';
+
+			this.state.lastInput = typed;
+			this.state.inputs = (this.state.inputs || []).concat(typed);
+			this.showUserBubble(typed, { instant: true });
+			dispatch('textinput', {
+				text: typed,
+				target: edge.target,
+				story: this
+			});
+			return;
+		}
+
+		if (edge.kind === 'location') {
+			return; // nothing sensible to fake; just advance
+		}
+
+		// a plain reply pill, or a timed-out forced reply
+
+		var sentText = edge.sent !== undefined ? edge.sent : edge.display;
+
+		if (edge.kind === 'text' && edge.display.trim() !== '') {
+			this.state.lastChoice = edge.display.trim();
+		}
+
+		if (edge.kind === 'timeout') {
+			dispatch('timeout', {
+				target: edge.target,
+				text: sentText,
+				story: this
+			});
+		}
+		else {
+			dispatch('choice', {
+				label: edge.display.trim() || null,
+				sent: sentText || '',
+				target: edge.target,
+				story: this
+			});
+		}
+
+		(sentText || '')
+			.split('||')
+			.map(function(part) { return part.trim(); })
+			.filter(function(part) { return part !== ''; })
+			.forEach(function(part) {
+				story.showUserBubble(part, { instant: true });
+			});
+	},
+
+	/**
 	 A static story check: broken pill targets, unresolved [deliver]
 	 and show()/showDelayed() names, speakers without a StorySpeakers
 	 profile, thread tags never declared in StoryThreads, and passages
@@ -6070,64 +6378,13 @@ Object.assign(Story.prototype, {
 			return p && !isSpecial(p);
 		});
 
-		// pill targets, mirroring the link parser: display->target,
-		// a single-bar display|target, and the shorthand form where a
-		// trailing (send: …) comes off the target
-
-		var linkTargets = function(source) {
-			var targets = [];
-			var re = /\[\[(.*?)\]\]/g;
-			var match;
-
-			while ((match = re.exec(source))) {
-				var inner = match[1];
-				var target = inner;
-				var arrow = inner.lastIndexOf('->');
-
-				if (arrow > -1) {
-					target = inner.slice(arrow + 2);
-				}
-				else {
-					var bar = /(^|[^|])\|(?!\|)/.exec(inner);
-
-					if (bar) {
-						target = inner.slice(bar.index + bar[1].length + 1);
-					}
-					else {
-						var send = /\(send:[^)]*\)\s*$/i.exec(inner);
-
-						if (send) {
-							target = inner.slice(0, send.index);
-						}
-					}
-				}
-
-				targets.push(target.trim());
-			}
-
-			return targets;
-		};
-
 		var reachable = {};
 		var refs = {}; // passage name -> outbound names
 
 		content.forEach(function(p) {
-			var out = linkTargets(p.source);
-			var re = /\[deliver[ \t]+([^\]]+)\]/g;
-			var match;
-
-			while ((match = re.exec(p.source))) {
-				out.push(match[1].trim());
-			}
-
-			// names passed to the API from templates count as links
-			// for both existence and reachability
-
-			var call = /\b(?:show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\1/g;
-
-			while ((match = call.exec(p.source))) {
-				out.push(match[2]);
-			}
+			var out = story.passageEdges(p.source).map(function(edge) {
+				return edge.target;
+			});
 
 			refs[p.name] = out;
 
@@ -6361,9 +6618,10 @@ Object.assign(Story.prototype, {
 			'<details open><summary>Jump to passage</summary>' +
 			'<div class="debug-row">' +
 			'<select id="debug-passages" aria-label="Jump to passage"></select>' +
+			'<button type="button" id="debug-playto">play to</button>' +
 			'<button type="button" id="debug-jump">jump</button>' +
 			'</div>' +
-			'<p class="debug-note">teleports to a clean transcript; s is kept</p>' +
+			'<p class="debug-note" id="debug-jump-note">play to: fast-forward through the story, choosing for you · jump: teleport to a clean transcript (s is kept)</p>' +
 			'</details>' +
 			'<details><summary id="debug-lint-summary">Story check</summary>' +
 			'<div id="debug-lint"></div>' +
@@ -6654,6 +6912,26 @@ Object.assign(Story.prototype, {
 				story.debugJump(passageList.value);
 				buildPassageList();
 			}
+		});
+		panel.querySelector('#debug-playto').addEventListener('click', function() {
+			if (!passageList.value) {
+				return;
+			}
+
+			var note = panel.querySelector('#debug-jump-note');
+
+			if (story.debugFastForward(passageList.value)) {
+				note.textContent =
+					'fast-forwarded — the transcript above is a real playthrough';
+			}
+			else {
+				story.debugJump(passageList.value);
+				note.textContent =
+					'no written route from here — teleported instead';
+			}
+
+			refresh();
+			buildPassageList();
 		});
 
 		window.addEventListener('showpassage:after', refresh);
