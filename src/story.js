@@ -288,6 +288,10 @@ var Story = function() {
 		threadIdleHint: 'Nothing to say right now',
 		/* label on the inbox's Trash section (localize here) */
 		trashLabel: 'Trash',
+		/* mark the inbox row of the conversation awaiting a reply */
+		replyIndicator: true,
+		/* its screen-reader label (localize here) */
+		replyIndicatorLabel: 'awaiting your reply',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
 		/* show the header undo button once there is something to undo
@@ -4894,6 +4898,27 @@ Object.assign(Story.prototype, {
 					count + ' unread message' + (count === 1 ? '' : 's')
 				);
 				button.appendChild(badge);
+			}
+
+			// wayfinding: the conversation holding the story's pending
+			// choices gets a quiet "your turn" mark
+
+			if (
+				story.config.replyIndicator &&
+				!trashed &&
+				id === story._hotThread &&
+				window.passage &&
+				window.passage.links.length > 0
+			) {
+				var reply = document.createElement('span');
+
+				reply.className = 'inbox-reply';
+				reply.innerHTML =
+					'<span aria-hidden="true">↩</span>' +
+					'<span class="visually-hidden"></span>';
+				reply.querySelector('.visually-hidden').textContent =
+					story.config.replyIndicatorLabel;
+				button.appendChild(reply);
 			}
 
 			button.addEventListener('click', function() {

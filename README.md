@@ -657,7 +657,7 @@ Three things move the story between threads:
 
 - **The player**, by opening the inbox (the ‹ chevron on the header's left) or tapping a notification banner, can read any thread at any time. The chevron itself is yours to stage: `story.config.inboxButton = false` starts the story feeling like a single conversation, and `<% story.showInboxButton() %>` in a later passage reveals that there was a whole inbox all along (`hideInboxButton()` reverses it). Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* — so the read-only state stays inside the fiction (wording via `story.config.threadIdleHint`; set `''` for none).
 
-The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Banners behave like real notifications: long messages are cut off with an ellipsis, media-only messages read as their kind (`📷 Photo`, `🎤 Voice message`, `📍 Location` — wording via `config.previewLabels`), several arrivals **queue** and show one at a time (`config.bannerSeconds` each; a newer message from the same thread updates its banner in place), and inbox previews follow the same rules.
+The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. The conversation holding the story's pending choices also carries a quiet, pulsing **↩ mark** — wayfinding for "it's your turn here," distinct from the unread badge's "something new arrived" (off with `config.replyIndicator = false`; screen-reader wording via `config.replyIndicatorLabel`). Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Banners behave like real notifications: long messages are cut off with an ellipsis, media-only messages read as their kind (`📷 Photo`, `🎤 Voice message`, `📍 Location` — wording via `config.previewLabels`), several arrivals **queue** and show one at a time (`config.bannerSeconds` each; a newer message from the same thread updates its banner in place), and inbox previews follow the same rules.
 
 **Group chats.** Give a thread `members:` — a comma-separated list of speaker ids — and it becomes a group conversation:
 
@@ -872,6 +872,8 @@ story.config.autosave = true;
 | `previewLabels` | `{ photo, voice, location }` | What banners and inbox previews say for media-only messages (`📷 Photo`, …) |
 | `threadIdleHint` | `'Nothing to say right now'` | Placeholder in the disabled composer on parked threads (`''` for none) |
 | `trashLabel` | `'Trash'` | Label on the inbox's archived-conversations section |
+| `replyIndicator` | `true` | Mark the inbox row of the conversation awaiting a reply with ↩ |
+| `replyIndicatorLabel` | `'awaiting your reply'` | Its screen-reader label |
 | `themeToggle` | `true` | Show the light/dark toggle in the header |
 | `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
 | `inboxButton` | `true` | Show the inbox chevron; reveal later with `story.showInboxButton()` |
@@ -1154,6 +1156,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.7.1
 
+- **A "your turn" mark in the inbox.** The conversation holding the story's pending choices carries a quiet pulsing ↩ — wayfinding so the player always knows where the story is waiting, distinct from the unread badge. `config.replyIndicator` / `replyIndicatorLabel`.
 - **The Trash is its own screen.** Instead of expanding at the bottom of the inbox, the Trash row now opens a separate screen (header shows the Trash label, chevron returns to the inbox). A conversation opened from the Trash returns to the Trash; recovering the last archived thread bounces back to the inbox. `story.openTrash()` opens it from code, and saves/undo remember when the player was there.
 - **Play to: fast-forward as a real playthrough.** The debug panel's jump section gains a second gear — *play to* routes through the story's written link graph and plays it instantly, auto-tapping the pill that leads toward the target at each fork. History, bubbles, state trackers, events, and checkpoints all fill in (undo steps back through the auto-made choices); no route falls back to a teleport. Also `story.debugFastForward(name)`.
 - **Fixed: linkless narration wiped the pending reply pills.** Chaining an aside or interstitial in with `showDelayed()` while choices were on screen replaced them with the narration's (empty) links. Side narration — speakerless, no links — now displays without touching the pills, the cursor, or `s.previousPassage`. See [Narration](#narration).

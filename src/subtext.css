@@ -822,6 +822,27 @@ a {
 	justify-content: center;
 }
 
+/* the quiet "your turn" mark on the conversation awaiting a reply */
+
+.inbox-reply {
+	flex: none;
+	color: var(--t-accent);
+	font-size: 1.05rem;
+	line-height: 1;
+	animation: inbox-reply-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes inbox-reply-pulse {
+	0%,
+	100% {
+		opacity: 0.45;
+	}
+
+	50% {
+		opacity: 1;
+	}
+}
+
 @keyframes t-screen-in {
 	from {
 		transform: translateX(1.25rem);

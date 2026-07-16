@@ -1956,6 +1956,13 @@ async function run() {
 		(await inboxPage.locator('.inbox-row:has-text("Unknown")').count()) === 0
 	);
 	check(
+		'the conversation awaiting a reply carries the your-turn mark',
+		(await inboxPage.locator('.inbox-row:has-text("Sam") .inbox-reply').count()) === 1 &&
+		(await inboxPage.locator('.inbox-row:has-text("Mom") .inbox-reply').count()) === 0 &&
+		(await inboxPage.locator('.inbox-reply .visually-hidden').textContent()) ===
+			'awaiting your reply'
+	);
+	check(
 		'a narration overlay hides the inbox chevron (no stranding)',
 		await inboxPage.evaluate(() => {
 			// back on a thread screen first
