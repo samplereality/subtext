@@ -56,7 +56,7 @@ Meet me at the docks in an hour?
 [[why the docks?]]
 ```
 
-- Each paragraph (blank-line separated) becomes its own bubble.
+- Each paragraph (blank-line separated) becomes its own bubble. To keep paragraph breaks *inside* one long bubble instead, tag the passage `one-bubble` — or, mid-passage, wrap just those paragraphs in an HTML block (markdown doesn't render inside raw HTML, so write the `<p>` tags yourself): `<div><p>first paragraph.</p><p>second paragraph.</p></div>` renders as a single bubble among normally split ones. (`story.config.splitBubbles = false` does one-bubble-per-passage story-wide.)
 - `[[links]]` become the player's quick-reply choices. The usual Twine link forms work: `[[display|target]]`, `[[display->target]]`, `[[target<-display]]`. A pill can also send different text than it shows — see [Reply pills and sent text](#reply-pills-and-sent-text).
 - A passage **without** a `speaker-` tag belongs to the narrator — see [Narration](#narration) for the ways it can be presented.
 - Speaker names get an avatar automatically (initial + a stable color derived from the name). Multi-word names use dashes: `speaker-happy-bot` displays as "happy bot".
@@ -153,6 +153,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
 | `instant` | The passage arrives with no typing indicator (with an explicit delay: a silent wait) | [Message chains and montages](#message-chains-and-montages) |
+| `one-bubble` | The passage renders as a single bubble, paragraph breaks kept inside it | [Your first passage](#your-first-passage) |
 | `clear` | Wipes the visible thread before rendering | [Clearing the thread](#clearing-the-thread) |
 | `timestamp` | Renders the passage's text as timestamp chips | [Timestamps](#timestamps) |
 | `read` / `unread` | Forces or suppresses the read receipt | [Read receipts](#read-receipts) |
@@ -816,7 +817,7 @@ story.config.autosave = true;
 | `minTypingDelay` | `500` | Floor for the typing delay (ms) |
 | `maxTypingDelay` | `4000` | Ceiling for the typing delay (ms) |
 | `metaDelay` | `800` | Delay before a narration passage appears (ms). Skipped when the player taps directly into narration with a silent `(send:)` pill |
-| `splitBubbles` | `true` | Render each paragraph as its own bubble |
+| `splitBubbles` | `true` | Render each paragraph as its own bubble (per passage: the `one-bubble` tag) |
 | `bubbleStagger` | `140` | Gap between bubbles of one passage (ms) |
 
 **Receipts and reactions**
@@ -1150,6 +1151,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.7.1
 
+- **The `one-bubble` passage tag** keeps a long message in a single bubble, paragraph breaks and all — the per-message counterpart to `story.config.splitBubbles`. (An inline HTML block does the same for a few paragraphs mid-passage; see [Your first passage](#your-first-passage).)
 - **Fixed: undo went dead after every reload.** Restoring a save (including the debug autosave that fires on each `tweego -w` rebuild) wiped the checkpoint stack; the replay now rebuilds a checkpoint per player move, so undo works immediately after a reload, a restore, or a timeline rewind.
 - **Fixed: rewinding the timeline into a `showDelayed` chain overshot.** The replayed chain re-armed its next message, which immediately streamed the rest of the chain back in; a rewind now pauses exactly at the picked moment. (A normal reload still carries an in-flight chain forward.)
 - **The debug panel got compact.** Timeline and Jump-to-passage are one-line dropdowns with `rewind`/`jump` buttons instead of tall scrolling lists.

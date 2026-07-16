@@ -1267,6 +1267,48 @@ async function run() {
 		)
 	);
 
+	// paragraphs stay inside one bubble two ways: the one-bubble tag,
+	// and an inline HTML block among normally split paragraphs
+	await page.evaluate(() => window.story.show('long-story'));
+	check(
+		'the one-bubble tag keeps paragraph breaks inside a single bubble',
+		await page.evaluate(() => {
+			const wrapper = Array.from(
+				document.querySelectorAll(
+					'.chat-passage-wrapper[data-speaker="2"]'
+				)
+			).find(
+				(node) => node.textContent.indexOf('flip phone again') > -1
+			);
+
+			return (
+				!!wrapper &&
+				wrapper.querySelectorAll('.chat-passage').length === 1 &&
+				wrapper.querySelectorAll('.chat-passage p').length === 3
+			);
+		})
+	);
+	check(
+		'an HTML block groups paragraphs into one bubble mid-passage',
+		await page.evaluate(() => {
+			window.passage.links = [];
+
+			const nodes = window.story.buildPassageElement(
+				window.story.passage('ok'),
+				'2',
+				window.Passage.render(
+					'opener\n\n<div><p>long one.</p><p>break inside.</p></div>\n\ncloser'
+				)
+			);
+			const bubbles = nodes[0].querySelectorAll('.chat-passage');
+
+			return (
+				bubbles.length === 3 &&
+				bubbles[1].querySelectorAll('p').length === 2
+			);
+		})
+	);
+
 	console.log('deleted messages');
 
 	// redactMessage tombstones in place — the node is never removed,

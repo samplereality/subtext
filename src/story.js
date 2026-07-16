@@ -1330,7 +1330,15 @@ Object.assign(Story.prototype, {
 			bubbles.appendChild(name);
 		}
 
-		var bubbleBlocks = this.config.splitBubbles ? blocks : [null];
+		// paragraphs normally split into separate bubbles; the
+		// `one-bubble` tag keeps a long message in a single bubble,
+		// paragraph breaks and all (splitBubbles=false does it
+		// story-wide)
+
+		var single =
+			!this.config.splitBubbles ||
+			passage.tags.indexOf('one-bubble') > -1;
+		var bubbleBlocks = single ? [null] : blocks;
 		var index = 0;
 
 		bubbleBlocks.forEach(function(block) {
