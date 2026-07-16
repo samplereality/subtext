@@ -1367,9 +1367,10 @@ async function run() {
 		(await debugPage.textContent('#debug-vars')).indexOf('red herring') > -1
 	);
 
-	// fast-forward: filter the passage list and jump — a clean teleport
-	await debugPage.fill('#debug-filter', 'pill-demo');
-	await debugPage.click('#debug-passages button:has-text("pill-demo")');
+	// fast-forward: pick a passage in the dropdown and jump — a clean
+	// teleport
+	await debugPage.selectOption('#debug-passages', 'pill-demo');
+	await debugPage.click('#debug-jump');
 	await debugPage.waitForSelector('.user-response:has-text("the long version")', {
 		timeout: 15000
 	});
@@ -1387,7 +1388,8 @@ async function run() {
 	await debugPage.waitForSelector('.chat-passage:has-text("nothing at all")', {
 		timeout: 15000
 	});
-	await debugPage.locator('#debug-timeline button').first().click();
+	await debugPage.selectOption('#debug-timeline', '0');
+	await debugPage.click('#debug-rewind');
 	await debugPage.waitForSelector('.user-response:has-text("the long version")', {
 		timeout: 15000
 	});
@@ -1400,6 +1402,57 @@ async function run() {
 					'.chat-passage[data-speaker="you"]'
 				).length === 0
 		)
+	);
+
+	// rewinding into a showDelayed chain pauses AT the picked moment
+	// instead of replaying the rest of the chain back in
+	await debugPage.click('.user-response:has-text("sure")');
+	await debugPage.waitForSelector('.user-response:has-text("montage time")', {
+		timeout: 15000
+	});
+	await debugPage.click('.user-response:has-text("montage time")');
+	await debugPage.waitForSelector('.user-response:has-text("and then?")', {
+		timeout: 15000
+	});
+	await debugPage.evaluate(() => {
+		const idx = window.story.timeline.findIndex(
+			(e) =>
+				e.t === 'p' &&
+				(window.story.passage(e.id) || {}).name === 'montage-2'
+		);
+
+		window.story.debugRewind(idx + 1);
+	});
+	await debugPage.waitForTimeout(1200);
+	check(
+		'rewinding into a chain pauses at the picked moment',
+		await debugPage.evaluate(() => {
+			const bubbles = document.querySelectorAll('#phistory .chat-passage');
+			const last = bubbles[bubbles.length - 1];
+
+			return (
+				window.passage.name === 'montage-2' &&
+				last.textContent.indexOf('charger still works') > -1 &&
+				window.story.timers.length === 0
+			);
+		})
+	);
+
+	// the replay rebuilt checkpoints, so undo works right after a
+	// rewind (and, by the same machinery, after any reload)
+	check(
+		'undo works immediately after a rewind/restore',
+		await debugPage.evaluate(() => {
+			const had = window.story.checkpoints.length;
+
+			window.story.undo();
+
+			return (
+				had > 0 &&
+				window.story.checkpoints.length === had - 1 &&
+				window.passage.name === 'pill-demo-2'
+			);
+		})
 	);
 	check(
 		'timeline section sits above the jump section',

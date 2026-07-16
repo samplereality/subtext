@@ -787,8 +787,8 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 
 - **Where you are** — current passage, thread, and turn count, always in view.
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
-- **Timeline** — every message and passage so far; **tap any passage to rewind to that moment**. The conversation rebuilds up to that point by replaying it, so template side effects re-run exactly as they did the first time.
-- **Jump to passage** — a filterable list (by name or tag, current passage highlighted); click one to fast-forward straight to it, no need to play through fifty passages to reach the scene you just wrote. A jump is a *clean teleport*: the transcript resets to the target while `s` is kept, so jumps never pile up in the log or the autosave. To go backwards, use the timeline.
+- **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in).
+- **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name); pick one and **jump** to fast-forward straight to it. A jump is a *clean teleport*: the transcript resets to the target while `s` is kept, so jumps never pile up in the log or the autosave. To go backwards, use the timeline.
 - **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, and passages nothing points to. Each finding links to the offending passage. It reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at; a passage you reach only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it. Reading a chat story as prose is a surprisingly good proofreading pass. Also callable as `story.exportTranscript()`, which returns the Markdown string.
 - **Memory** — what the story has `remember()`ed across playthroughs, with a forget-all button.
@@ -1150,6 +1150,9 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.7.1
 
+- **Fixed: undo went dead after every reload.** Restoring a save (including the debug autosave that fires on each `tweego -w` rebuild) wiped the checkpoint stack; the replay now rebuilds a checkpoint per player move, so undo works immediately after a reload, a restore, or a timeline rewind.
+- **Fixed: rewinding the timeline into a `showDelayed` chain overshot.** The replayed chain re-armed its next message, which immediately streamed the rest of the chain back in; a rewind now pauses exactly at the picked moment. (A normal reload still carries an in-flight chain forward.)
+- **The debug panel got compact.** Timeline and Jump-to-passage are one-line dropdowns with `rewind`/`jump` buttons instead of tall scrolling lists.
 - **Fixed: `story.deliver()` ignored the target's `instant` tag** — a tagged passage still waited out the typing delay. Deliveries now follow the same pacing grammar as `showDelayed()`: pace by message length (with the inbox "typing…" state), land at once when the target is tagged `instant`, or take an explicit delay — `story.deliver('name', 2000)`.
 
 ### Version 2.7

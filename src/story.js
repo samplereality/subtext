@@ -5770,6 +5770,19 @@ Object.assign(Story.prototype, {
 
 				story.cancelTimers();
 
+				// every player move gets its checkpoint back, so undo
+				// keeps working across reloads (state is mid-rebuild
+				// here, exactly as it was when the move was made)
+
+				if (
+					entry.t === 'u' ||
+					entry.t === 'i' ||
+					entry.t === 'l' ||
+					entry.t === 'r'
+				) {
+					story.pushCheckpoint();
+				}
+
 				var receipt = entry.r
 					? { status: entry.r, label: entry.rl }
 					: null;
@@ -5871,6 +5884,12 @@ Object.assign(Story.prototype, {
 				}
 			}
 
+			// the replay rebuilt the checkpoint stack — undo works
+			// straight away, even right after a reload
+
+			this.dom.undo.hidden =
+				this.checkpoints.length === 0 || !this.config.undoButton;
+
 			this.persist();
 			this.dom.history.removeAttribute('aria-live');
 		}
@@ -5971,6 +5990,19 @@ Object.assign(Story.prototype, {
 		this.restore(
 			LZString.compressToBase64(JSON.stringify({ timeline: prefix }))
 		);
+
+		// rewind means THIS moment, paused. A replayed chain re-arms
+		// its next showDelayed — left alone it would immediately play
+		// the future back in, overshooting the moment the author
+		// picked. (A normal restore keeps those timers: a reload
+		// mid-chain must carry the chain onward.)
+
+		this.cancelTimers();
+		this.hideTyping();
+
+		if (this.multiThread) {
+			this.setThreadTyping(null);
+		}
 	},
 
 	/**
@@ -6286,13 +6318,18 @@ Object.assign(Story.prototype, {
 			'<div id="debug-eval-out"></div>' +
 			'</details>' +
 			'<details open><summary>Timeline</summary>' +
-			'<p class="debug-note">tap a passage to rewind to it</p>' +
-			'<ol id="debug-timeline"></ol>' +
+			'<div class="debug-row">' +
+			'<select id="debug-timeline" aria-label="Timeline"></select>' +
+			'<button type="button" id="debug-rewind">rewind</button>' +
+			'</div>' +
+			'<p class="debug-note">pick a moment, rewind to it — paused right there</p>' +
 			'</details>' +
 			'<details open><summary>Jump to passage</summary>' +
+			'<div class="debug-row">' +
+			'<select id="debug-passages" aria-label="Jump to passage"></select>' +
+			'<button type="button" id="debug-jump">jump</button>' +
+			'</div>' +
 			'<p class="debug-note">teleports to a clean transcript; s is kept</p>' +
-			'<input type="search" id="debug-filter" placeholder="filter by name or tag…" aria-label="Filter passages">' +
-			'<ul id="debug-passages"></ul>' +
 			'</details>' +
 			'<details><summary id="debug-lint-summary">Story check</summary>' +
 			'<div id="debug-lint"></div>' +
@@ -6307,7 +6344,6 @@ Object.assign(Story.prototype, {
 		var where = panel.querySelector('#debug-where');
 		var timeline = panel.querySelector('#debug-timeline');
 		var passageList = panel.querySelector('#debug-passages');
-		var filter = panel.querySelector('#debug-filter');
 		var evalOut = panel.querySelector('#debug-eval-out');
 		var memoryTable = panel.querySelector('#debug-memory');
 		var lintBox = panel.querySelector('#debug-lint');
@@ -6417,38 +6453,33 @@ Object.assign(Story.prototype, {
 				cell.title = String(JSON.stringify(story.state[key]));
 			});
 
-			// the timeline: passages are rewind buttons — tapping one
-			// replays the story up to and including that moment
+			// the timeline dropdown: every moment so far, newest
+			// selected; the rewind button replays up to the pick
 
 			timeline.textContent = '';
 			story.timeline.forEach(function(entry, index) {
-				var item = document.createElement('li');
+				var option = document.createElement('option');
+				var text;
 
 				if (entry.t === 'p' || entry.t === 'd') {
 					var p = story.passage(entry.id);
-					var button = document.createElement('button');
 
-					button.type = 'button';
-					button.textContent =
+					text =
 						(entry.t === 'd' ? '[deliver] ' : '') +
 						(p ? p.name : entry.id);
-					button.addEventListener('click', function() {
-						story.debugRewind(index + 1);
-					});
-					item.appendChild(button);
 				}
 				else if (entry.t === 'u') {
-					item.textContent = 'you: ' + brief(entry.text);
-					item.className = 'debug-you';
+					text = 'you: ' + brief(entry.text);
 				}
 				else {
-					item.textContent = '[' + entry.t + ']';
-					item.className = 'debug-you';
+					text = '[' + entry.t + ']';
 				}
 
-				timeline.appendChild(item);
+				option.value = String(index);
+				option.textContent = (index + 1) + '. ' + text;
+				timeline.appendChild(option);
 			});
-			timeline.scrollTop = timeline.scrollHeight;
+			timeline.selectedIndex = timeline.options.length - 1;
 
 			// cross-playthrough memory
 
@@ -6475,43 +6506,26 @@ Object.assign(Story.prototype, {
 		};
 
 		var buildPassageList = function() {
-			var query = filter.value.trim().toLowerCase();
+			// a dropdown of every passage, alphabetical, current one
+			// selected (type in an open <select> to seek by name)
 
 			passageList.textContent = '';
 			story.passages
-				.filter(function(p) {
-					return (
-						p &&
-						(p.name + ' ' + p.tags.join(' '))
-							.toLowerCase()
-							.indexOf(query) > -1
-					);
-				})
+				.filter(function(p) { return !!p; })
 				.sort(function(a, b) { return a.name.localeCompare(b.name); })
 				.forEach(function(p) {
-					var item = document.createElement('li');
-					var button = document.createElement('button');
+					var option = document.createElement('option');
 
-					button.type = 'button';
-					button.textContent = p.name;
+					option.value = p.name;
+					option.textContent =
+						p.name +
+						(p.tags.length > 0 ? ' — ' + p.tags.join(' ') : '');
 
 					if (window.passage && window.passage.id === p.id) {
-						button.classList.add('debug-current');
+						option.selected = true;
 					}
 
-					if (p.tags.length > 0) {
-						var tags = document.createElement('span');
-
-						tags.textContent = ' ' + p.tags.join(' ');
-						button.appendChild(tags);
-					}
-
-					button.addEventListener('click', function() {
-						story.debugJump(p.name);
-						buildPassageList();
-					});
-					item.appendChild(button);
-					passageList.appendChild(item);
+					passageList.appendChild(option);
 				});
 		};
 
@@ -6593,7 +6607,20 @@ Object.assign(Story.prototype, {
 
 			refresh();
 		});
-		filter.addEventListener('input', buildPassageList);
+		panel.querySelector('#debug-rewind').addEventListener('click', function() {
+			var index = parseInt(timeline.value, 10);
+
+			if (!isNaN(index)) {
+				story.debugRewind(index + 1);
+				refresh();
+			}
+		});
+		panel.querySelector('#debug-jump').addEventListener('click', function() {
+			if (passageList.value) {
+				story.debugJump(passageList.value);
+				buildPassageList();
+			}
+		});
 
 		window.addEventListener('showpassage:after', refresh);
 		window.addEventListener('restore:after', refresh);
