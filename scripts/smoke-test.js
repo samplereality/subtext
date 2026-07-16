@@ -2179,6 +2179,35 @@ async function run() {
 		})
 	);
 
+	// deliver() shares showDelayed's pacing rules: an instant-tagged
+	// target lands at once, with no "typing…" state in the inbox
+	const instantDelivery = await inboxPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				window.story.openThread('sam');
+
+				const log = document.querySelector(
+					'.thread-log[data-thread="mom"]'
+				);
+				const before = log.querySelectorAll('.chat-passage').length;
+
+				window.story.deliver('mom-ps');
+				setTimeout(() => {
+					resolve({
+						arrived:
+							log.querySelectorAll('.chat-passage').length >
+							before,
+						typingThread: window.story._typingThread
+					});
+				}, 50);
+			})
+	);
+
+	check(
+		'deliver honors the instant tag on its target',
+		instantDelivery.arrived && instantDelivery.typingThread === null
+	);
+
 	check(
 		'a seeded [tombstone] renders as a deleted message',
 		await inboxPage.evaluate(() => {

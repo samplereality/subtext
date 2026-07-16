@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.7.0"
+  "format-version": "2.7.1"
 }
 ```
 
@@ -413,7 +413,7 @@ update: the ukulele is now decorative
 [[and then?(send:)->Hobby 3]]
 ```
 
-The `instant` tag means "this message never shows typing dots," however the passage is reached — a pill, a chain, a `story.show()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. So `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — ten quiet seconds, no typing indicator, then the message just lands. Without the tag, the same call shows the speaker typing for the whole delay.
+The `instant` tag means "this message never shows typing dots," however the passage is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. So `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — ten quiet seconds, no typing indicator, then the message just lands. Without the tag, the same call shows the speaker typing for the whole delay. `story.deliver()` follows the same grammar: it paces by message length (with a "typing…" state in the inbox), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('jan6 2', 2000)` — sets the pace yourself.
 
 ## Narration
 
@@ -647,6 +647,8 @@ Three things move the story between threads:
   ```
 
   If the delivered passage offers reply pills of its own, the story's pending choices travel with it: they appear when the player opens that thread, and the reply lands there. That makes `[deliver]` a way to *hand the story off* to another conversation — end a beat with no pills, deliver a message that has them, and the player follows the notification to answer it. (If several pending passages offer pills, the last to arrive wins.)
+
+  Deliveries pace themselves by message length, with a "typing…" state on the thread's inbox row. The target's `instant` tag skips both, and `story.deliver('name', 2000)` sets an explicit delay — the same [pacing grammar](#message-chains-and-montages) as `showDelayed()`.
 
   A delivered message keeps its own sender. Any speaker can text into any thread, so group chats work: in a `thread-family` conversation, a passage tagged `speaker-matt` shows Matt's name and color on the bubble, and the notification banner and inbox preview read "Matt: …" under the thread's name — the way a real phone attributes group messages.
 
@@ -1145,6 +1147,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.7.1
+
+- **Fixed: `story.deliver()` ignored the target's `instant` tag** — a tagged passage still waited out the typing delay. Deliveries now follow the same pacing grammar as `showDelayed()`: pace by message length (with the inbox "typing…" state), land at once when the target is tagged `instant`, or take an explicit delay — `story.deliver('name', 2000)`.
 
 ### Version 2.7
 

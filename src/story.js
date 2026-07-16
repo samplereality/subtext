@@ -5088,6 +5088,10 @@ Object.assign(Story.prototype, {
 	**/
 
 	deliver: function(idOrName, opts) {
+		if (typeof opts === 'number') {
+			opts = { delay: opts };
+		}
+
 		opts = opts || {};
 
 		var story = this;
@@ -5109,15 +5113,25 @@ Object.assign(Story.prototype, {
 
 		if (opts.instant) {
 			run();
+			return;
 		}
-		else {
-			this.timers.push(
-				window.setTimeout(run, this.getPassageDelay(passage.id))
-			);
 
-			if (this.multiThread) {
-				this.setThreadTyping(this.getPassageThread(passage));
-			}
+		// same pacing grammar as showDelayed: an explicit delay says
+		// WHEN it arrives, the target's `instant` tag says HOW (no
+		// typing state); otherwise pace by message length
+
+		var instant = passage.tags.indexOf('instant') > -1;
+		var delay =
+			typeof opts.delay === 'number' && opts.delay >= 0
+				? opts.delay
+				: instant
+					? 0
+					: this.getPassageDelay(passage.id);
+
+		this.timers.push(window.setTimeout(run, delay));
+
+		if (delay > 0 && !instant && this.multiThread) {
+			this.setThreadTyping(this.getPassageThread(passage));
 		}
 	},
 

@@ -2,7 +2,7 @@
 {
   "ifid": "7A2E9C41-5B83-4D26-9F0A-8E1C4B7D3A55",
   "format": "Subtext",
-  "format-version": "2.7.0"
+  "format-version": "2.7.1"
 }
 
 :: StoryTitle
@@ -143,6 +143,9 @@ Meet me where this all started. You know the building.
 THE VAN OUTSIDE — a Subtext inbox demo. Restart to play the other branches.
 
 [[start over?->Start]]
+
+:: mom-ps [thread-mom speaker-mom instant unlinked]
+ps. call your brother
 
 :: mom-crossover [thread-mom speaker-sam unlinked]
 mom's phone died — it's sam. don't tell her about the van, she'll worry
