@@ -1154,6 +1154,30 @@ async function run() {
 		await chainShape()
 	);
 
+	// the montage chains via the [then …] directive — its marker must
+	// never leak into the transcript
+	check(
+		'the [then] marker renders nothing in the transcript',
+		await chainPage.evaluate(
+			() => document.querySelectorAll('.chat-then').length === 0
+		)
+	);
+
+	check(
+		'[then] parses into chain edges, with or without an in-clause',
+		await chainPage.evaluate(() => {
+			const edges = window.story.passageEdges(
+				'hello\n\n[then next stop]\n\n[then later in 2.5s]'
+			);
+			return (
+				edges.length === 2 &&
+				edges[0].target === 'next stop' &&
+				edges[1].target === 'later' &&
+				edges.every((e) => e.kind === 'chain')
+			);
+		})
+	);
+
 	// a completed chain restored from a save must not re-run its
 	// showDelayed echoes on top of the replayed messages
 	await chainPage.evaluate(() =>
@@ -2050,19 +2074,22 @@ async function run() {
 		})
 	);
 
+	await inboxPage.evaluate(() => window.story.clearBanners());
 	await inboxPage.click('.user-response:has-text("what happened")');
-	await inboxPage.waitForSelector('#meta-notification:not([hidden])', {
+	await inboxPage.waitForSelector('#banner-stack .meta-notification-card', {
 		timeout: 25000
 	});
 	check(
 		'a delivery to another thread raises a banner',
-		(await inboxPage.textContent('#meta-notification-label')) === 'Mom'
+		(await inboxPage.textContent(
+			'#banner-stack .meta-notification-label'
+		)) === 'Mom'
 	);
 	check(
 		'banner shows the message body, not its [timestamp] chip',
 		await inboxPage.evaluate(() => {
-			const body = document.getElementById(
-				'meta-notification-body'
+			const body = document.querySelector(
+				'#banner-stack .meta-notification-body'
 			).textContent;
 			return body.indexOf('Honey') === 0 && body.indexOf('2:03') === -1;
 		})
@@ -2070,13 +2097,13 @@ async function run() {
 	check(
 		'long deliveries are cut off like real notifications',
 		await inboxPage.evaluate(() => {
-			const body = document.getElementById('meta-notification-body');
+			const body = document.querySelector(
+				'#banner-stack .meta-notification-body'
+			);
 			return (
 				body.textContent.length <= 92 &&
 				body.textContent.slice(-1) === '…' &&
-				document
-					.getElementById('meta-notification')
-					.classList.contains('meta-notification--thread')
+				body.closest('.meta-notification--thread') !== null
 			);
 		})
 	);
@@ -2225,16 +2252,13 @@ async function run() {
 	check('returning to the live thread re-offers its choices', true);
 
 	await inboxPage.click('.user-response:has-text("be careful")');
-	await inboxPage.waitForFunction(
-		() =>
-			!document.getElementById('meta-notification').hidden &&
-			document
-				.getElementById('meta-notification-label')
-				.textContent.indexOf('Unknown') === 0,
-		null,
+	await inboxPage.waitForSelector(
+		'#banner-stack .meta-notification-card:has-text("Unknown")',
 		{ timeout: 30000 }
 	);
-	await inboxPage.click('.meta-notification-card');
+	await inboxPage.click(
+		'#banner-stack .meta-notification-card:has-text("Unknown")'
+	);
 	await inboxPage.waitForSelector(
 		'.thread-log[data-thread="unknown"]:not([hidden])'
 	);
@@ -2260,14 +2284,13 @@ async function run() {
 			.locator('.thread-log[data-thread="sam"] .chat-passage[data-speaker="you"]:has-text("texting me")')
 			.count()) === 1
 	);
-	await inboxPage.waitForFunction(
-		() =>
-			!document.getElementById('meta-notification').hidden &&
-			document.getElementById('meta-notification-label').textContent === 'Mom',
-		null,
+	await inboxPage.waitForSelector(
+		'#banner-stack .meta-notification-card:has-text("Mom")',
 		{ timeout: 30000 }
 	);
-	await inboxPage.click('.meta-notification-card');
+	await inboxPage.click(
+		'#banner-stack .meta-notification-card:has-text("Mom")'
+	);
 	await inboxPage.waitForSelector('.user-response:has-text("stay inside")', {
 		timeout: 25000
 	});
@@ -2356,20 +2379,22 @@ async function run() {
 	// name the actual sender, and reply pills travel with the message
 	await inboxPage.evaluate(() => {
 		// clear any banner left over from the previous checks
-		document.getElementById('meta-notification').hidden = true;
+		window.story.clearBanners();
 
 		window.story.config.minTypingDelay = 50;
 		window.story.config.maxTypingDelay = 100;
 		window.story.openThread('sam');
 		window.story.deliver('mom-crossover');
 	});
-	await inboxPage.waitForSelector('#meta-notification:not([hidden])');
+	await inboxPage.waitForSelector('#banner-stack .meta-notification-card');
 	check(
 		'a cross-speaker delivery names its sender in the banner',
-		(await inboxPage.textContent('#meta-notification-label')) === 'Mom' &&
-			(await inboxPage.textContent('#meta-notification-body')).indexOf(
-				'Sam: '
-			) === 0
+		(await inboxPage.textContent(
+			'#banner-stack .meta-notification-label'
+		)) === 'Mom' &&
+			(await inboxPage.textContent(
+				'#banner-stack .meta-notification-body'
+			)).indexOf('Sam: ') === 0
 	);
 
 	await inboxPage.evaluate(() => window.story.openThread('mom'));
@@ -2431,49 +2456,59 @@ async function run() {
 		)
 	);
 
-	// banners queue: same-thread updates collapse, other threads wait
-	const bannerQueue = await inboxPage.evaluate(
+	// banners stack: each message gets its own card, oldest on top;
+	// past the stack limit they wait for a free slot
+	const bannerStackState = await inboxPage.evaluate(
 		() =>
 			new Promise((resolve) => {
-				document.getElementById('meta-notification').hidden = true;
-				window.story._bannerThread = null;
-				window.story._bannerQueue = [];
+				window.story.clearBanners();
 				window.story.config.bannerSeconds = 0.5;
 
 				window.story.showThreadBanner('mom', 'first message');
-				window.story.showThreadBanner('mom', 'first, updated');
-				window.story.showThreadBanner('pizza', 'second message');
+				window.story.showThreadBanner('mom', 'second message');
+				window.story.showThreadBanner('pizza', 'third message');
+				window.story.showThreadBanner('sam', 'fourth message');
 
-				const first = {
-					label: document.getElementById('meta-notification-label')
-						.textContent,
-					body: document.getElementById('meta-notification-body')
-						.textContent,
-					queued: window.story._bannerQueue.length
-				};
+				const read = () =>
+					Array.from(
+						document.querySelectorAll(
+							'#banner-stack .meta-notification-card:not(.banner-out)'
+						)
+					).map((card) => ({
+						label: card.querySelector('.meta-notification-label')
+							.textContent,
+						body: card.querySelector('.meta-notification-body')
+							.textContent
+					}));
 
+				const atOnce = { cards: read(), queued: window.story._bannerQueue.length };
+
+				// the stack expires; the queued banner takes a freed slot
 				setTimeout(() => {
-					resolve({
-						first,
-						secondLabel: document.getElementById(
-							'meta-notification-label'
-						).textContent,
-						secondBody: document.getElementById(
-							'meta-notification-body'
-						).textContent
-					});
-				}, 800);
+					resolve({ atOnce, later: read() });
+				}, 1100);
 			})
 	);
 
 	check(
-		'banners queue instead of overwriting (same thread collapses)',
-		bannerQueue.first.label === 'Mom' &&
-			bannerQueue.first.body === 'first, updated' &&
-			bannerQueue.first.queued === 1 &&
-			bannerQueue.secondLabel === 'Pizza Palace' &&
-			bannerQueue.secondBody === 'second message'
+		'each notification is its own banner, stacked in arrival order',
+		bannerStackState.atOnce.cards.length === 3 &&
+			bannerStackState.atOnce.cards[0].label === 'Mom' &&
+			bannerStackState.atOnce.cards[0].body === 'first message' &&
+			bannerStackState.atOnce.cards[1].body === 'second message' &&
+			bannerStackState.atOnce.cards[2].label === 'Pizza Palace' &&
+			bannerStackState.atOnce.queued === 1
 	);
+	check(
+		'an overflow banner waits for a free slot, then shows',
+		bannerStackState.later.length === 1 &&
+			bannerStackState.later[0].label === 'Sam' &&
+			bannerStackState.later[0].body === 'fourth message'
+	);
+	await inboxPage.evaluate(() => {
+		window.story.clearBanners();
+		window.story.config.bannerSeconds = 5;
+	});
 
 	// group chats: member subtitle, cluster avatar, sender previews
 	await inboxPage.evaluate(() => window.story.openThread('family'));
@@ -2541,9 +2576,7 @@ async function run() {
 	const quietDelivery = await inboxPage.evaluate(
 		() =>
 			new Promise((resolve) => {
-				document.getElementById('meta-notification').hidden = true;
-				window.story._bannerThread = null;
-				window.story._bannerQueue = [];
+				window.story.clearBanners();
 
 				const before = window.story.unread.mom || 0;
 
@@ -2560,9 +2593,10 @@ async function run() {
 							) > -1,
 						unread:
 							(window.story.unread.mom || 0) === before + 1,
-						banner: !document.getElementById(
-							'meta-notification'
-						).hidden,
+						banner:
+							document.querySelectorAll(
+								'#banner-stack .meta-notification-card'
+							).length > 0,
 						typing: window.story._typingThread
 					});
 				}, 60);
@@ -2594,9 +2628,10 @@ async function run() {
 							log.textContent.indexOf('hope you') > -1,
 						unreadUnchanged:
 							(window.story.unread.mom || 0) === before,
-						banner: !document.getElementById(
-							'meta-notification'
-						).hidden
+						banner:
+							document.querySelectorAll(
+								'#banner-stack .meta-notification-card'
+							).length > 0
 					});
 				}, 60);
 			})

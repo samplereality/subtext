@@ -275,6 +275,9 @@ var Story = function() {
 		threadNotifications: true,
 		/* how long each notification banner stays up, in seconds */
 		bannerSeconds: 5,
+		/* how many banners can be on screen at once; further ones
+		   wait for a free slot */
+		bannerStack: 3,
 		/* what banners and inbox previews say for media-only messages
 		   (localize or restyle here) */
 		previewLabels: {
@@ -405,7 +408,10 @@ var Story = function() {
 	/** Timestamp chips shown early, counted per passage id. **/
 	this._preShownStamps = null;
 
-	/** Thread banners waiting their turn; one shows at a time. **/
+	/** Live banner cards, oldest first. **/
+	this._banners = [];
+
+	/** Thread banners waiting for a free slot in the stack. **/
 	this._bannerQueue = [];
 
 	/** Redacted messages, so undo can restore their content. **/
@@ -510,46 +516,24 @@ Object.assign(Story.prototype, {
 			inboxButton: byId('nav-link-inbox'),
 			timerText: byId('timer-announcement'),
 			asideLayer: byId('aside-layer'),
+			bannerStack: byId('banner-stack'),
 			lightbox: byId('photo-lightbox'),
 			lightboxImg: byId('photo-lightbox-img')
 		};
 
 		this._responseTimer = null;
 
-		// tapping a notification banner dismisses it (but interactive
+		// tapping notification narration dismisses it (but interactive
 		// content inside it, like a voice memo, stays usable); the ×
-		// button does the same for keyboard and screen-reader users
+		// button does the same for keyboard and screen-reader users.
+		// Thread banners live in their own stack and wire their own
+		// taps when they're built.
 
 		this.dom.metaNotification.addEventListener('click', function(event) {
-			// after a dismissal, any queued banner takes the stage a
-			// beat later
-			var pumpSoon = function() {
-				window.setTimeout(function() {
-					story.pumpBanners();
-				}, 400);
-			};
-
-			if (event.target.closest('[data-notification-close]')) {
-				story.dom.metaNotification.hidden = true;
-				story._bannerThread = null;
-				pumpSoon();
-				return;
-			}
-
-			if (!event.target.closest('button, a')) {
-				// a thread banner is an invitation: tapping it jumps to
-				// that conversation
-
-				if (story._bannerThread) {
-					var target = story._bannerThread;
-
-					story._bannerThread = null;
-					story.dom.metaNotification.hidden = true;
-					story.openThread(target);
-					pumpSoon();
-					return;
-				}
-
+			if (
+				event.target.closest('[data-notification-close]') ||
+				!event.target.closest('button, a')
+			) {
 				story.dom.metaNotification.hidden = true;
 			}
 		});
@@ -1117,6 +1101,25 @@ Object.assign(Story.prototype, {
 			}
 		);
 
+		// [then …] chains to the next passage — the directive form of
+		// showDelayed(), so replays treat it exactly like the call
+
+		html = html.replace(
+			/<div class="chat-then" data-passage="([^"]*)" data-delay="([^"]*)"><\/div>/g,
+			function(match, name, delay) {
+				var target = template.unescapeHtml(name);
+
+				if (delay === '') {
+					story.showDelayed(target);
+				}
+				else {
+					story.showDelayed(target, parseInt(delay, 10));
+				}
+
+				return '';
+			}
+		);
+
 		if (metaMode === 'aside') {
 			// asides are ephemeral: never rebuilt from a save replay
 
@@ -1284,12 +1287,14 @@ Object.assign(Story.prototype, {
 		var seenContent = false;
 
 		blocks = blocks.filter(function(block) {
-			// sound cues render nothing; any not consumed by a show
-			// path (seeds, for instance) are dropped silently
+			// sound cues and [then …] chains render nothing; any not
+			// consumed by a show path (seeds, for instance) are dropped
+			// silently — seeded history never fires a chain
 
 			if (
 				block.nodeType === Node.ELEMENT_NODE &&
-				block.classList.contains('chat-sound')
+				(block.classList.contains('chat-sound') ||
+					block.classList.contains('chat-then'))
 			) {
 				return false;
 			}
@@ -3504,10 +3509,6 @@ Object.assign(Story.prototype, {
 				this.config.metaNotificationLabel || this.name;
 			this.dom.metaNotificationBody.innerHTML = html;
 			this.buildRichContent(this.dom.metaNotificationBody);
-			// authored narration is never clamped like a thread banner
-			this.dom.metaNotification.classList.remove(
-				'meta-notification--thread'
-			);
 			this.dom.metaNotification.hidden = false;
 		}
 		else {
@@ -3529,19 +3530,7 @@ Object.assign(Story.prototype, {
 	hideMeta: function() {
 		this.dom.metaOverlay.hidden = true;
 		this.dom.metaNotification.hidden = true;
-		this._bannerThread = null;
 		this.updateInboxButton();
-
-		// banners still waiting in the queue return once the new
-		// content has settled
-
-		if (this._bannerQueue.length) {
-			var story = this;
-
-			window.setTimeout(function() {
-				story.pumpBanners();
-			}, 600);
-		}
 	},
 
 	/**
@@ -3923,7 +3912,7 @@ Object.assign(Story.prototype, {
 		this.clearAsides();
 		this.clearUserResponses();
 		this._preShownStamps = null;
-		this._bannerQueue = [];
+		this.clearBanners();
 
 		// everything since the checkpoint is discarded
 
@@ -5083,7 +5072,7 @@ Object.assign(Story.prototype, {
 		probe
 			.querySelectorAll(
 				'.chat-timestamp, .chat-system, .chat-react, ' +
-					'.chat-deliver, .chat-sound'
+					'.chat-deliver, .chat-sound, .chat-then'
 			)
 			.forEach(function(el) {
 				el.remove();
@@ -5203,31 +5192,12 @@ Object.assign(Story.prototype, {
 			preview = preview.slice(0, 89).replace(/\s+\S*$/, '') + '…';
 		}
 
-		// a newer message from the SAME thread updates the banner (or
-		// its queued entry) in place; banners for other threads wait
-		// their turn instead of overwriting the one on screen
+		// each message gets its own banner; they stack newest-last
+		// like a notification shade, and overflow waits for a free
+		// slot instead of overwriting what's on screen
 
-		if (this._bannerThread === threadId) {
-			this.dom.metaNotificationBody.textContent = preview;
-			this.armBannerTimer(threadId);
-			return;
-		}
-
-		if (!this.dom.metaNotification.hidden) {
-			var queued = this._bannerQueue.filter(function(entry) {
-				return entry.threadId === threadId;
-			})[0];
-
-			if (queued) {
-				queued.preview = preview;
-			}
-			else {
-				this._bannerQueue.push({
-					threadId: threadId,
-					preview: preview
-				});
-			}
-
+		if (this._banners.length >= this.config.bannerStack) {
+			this._bannerQueue.push({ threadId: threadId, preview: preview });
 			return;
 		}
 
@@ -5235,42 +5205,96 @@ Object.assign(Story.prototype, {
 	},
 
 	displayThreadBanner: function(threadId, preview) {
-		this.dom.metaNotificationLabel.textContent =
-			this.getThreadDisplayName(threadId);
-		this.dom.metaNotificationBody.textContent = preview;
-		this.dom.metaNotification.classList.add('meta-notification--thread');
-		this.dom.metaNotification.hidden = false;
-		this._bannerThread = threadId;
-		this.armBannerTimer(threadId);
-	},
-
-	armBannerTimer: function(threadId) {
 		var story = this;
+		var card = document.createElement('div');
 
-		window.clearTimeout(this._bannerTimer);
-		this._bannerTimer = window.setTimeout(function() {
-			if (story._bannerThread === threadId) {
-				story.dom.metaNotification.hidden = true;
-				story._bannerThread = null;
-				story.pumpBanners();
+		card.className = 'meta-notification-card meta-notification--thread';
+		card.innerHTML =
+			'<div class="meta-notification-header">' +
+			'<span class="meta-notification-label"></span>' +
+			'<span class="meta-notification-time">now</span>' +
+			'<button type="button" class="meta-notification-close" ' +
+			'aria-label="Dismiss notification">&times;</button>' +
+			'</div>' +
+			'<div class="meta-notification-body"></div>';
+		card.querySelector('.meta-notification-label').textContent =
+			this.getThreadDisplayName(threadId);
+		card.querySelector('.meta-notification-body').textContent = preview;
+
+		var entry = { threadId: threadId, el: card, timer: null };
+
+		// tapping a banner is an invitation: it jumps to that
+		// conversation; the × just dismisses, for keyboard and
+		// screen-reader users
+
+		card.addEventListener('click', function(event) {
+			if (event.target.closest('.meta-notification-close')) {
+				story.dismissBanner(entry);
+				return;
 			}
+
+			if (!event.target.closest('button, a')) {
+				story.dismissBanner(entry);
+				story.openThread(entry.threadId);
+			}
+		});
+
+		this.dom.bannerStack.appendChild(card);
+		this._banners.push(entry);
+
+		entry.timer = window.setTimeout(function() {
+			story.dismissBanner(entry);
 		}, this.config.bannerSeconds * 1000);
 	},
 
 	/**
-	 Shows the next waiting thread banner, if the banner slot is free.
+	 Fades out one banner card; a queued banner takes the freed slot
+	 a beat later.
 	**/
 
-	pumpBanners: function() {
-		if (!this.dom.metaNotification.hidden) {
+	dismissBanner: function(entry) {
+		var story = this;
+		var index = this._banners.indexOf(entry);
+
+		if (index === -1) {
 			return;
 		}
 
-		var next = this._bannerQueue.shift();
+		this._banners.splice(index, 1);
+		window.clearTimeout(entry.timer);
+		entry.el.classList.add('banner-out');
+		window.setTimeout(function() {
+			entry.el.remove();
+			story.pumpBanners();
+		}, 350);
+	},
 
-		if (next) {
+	/**
+	 Shows waiting banners while the stack has free slots.
+	**/
+
+	pumpBanners: function() {
+		while (
+			this._banners.length < this.config.bannerStack &&
+			this._bannerQueue.length
+		) {
+			var next = this._bannerQueue.shift();
+
 			this.displayThreadBanner(next.threadId, next.preview);
 		}
+	},
+
+	/**
+	 Removes every banner instantly — undo, restore, scene resets.
+	**/
+
+	clearBanners: function() {
+		this._banners.forEach(function(entry) {
+			window.clearTimeout(entry.timer);
+			entry.el.remove();
+		});
+		this._banners = [];
+		this._bannerQueue = [];
 	},
 
 	/**
@@ -5379,6 +5403,25 @@ Object.assign(Story.prototype, {
 			function(match, src) {
 				if (!opts.instant && !quiet) {
 					story.playAudioFile(template.unescapeHtml(src));
+				}
+
+				return '';
+			}
+		);
+
+		// a [then …] chain in a delivered passage fires like a
+		// showDelayed() call in one would
+
+		html = html.replace(
+			/<div class="chat-then" data-passage="([^"]*)" data-delay="([^"]*)"><\/div>/g,
+			function(match, name, delay) {
+				var target = template.unescapeHtml(name);
+
+				if (delay === '') {
+					story.showDelayed(target);
+				}
+				else {
+					story.showDelayed(target, parseInt(delay, 10));
 				}
 
 				return '';
@@ -5937,7 +5980,7 @@ Object.assign(Story.prototype, {
 			this.clearAsides();
 			this.clearUserResponses();
 			this._preShownStamps = null;
-			this._bannerQueue = [];
+			this.clearBanners();
 			this.state = {};
 			this.timeline = [];
 			this.history = [];
@@ -6263,7 +6306,7 @@ Object.assign(Story.prototype, {
 		this.clearAsides();
 		this.clearUserResponses();
 		this._preShownStamps = null;
-		this._bannerQueue = [];
+		this.clearBanners();
 		this._currentNodes = [];
 
 		var story = this;
@@ -6438,6 +6481,13 @@ Object.assign(Story.prototype, {
 
 		while ((match = deliverRe.exec(source))) {
 			edges.push({ target: match[1].trim(), kind: 'deliver' });
+		}
+
+		var thenRe =
+			/^[ \t]*\[then[ \t]+(.+?)(?:[ \t]+in[ \t]+\d+(?:\.\d+)?(?:ms|s))?[ \t]*\][ \t]*$/gim;
+
+		while ((match = thenRe.exec(source))) {
+			edges.push({ target: match[1].trim(), kind: 'chain' });
 		}
 
 		var call = /\b(show|showDelayed|deliver|debugJump)\s*\(\s*(['"])([^'"]+)\2/g;
