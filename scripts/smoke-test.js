@@ -880,6 +880,45 @@ async function run() {
 		(await asidePage.locator('.chat-aside').count()) === 0
 	);
 
+	// asides stack: a held aside survives a newcomer on the same side
+	await asidePage.evaluate(() => {
+		window.story.passages.push(
+			new window.Passage(
+				9985,
+				'held-note',
+				['aside-right', 'aside-hold'],
+				'a note that holds'
+			),
+			new window.Passage(9986, 'later-note', ['aside-right'], 'a second note')
+		);
+		window.story.show('held-note');
+		window.story.showUserBubble('a beat passes');
+		window.story.show('later-note');
+	});
+	await asidePage.waitForTimeout(600);
+	const stackedAsides = await asidePage.evaluate(() => {
+		const asides = Array.from(
+			document.querySelectorAll('.chat-aside--right:not(.chat-aside--out)')
+		);
+		const rects = asides.map((el) => el.getBoundingClientRect());
+		return {
+			count: asides.length,
+			apart:
+				rects.length === 2 &&
+				(rects[0].bottom <= rects[1].top + 1 ||
+					rects[1].bottom <= rects[0].top + 1)
+		};
+	});
+	check(
+		'a held aside survives a same-side newcomer, stacked apart',
+		stackedAsides.count === 2 && stackedAsides.apart
+	);
+	await asidePage.evaluate(() => {
+		window.story.clearAsides();
+		window.story.passages.length -= 2;
+	});
+	await asidePage.waitForTimeout(600);
+
 	// the left margin, via tag
 	await asidePage.evaluate(() => window.story.show('aside-demo-left'));
 	await asidePage.waitForSelector('#aside-layer .chat-aside--left', {

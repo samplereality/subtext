@@ -471,10 +471,10 @@ The note appears level with the most recent message, tracks it as new messages p
 | --- | --- |
 | `aside-left` / `aside-right` | which margin the note appears in |
 | `aside-beats-5` | how many messages it survives (default `3`, or `story.config.asideBeats`) |
-| `aside-hold` | never expires on its own — stays until it scrolls off, is replaced, or the thread is cleared |
+| `aside-hold` | never expires on its own — stays until it scrolls off or the thread is cleared |
 | `aside-up-2` / `aside-down-2` | nudge the note up or down by N rem for fine placement |
 
-One aside per side can be live at a time; a new one replaces the old. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so `hasVisited()` works).
+Asides on the same side stack: a newcomer sits below any note still on screen rather than replacing it, and each fades on its own clock. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so `hasVisited()` works).
 
 **On phones there is no margin**, so the note floats over the chat's edge instead — translucent and slightly tilted. To have it degrade to a centered in-chat chip on small screens instead, set `story.config.asideMobile = 'chip'`.
 
@@ -1214,6 +1214,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 ### Version 2.8
 
 - **The `[sound …]` directive.** An audio cue that plays when its passage shows, rendering nothing — a phone buzzing, a chime from another room. Skipped on save replays, seeds, and quiet deliveries; also `story.playAudioFile(src)`. See [Sound cues](#sound-cues).
+- **Fixed: a new aside evicted a held one.** Only one aside per side could be live, so a newcomer replaced the previous note even when it was tagged `aside-hold`. Asides on the same side now stack — the newcomer sits below any note still on screen, and each fades on its own clock. See [Asides](#asides).
 - **Threads always open at the newest messages.** Reopening a conversation previously restored the player's last scroll position, which could hide messages (quiet deliveries especially) that arrived below it.
 - **Fixed: debug time travel ignored threads.** Rewinding or restoring replayed the conversation into whatever thread was on screen (the replay inherited the current hot thread instead of re-deriving it from the start passage), and a debug jump rendered an untagged passage into the current thread. Restores now rebuild thread context from the top; jump and play-to land the passage in its own conversation — tagged directly or inferred from the graph — and move the view there.
 - **The `quiet` and `quiet-read` passage tags.** A `[deliver]`ed passage tagged `quiet` lands with no banner, sound, typing state, or arrival animation — just an unread badge; `quiet-read` drops the badge too, delivering already-read history. The mid-story counterpart of `seed`, for messages (or thread renames) that happened off-screen during a time skip.

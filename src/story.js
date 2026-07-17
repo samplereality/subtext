@@ -398,8 +398,8 @@ var Story = function() {
 	/** Which screen a viewed thread was opened from: inbox or trash. **/
 	this._threadOrigin = 'inbox';
 
-	/** Live margin asides, one per side. **/
-	this._asides = { left: null, right: null };
+	/** Live margin asides, oldest first, per side. **/
+	this._asides = { left: [], right: [] };
 	this._asideRaf = null;
 
 	/** Timestamp chips shown early, counted per passage id. **/
@@ -3060,11 +3060,11 @@ Object.assign(Story.prototype, {
 		var cleared = threadId || this._hotThread;
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
-
-			if (aside && aside.thread === cleared) {
-				story.removeAside(side);
-			}
+			story._asides[side].slice().forEach(function(aside) {
+				if (aside.thread === cleared) {
+					story.removeAsideEntry(side, aside);
+				}
+			});
 		});
 
 		this.logFor(cleared).textContent = '';
@@ -3602,9 +3602,8 @@ Object.assign(Story.prototype, {
 			}
 		});
 
-		// one live aside per side; a newcomer replaces the old one
-
-		this.removeAside(side);
+		// asides stack per side — a newcomer joins below any still live,
+		// and each fades on its own clock (beats, holds, scrolling away)
 
 		var el = document.createElement('div');
 
@@ -3619,39 +3618,45 @@ Object.assign(Story.prototype, {
 		var anchor = this.logFor(threadId).lastElementChild || null;
 
 		this.dom.asideLayer.appendChild(el);
-		this._asides[side] = {
+		this._asides[side].push({
 			el: el,
 			anchor: anchor,
 			thread: threadId,
 			beats: hold ? Infinity : Math.max(1, beats),
 			nudge: nudge
-		};
+		});
 
 		this.syncAsides();
 		this.startAsideLoop();
 	},
 
 	/**
-	 Fades out and removes the aside on one side, if any.
+	 Fades out and removes one live aside.
 	**/
 
-	removeAside: function(side) {
-		var aside = this._asides[side];
+	removeAsideEntry: function(side, entry) {
+		var list = this._asides[side];
+		var index = list.indexOf(entry);
 
-		if (!aside) {
+		if (index === -1) {
 			return;
 		}
 
-		this._asides[side] = null;
-		aside.el.classList.add('chat-aside--out');
+		list.splice(index, 1);
+		entry.el.classList.add('chat-aside--out');
 		window.setTimeout(function() {
-			aside.el.remove();
+			entry.el.remove();
 		}, 450);
 	},
 
 	clearAsides: function() {
-		this.removeAside('left');
-		this.removeAside('right');
+		var story = this;
+
+		['left', 'right'].forEach(function(side) {
+			story._asides[side].slice().forEach(function(aside) {
+				story.removeAsideEntry(side, aside);
+			});
+		});
 	},
 
 	/**
@@ -3663,15 +3668,15 @@ Object.assign(Story.prototype, {
 		var story = this;
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
+			story._asides[side].slice().forEach(function(aside) {
+				if (aside.thread === threadId) {
+					aside.beats -= 1;
 
-			if (aside && aside.thread === threadId) {
-				aside.beats -= 1;
-
-				if (aside.beats <= 0) {
-					story.removeAside(side);
+					if (aside.beats <= 0) {
+						story.removeAsideEntry(side, aside);
+					}
 				}
-			}
+			});
 		});
 	},
 
@@ -3699,83 +3704,90 @@ Object.assign(Story.prototype, {
 		var panelRect = this.dom.panel.getBoundingClientRect();
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
+			var prevBottom = null;
 
-			if (!aside) {
-				return;
-			}
+			story._asides[side].slice().forEach(function(aside) {
+				// the message it commented on is gone (undo, clear-thread)
 
-			// the message it commented on is gone (undo, clear-thread)
+				if (aside.anchor && !aside.anchor.isConnected) {
+					story.removeAsideEntry(side, aside);
+					return;
+				}
 
-			if (aside.anchor && !aside.anchor.isConnected) {
-				story.removeAside(side);
-				return;
-			}
+				var el = aside.el;
 
-			var el = aside.el;
+				// hidden while another conversation or the inbox is on screen
 
-			// hidden while another conversation or the inbox is on screen
+				var visible = !story.multiThread ||
+					(story._screen === 'thread' &&
+						story._viewedThread === aside.thread);
 
-			var visible = !story.multiThread ||
-				(story._screen === 'thread' &&
-					story._viewedThread === aside.thread);
+				el.classList.toggle('chat-aside--hidden', !visible);
 
-			el.classList.toggle('chat-aside--hidden', !visible);
+				if (!visible) {
+					return;
+				}
 
-			if (!visible) {
-				return;
-			}
+				el.classList.toggle('chat-aside--over', over);
 
-			el.classList.toggle('chat-aside--over', over);
+				var top = aside.anchor
+					? aside.anchor.getBoundingClientRect().top
+					: panelRect.top + 12;
 
-			var top = aside.anchor
-				? aside.anchor.getBoundingClientRect().top
-				: panelRect.top + 12;
+				top += aside.nudge * 16;
 
-			top += aside.nudge * 16;
+				// it followed its message off the top of the screen: done
 
-			// it followed its message off the top of the screen: done
+				if (top + el.offsetHeight < panelRect.top + 4) {
+					story.removeAsideEntry(side, aside);
+					return;
+				}
 
-			if (top + el.offsetHeight < panelRect.top + 4) {
-				story.removeAside(side);
-				return;
-			}
+				top = Math.min(top, panelRect.bottom - el.offsetHeight - 8);
 
-			el.style.top =
-				Math.min(top, panelRect.bottom - el.offsetHeight - 8) + 'px';
+				// stack below any earlier aside on this side rather
+				// than overlapping it
 
-			if (over) {
-				// no margin: hug the phone's inner edge, over the chat
+				if (prevBottom !== null && top < prevBottom + 8) {
+					top = prevBottom + 8;
+				}
 
-				el.style.maxWidth =
-					Math.min(appRect.width * 0.64, 250) + 'px';
+				el.style.top = top + 'px';
+				prevBottom = top + el.offsetHeight;
 
-				if (side === 'left') {
-					el.style.left = (appRect.left + 10) + 'px';
-					el.style.right = 'auto';
+				if (over) {
+					// no margin: hug the phone's inner edge, over the chat
+
+					el.style.maxWidth =
+						Math.min(appRect.width * 0.64, 250) + 'px';
+
+					if (side === 'left') {
+						el.style.left = (appRect.left + 10) + 'px';
+						el.style.right = 'auto';
+					}
+					else {
+						el.style.right =
+							(window.innerWidth - appRect.right + 10) + 'px';
+						el.style.left = 'auto';
+					}
 				}
 				else {
-					el.style.right =
-						(window.innerWidth - appRect.right + 10) + 'px';
-					el.style.left = 'auto';
-				}
-			}
-			else {
-				var gap = 14;
+					var gap = 14;
 
-				el.style.maxWidth =
-					Math.min(margin - gap * 2, 270) + 'px';
+					el.style.maxWidth =
+						Math.min(margin - gap * 2, 270) + 'px';
 
-				if (side === 'left') {
-					el.style.right =
-						(window.innerWidth - appRect.left + gap) + 'px';
-					el.style.left = 'auto';
+					if (side === 'left') {
+						el.style.right =
+							(window.innerWidth - appRect.left + gap) + 'px';
+						el.style.left = 'auto';
+					}
+					else {
+						el.style.left = (appRect.right + gap) + 'px';
+						el.style.right = 'auto';
+					}
 				}
-				else {
-					el.style.left = (appRect.right + gap) + 'px';
-					el.style.right = 'auto';
-				}
-			}
+			});
 		});
 	},
 
@@ -3786,7 +3798,7 @@ Object.assign(Story.prototype, {
 
 		var story = this;
 		var tick = function() {
-			if (!story._asides.left && !story._asides.right) {
+			if (!story._asides.left.length && !story._asides.right.length) {
 				story._asideRaf = null;
 				return;
 			}
