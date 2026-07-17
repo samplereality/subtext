@@ -32,6 +32,11 @@ if (introAt !== -1) {
 	readme = readme.slice(introAt);
 }
 
+// the site has a persistent sidebar TOC, so the README's inline
+// "Table of contents" section (which GitHub still needs) is dropped
+
+readme = readme.replace(/^## Table of contents[\s\S]*?(?=^## )/m, '');
+
 let docsHtml = marked.parse(readme);
 
 // marked no longer emits heading ids, so in-page anchors like
@@ -54,6 +59,56 @@ docsHtml = docsHtml.replace(
 	(match, level, inner) =>
 		`<h${level} id="${slugify(inner)}">${inner}</h${level}>`
 );
+
+// sidebar TOC from the h2/h3 outline. Changelog versions and other
+// h3s under the Changelog stay out — the sidebar is a map, not a
+// release history.
+
+const tocItems = [];
+const headingRe = /<h([23]) id="([^"]+)">([\s\S]*?)<\/h\1>/g;
+let inChangelog = false;
+let heading;
+
+while ((heading = headingRe.exec(docsHtml))) {
+	const level = Number(heading[1]);
+	const text = heading[3].replace(/<[^>]+>/g, '');
+
+	if (level === 2) {
+		inChangelog = heading[2] === 'changelog';
+		tocItems.push({ level, id: heading[2], text });
+	}
+	else if (!inChangelog) {
+		tocItems.push({ level, id: heading[2], text });
+	}
+}
+
+let tocHtml = '<nav class="toc" aria-label="Contents"><ol>';
+
+tocItems.forEach((item, i) => {
+	if (item.level === 2) {
+		if (i > 0 && tocItems[i - 1].level === 3) {
+			tocHtml += '</ol></li>';
+		}
+		else if (i > 0) {
+			tocHtml += '</li>';
+		}
+
+		const nested = tocItems[i + 1] && tocItems[i + 1].level === 3;
+
+		tocHtml += `<li><a href="#${item.id}">${item.text}</a>`;
+
+		if (nested) {
+			tocHtml += '<ol>';
+		}
+	}
+	else {
+		tocHtml += `<li><a href="#${item.id}">${item.text}</a></li>`;
+	}
+});
+tocHtml +=
+	(tocItems.length && tocItems[tocItems.length - 1].level === 3
+		? '</ol></li>'
+		: '</li>') + '</ol></nav>';
 
 const css = `
 :root {
@@ -95,7 +150,28 @@ a { color: var(--accent); }
 	border-radius: 1.6rem; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25); background: var(--bg);
 }
 .try-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin: 0.75rem 0 0; }
-main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+.docs { display: flex; align-items: flex-start; max-width: 72rem; margin: 0 auto; gap: 1rem; }
+.toc {
+	flex: 0 0 16rem; position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
+	padding: 2rem 0.5rem 2rem 1.25rem; font-size: 0.85rem; line-height: 1.45;
+	scrollbar-width: thin;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc ol ol { padding-left: 0.9rem; margin: 0.15rem 0 0.4rem; border-left: 1px solid var(--border); }
+.toc li { margin: 0.15rem 0; }
+.toc a {
+	display: block; color: var(--muted); text-decoration: none;
+	padding: 0.12rem 0.5rem; border-radius: 0.4rem;
+	white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toc a:hover { color: var(--text); background: var(--code-bg); }
+.toc a.current { color: var(--accent); font-weight: 600; }
+@media (max-width: 63.99rem) {
+	.docs { display: block; }
+	.toc { position: static; max-height: none; columns: 2; padding: 1.5rem 1.25rem 0; }
+	.toc li { break-inside: avoid; }
+}
+main { flex: 1; min-width: 0; max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
 main h1, main h2 { letter-spacing: -0.01em; margin-top: 2.2em; }
 main h1 { font-size: 1.6rem; } main h2 { font-size: 1.35rem; } main h3 { font-size: 1.1rem; margin-top: 1.8em; }
 main pre {
@@ -138,11 +214,43 @@ const page = `<!DOCTYPE html>
 <section class="try">
 	<iframe src="demo.html" title="Playable Subtext demo" loading="lazy"></iframe>
 </section>
-<p class="try-hint">The demo, live. It's a phone — tap the replies.</p>
+<p class="try-hint">The demo, running live — tap a reply to play.</p>
+<div class="docs">
+${tocHtml}
 <main>
 ${docsHtml}
 </main>
+</div>
 <footer>Subtext ${pkg.version} · MIT License</footer>
+<script>
+(function () {
+	var links = document.querySelectorAll('.toc a');
+	var byId = {};
+
+	links.forEach(function (a) {
+		byId[a.getAttribute('href').slice(1)] = a;
+	});
+
+	var current = null;
+	var observer = new IntersectionObserver(function (entries) {
+		entries.forEach(function (entry) {
+			if (!entry.isIntersecting) { return; }
+
+			var link = byId[entry.target.id];
+
+			if (link && link !== current) {
+				if (current) { current.classList.remove('current'); }
+				current = link;
+				link.classList.add('current');
+			}
+		});
+	}, { rootMargin: '0px 0px -70% 0px' });
+
+	document.querySelectorAll('main h2[id], main h3[id]').forEach(function (h) {
+		if (byId[h.id]) { observer.observe(h); }
+	});
+})();
+</script>
 </body>
 </html>
 `;
