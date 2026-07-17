@@ -2503,6 +2503,35 @@ async function run() {
 			!quietReadDelivery.banner
 	);
 
+	// reopening a conversation always shows the newest messages, even
+	// if the player had scrolled up before leaving
+	check(
+		'a thread reopens scrolled to the bottom',
+		await inboxPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					window.story.openThread('mom');
+
+					const panel = document.getElementById('chat-panel');
+
+					panel.scrollTop = 0;
+					window.story.openInbox();
+					window.story.openThread('mom');
+					requestAnimationFrame(() =>
+						requestAnimationFrame(() => {
+							const overflows =
+								panel.scrollHeight > panel.clientHeight;
+							const atBottom =
+								panel.scrollTop + panel.clientHeight >=
+								panel.scrollHeight - 4;
+
+							resolve(overflows && atBottom);
+						})
+					);
+				})
+		)
+	);
+
 	check(
 		'a seeded [tombstone] renders as a deleted message',
 		await inboxPage.evaluate(() => {
@@ -2570,6 +2599,52 @@ async function run() {
 			);
 		})
 	);
+
+	// debug time travel respects threads: a jump lands the passage in
+	// its own conversation (tagged, or inferred from the graph for
+	// untagged passages) and moves the view there. These wipe the
+	// transcript, so they run last.
+	check(
+		'debugJump follows a thread-tagged passage to its thread',
+		await inboxPage.evaluate(() => {
+			window.story.openThread('sam');
+			window.story.debugJump('mom-2');
+
+			const log = document.querySelector(
+				'.thread-log[data-thread="mom"]'
+			);
+
+			return (
+				window.story._hotThread === 'mom' &&
+				window.story._viewedThread === 'mom' &&
+				log.querySelectorAll('.chat-passage').length > 0
+			);
+		})
+	);
+
+	check(
+		'debugJump infers the thread of an untagged passage',
+		await inboxPage.evaluate(() => {
+			// sam-2 has no thread tag; its thread comes from the graph
+			window.story.debugJump('sam-2');
+
+			const samLog = document.querySelector(
+				'.thread-log[data-thread="sam"]'
+			);
+			const momLog = document.querySelector(
+				'.thread-log[data-thread="mom"]'
+			);
+
+			return (
+				window.story._hotThread === 'sam' &&
+				window.story._viewedThread === 'sam' &&
+				samLog.textContent.indexOf('not over text') > -1 &&
+				momLog.textContent.indexOf('not over text') === -1
+			);
+		})
+	);
+
+	await inboxPage.evaluate(() => window.story.openInbox());
 
 	const inboxAxe = await inboxPage.evaluate(async () => {
 		const results = await window.axe.run(document, {

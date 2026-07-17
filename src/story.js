@@ -384,7 +384,6 @@ var Story = function() {
 	this._typingThread = null;
 	this._threadActivity = {};
 	this._activitySeq = 0;
-	this._scrollPositions = {};
 
 	/* threads moved to the Trash (archived, readable, recoverable) */
 	this._threadArchived = {};
@@ -4637,8 +4636,6 @@ Object.assign(Story.prototype, {
 		var log = this.logFor(threadId);
 
 		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
-			this._scrollPositions[this._viewedThread] =
-				this.dom.panel.scrollTop;
 			this._threadLogs[this._viewedThread].hidden = true;
 		}
 
@@ -4684,11 +4681,12 @@ Object.assign(Story.prototype, {
 			this.renderIdleComposer();
 		}
 
+		// a conversation always opens at its newest messages — quiet
+		// deliveries land at the bottom, and a remembered mid-scroll
+		// position would hide them
+
 		window.requestAnimationFrame(function() {
-			story.dom.panel.scrollTop =
-				threadId in story._scrollPositions
-					? story._scrollPositions[threadId]
-					: story.dom.panel.scrollHeight;
+			story.dom.panel.scrollTop = story.dom.panel.scrollHeight;
 		});
 	},
 
@@ -4703,8 +4701,6 @@ Object.assign(Story.prototype, {
 		}
 
 		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
-			this._scrollPositions[this._viewedThread] =
-				this.dom.panel.scrollTop;
 			this._threadLogs[this._viewedThread].hidden = true;
 		}
 
@@ -4732,8 +4728,6 @@ Object.assign(Story.prototype, {
 		}
 
 		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
-			this._scrollPositions[this._viewedThread] =
-				this.dom.panel.scrollTop;
 			this._threadLogs[this._viewedThread].hidden = true;
 		}
 
@@ -5905,6 +5899,18 @@ Object.assign(Story.prototype, {
 				});
 				this.setThreadTyping(null);
 
+				// the replay must inherit threads from the same
+				// starting point as the original playthrough — not
+				// from whatever thread was hot when restore was called
+
+				var restartFrom = this.passage(this.startPassage);
+
+				this._hotThread = null;
+				this._hotThread = restartFrom
+					? this.getPassageThread(restartFrom)
+					: this.threadOrder[0];
+				this._threadOrigin = 'inbox';
+
 				// the wiped logs get their seed history back before
 				// the timeline replays on top of it
 
@@ -6105,9 +6111,85 @@ Object.assign(Story.prototype, {
 	 instead, use the timeline's rewind buttons.
 	**/
 
+	/**
+	 The thread a passage belongs to, inferred statically: its own
+	 thread-* tag, or the tag of the nearest passage that links to it
+	 (breadth-first through the written graph). Debug jumps teleport
+	 without the play history that untagged passages normally inherit
+	 their thread from — this stands in for it.
+	**/
+
+	inferPassageThread: function(passage) {
+		var tagOf = function(p) {
+			var tag = p.tags.find(function(t) {
+				return t.indexOf('thread-') === 0;
+			});
+
+			return tag ? tag.substring(7) : null;
+		};
+
+		var direct = tagOf(passage);
+
+		if (direct) {
+			return direct;
+		}
+
+		var story = this;
+		var inbound = {};
+
+		this.passages.filter(Boolean).forEach(function(p) {
+			story.passageEdges(p.source).forEach(function(edge) {
+				(inbound[edge.target] = inbound[edge.target] || []).push(p);
+			});
+		});
+
+		var seen = {};
+		var frontier = [passage];
+
+		seen[passage.name] = true;
+
+		while (frontier.length) {
+			var next = [];
+
+			for (var i = 0; i < frontier.length; i++) {
+				var sources = inbound[frontier[i].name] || [];
+
+				for (var j = 0; j < sources.length; j++) {
+					var source = sources[j];
+
+					if (seen[source.name]) {
+						continue;
+					}
+
+					var tag = tagOf(source);
+
+					if (tag) {
+						return tag;
+					}
+
+					seen[source.name] = true;
+					next.push(source);
+				}
+			}
+
+			frontier = next;
+		}
+
+		return this._hotThread || this.threadOrder[0] || null;
+	},
+
 	debugJump: function(idOrName) {
 		if (!this.passage(idOrName)) {
 			return;
+		}
+
+		// a teleport has no play history for the target to inherit a
+		// thread from — infer it, and follow with the view
+
+		if (this.multiThread) {
+			this._hotThread = this.inferPassageThread(
+				this.passage(idOrName)
+			);
 		}
 
 		this.cancelTimers();
@@ -6138,6 +6220,10 @@ Object.assign(Story.prototype, {
 		this.dom.undo.hidden = true;
 
 		this.show(idOrName);
+
+		if (this.multiThread) {
+			this.openThread(this._hotThread);
+		}
 	},
 
 	/**
@@ -6396,6 +6482,12 @@ Object.assign(Story.prototype, {
 			story.playEdge(step.edge);
 			story.show(step.edge.target, { instant: true });
 		});
+
+		// land the view where the story landed
+
+		if (this.multiThread) {
+			this.openThread(this._hotThread);
+		}
 
 		this.scrollChatIntoView();
 		this.persist();
