@@ -1672,6 +1672,33 @@ async function run() {
 		) > -1
 	);
 
+	// dead-end detection: a speakered passage with no way forward is
+	// flagged; End tags, chains, deliveries-with-pills, and side
+	// content are not
+	check(
+		'story check flags dead ends but not legitimate endings',
+		await debugPage.evaluate(() => {
+			window.story.passages.push(
+				new window.Passage(9996, 'bait-hub', [], '[[go on->bait-dead]]\n[[or here->bait-finale]]'),
+				new window.Passage(9997, 'bait-dead', ['speaker-2'], 'and then nothing'),
+				new window.Passage(9998, 'bait-finale', ['speaker-2', 'End'], 'the end')
+			);
+
+			const findings = window.story.lint();
+
+			window.story.passages.length -= 3;
+
+			const deadEnds = findings.filter(
+				(f) => f.message.indexOf('dead end') > -1
+			);
+
+			return (
+				deadEnds.length === 1 &&
+				deadEnds[0].passage === 'bait-dead'
+			);
+		})
+	);
+
 	// the transcript export flattens what's on screen to Markdown
 	check(
 		'transcript export flattens the conversation to Markdown',

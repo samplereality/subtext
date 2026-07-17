@@ -153,5 +153,5 @@ mom's phone died — it's sam. don't tell her about the van, she'll worry
 [[too late, she knows->crossover-reply]]
 [[my lips are sealed->crossover-reply]]
 
-:: crossover-reply [thread-mom speaker-sam]
+:: crossover-reply [thread-mom speaker-sam end]
 ok. stay away from that building

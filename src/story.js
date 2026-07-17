@@ -6229,21 +6229,35 @@ Object.assign(Story.prototype, {
 			});
 		}
 
+		// auto-advance edges come in two kinds: 'chain' (the story
+		// cursor moves there itself) and 'deliver' (side content that
+		// only takes the cursor if it carries pills)
+
 		var deliverRe = /\[deliver[ \t]+([^\]]+)\]/g;
 
 		while ((match = deliverRe.exec(source))) {
-			edges.push({ target: match[1].trim(), kind: 'auto' });
+			edges.push({ target: match[1].trim(), kind: 'deliver' });
 		}
 
-		// names passed to the API from templates count as edges too
-
-		var call = /\b(?:show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\1/g;
+		var call = /\b(show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\2/g;
 
 		while ((match = call.exec(source))) {
-			edges.push({ target: match[2], kind: 'auto' });
+			edges.push({
+				target: match[3],
+				kind: match[1] === 'deliver' ? 'deliver' : 'chain'
+			});
 		}
 
 		return edges;
+	},
+
+	/**
+	 Whether an edge is an auto-advance (chain or delivery) rather
+	 than a player choice.
+	**/
+
+	isAutoEdge: function(edge) {
+		return edge.kind === 'chain' || edge.kind === 'deliver';
 	},
 
 	/**
@@ -6344,7 +6358,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	playEdge: function(edge) {
-		if (edge.kind === 'auto') {
+		if (this.isAutoEdge(edge)) {
 			return;
 		}
 
@@ -6576,6 +6590,106 @@ Object.assign(Story.prototype, {
 				findings.push({
 					level: 'note',
 					message: 'nothing links to "' + p.name + '"',
+					passage: p.name
+				});
+			}
+		});
+
+		// dead ends: a passage that takes the story cursor but leaves
+		// the player nothing to do — no pills, and no chain or
+		// delivery that eventually reaches choices. Exempt: End-tagged
+		// finales, seeds (history, not moves), side narration
+		// (speakerless and linkless — it never takes the cursor), and
+		// passages only ever reached by [deliver] (side content).
+
+		var continues = {};
+
+		var canContinue = function(name, trail) {
+			if (continues[name]) {
+				return true;
+			}
+
+			if (trail[name]) {
+				return false; // a cycle with no choices anywhere in it
+			}
+
+			trail[name] = true;
+
+			var p = story.passage(name);
+			var result = false;
+
+			if (p) {
+				var edges = story.passageEdges(p.source);
+
+				result = edges.some(function(edge) {
+					return !story.isAutoEdge(edge);
+				});
+
+				if (!result) {
+					result = edges.some(function(edge) {
+						return (
+							story.passage(edge.target) &&
+							canContinue(edge.target, trail)
+						);
+					});
+				}
+			}
+
+			delete trail[name];
+
+			if (result) {
+				continues[name] = true; // only sure results are cached
+			}
+
+			return result;
+		};
+
+		// which passages ever take the cursor: the start passage, and
+		// anything reached by a pill or a chain (not delivery alone)
+
+		var takesCursor = {};
+
+		if (start) {
+			takesCursor[start.name] = true;
+		}
+
+		content.forEach(function(p) {
+			story.passageEdges(p.source).forEach(function(edge) {
+				if (edge.kind !== 'deliver') {
+					takesCursor[edge.target] = true;
+				}
+			});
+		});
+
+		content.forEach(function(p) {
+			if (
+				p.tags.indexOf('End') > -1 ||
+				p.tags.indexOf('end') > -1 ||
+				p.tags.indexOf('seed') > -1 ||
+				!takesCursor[p.name]
+			) {
+				return;
+			}
+
+			var edges = story.passageEdges(p.source);
+			var hasChoices = edges.some(function(edge) {
+				return !story.isAutoEdge(edge);
+			});
+
+			// speakerless + linkless = side narration; never takes
+			// the cursor even when chained to
+
+			if (!story.getPassageSpeaker(p) && !hasChoices) {
+				return;
+			}
+
+			if (!canContinue(p.name, {})) {
+				findings.push({
+					level: 'warn',
+					message:
+						'dead end — no reply pills, and no chain or ' +
+						'delivery from here leads to choices (tag it ' +
+						'`End` if the story is meant to stop here)',
 					passage: p.name
 				});
 			}
