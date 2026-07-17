@@ -1344,6 +1344,46 @@ async function run() {
 			sideNarration.cursor === 'pill-demo'
 	);
 
+	// [sound] cues play when the passage shows — once, invisibly, and
+	// never during a save replay
+	const soundCue = await page.evaluate(() => {
+		const played = [];
+		const orig = window.story.playAudioFile;
+
+		window.story.playAudioFile = (src) => played.push(src);
+		window.story.show('missed-call');
+
+		const liveCount = played.length;
+
+		window.story.restore(window.story.saveHash());
+		window.story.playAudioFile = orig;
+
+		const wrapper = Array.from(
+			document.querySelectorAll(
+				'.chat-passage-wrapper[data-speaker="2"]'
+			)
+		).find((w) => w.textContent.indexOf('phone buzz') > -1);
+
+		return {
+			liveCount,
+			replayCount: played.length,
+			rendered: !!wrapper,
+			noEmptyBubble: wrapper
+				? Array.from(
+						wrapper.querySelectorAll('.chat-passage')
+					).every((b) => b.textContent.trim() !== '')
+				: false
+		};
+	});
+
+	check(
+		'[sound] plays on show, once, and not on replay',
+		soundCue.liveCount === 1 &&
+			soundCue.replayCount === 1 &&
+			soundCue.rendered &&
+			soundCue.noEmptyBubble
+	);
+
 	console.log('deleted messages');
 
 	// redactMessage tombstones in place — the node is never removed,

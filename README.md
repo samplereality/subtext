@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [API index](#api-index) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Sound cues](#sound-cues) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -166,7 +166,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 
 Everything you write in a passage falls into one of three shapes, each with one job:
 
-1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`, `[tombstone]`. Square brackets, lowercase, one line.
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[sound …]`, `[location …]`, `[react …]`, `[deliver …]`, `[tombstone]`. Square brackets, lowercase, one line.
 2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
 3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
 
@@ -248,6 +248,23 @@ I can explain everything
 ```
 
 Any audio URL works, including data URIs for self-contained stories. Each memo is its own bubble; only one plays at a time. (A raw `<audio>` tag still works too — this just looks like a text exchange instead of a browser control.)
+
+### Sound cues
+
+Where `[voice …]` renders a playable message, `[sound …]` renders nothing — the audio simply plays when the passage shows. For diegetic sound effects: a phone buzzing with a call the player doesn't answer, a notification chime from another room:
+
+```
+:: the-call [speaker-sam]
+[sound audio/buzz.mp3]
+
+don't answer that
+
+[system Missed call from Unknown]
+
+[[who was it?->evasion]]
+```
+
+Cues play once, on live shows and deliveries only — never during a save replay, in seeds, or on `quiet`/`quiet-read` deliveries. Also callable as `story.playAudioFile('buzz.mp3')`. Two caveats: browsers allow sound only after the player's first interaction, so a cue in the very first passage may be silent; and a cue is invisible to players who can't hear it — pair it with something visible, like the `[system …]` chip above.
 
 ### Location sharing
 
@@ -972,6 +989,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `markRead()` / `markUnread()` / `markFailed()` | Set the receipt on the player's last message | [Read receipts](#read-receipts) |
 | `openInbox()` / `openThread(id)` / `openTrash()` | Switch between the inbox, a conversation, and the Trash | [Multiple conversations](#multiple-conversations) |
 | `passage(idOrName)` | Fetch a passage object | [The story and passage globals](#the-story-and-passage-globals) |
+| `playAudioFile(src)` | Play an audio file once (the `[sound …]` engine) | [Sound cues](#sound-cues) |
 | `react(emoji, direction)` | Land a tapback on the last message | [Reactions](#reactions) |
 | `redactMessage(direction, label)` | Delete a message: the bubble stays, a tombstone replaces it | [Deleted messages](#deleted-messages) |
 | `remember(key, value)` / `recall(key, fallback)` / `forget(key)` | Cross-playthrough memory (survives restart) | [Recipes](#remember-across-playthroughs) |
@@ -1195,6 +1213,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.8
 
+- **The `[sound …]` directive.** An audio cue that plays when its passage shows, rendering nothing — a phone buzzing, a chime from another room. Skipped on save replays, seeds, and quiet deliveries; also `story.playAudioFile(src)`. See [Sound cues](#sound-cues).
 - **Threads always open at the newest messages.** Reopening a conversation previously restored the player's last scroll position, which could hide messages (quiet deliveries especially) that arrived below it.
 - **Fixed: debug time travel ignored threads.** Rewinding or restoring replayed the conversation into whatever thread was on screen (the replay inherited the current hot thread instead of re-deriving it from the start passage), and a debug jump rendered an untagged passage into the current thread. Restores now rebuild thread context from the top; jump and play-to land the passage in its own conversation — tagged directly or inferred from the graph — and move the view there.
 - **The `quiet` and `quiet-read` passage tags.** A `[deliver]`ed passage tagged `quiet` lands with no banner, sound, typing state, or arrival animation — just an unread badge; `quiet-read` drops the badge too, delivering already-read history. The mid-story counterpart of `seed`, for messages (or thread renames) that happened off-screen during a time skip.

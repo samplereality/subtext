@@ -224,6 +224,15 @@ ok the flip phone is going back in the drawer
 
 [[start over?->Start]]
 
+:: missed-call [speaker-2 unlinked]
+[sound data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=]
+
+☎️ you hear the phone buzz across the room
+
+[system Missed call]
+
+[[what was that?->Start]]
+
 :: margin-note [aside-right unlinked]
 A note in the margin that asks nothing of you.
 

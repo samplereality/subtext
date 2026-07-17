@@ -1104,6 +1104,19 @@ Object.assign(Story.prototype, {
 			}
 		);
 
+		// play [sound …] cues (never while replaying a save)
+
+		html = html.replace(
+			/<div class="chat-sound" data-src="([^"]*)"><\/div>/g,
+			function(match, src) {
+				if (!opts.instant) {
+					story.playAudioFile(template.unescapeHtml(src));
+				}
+
+				return '';
+			}
+		);
+
 		if (metaMode === 'aside') {
 			// asides are ephemeral: never rebuilt from a save replay
 
@@ -1271,6 +1284,16 @@ Object.assign(Story.prototype, {
 		var seenContent = false;
 
 		blocks = blocks.filter(function(block) {
+			// sound cues render nothing; any not consumed by a show
+			// path (seeds, for instance) are dropped silently
+
+			if (
+				block.nodeType === Node.ELEMENT_NODE &&
+				block.classList.contains('chat-sound')
+			) {
+				return false;
+			}
+
 			var isChip =
 				block.nodeType === Node.ELEMENT_NODE &&
 				(block.classList.contains('chat-timestamp') ||
@@ -3084,6 +3107,20 @@ Object.assign(Story.prototype, {
 	 Only when config.sounds is on, and only once the browser has
 	 unlocked audio after a user gesture.
 	**/
+
+	/**
+	 Plays an audio file once — the [sound …] directive's engine, also
+	 callable directly: story.playAudioFile('buzz.mp3'). Browsers
+	 allow sound only after the player's first interaction, so a cue
+	 on the very first passage may be silent.
+	**/
+
+	playAudioFile: function(src) {
+		var audio = new Audio(src);
+
+		this._cueAudio = audio; // hold a reference while it plays
+		audio.play().catch(function() { /* autoplay blocked */ });
+	},
 
 	playSound: function(kind) {
 		if (!this.config.sounds) {
@@ -5033,7 +5070,8 @@ Object.assign(Story.prototype, {
 		probe.innerHTML = html;
 		probe
 			.querySelectorAll(
-				'.chat-timestamp, .chat-system, .chat-react, .chat-deliver'
+				'.chat-timestamp, .chat-system, .chat-react, ' +
+					'.chat-deliver, .chat-sound'
 			)
 			.forEach(function(el) {
 				el.remove();
@@ -5312,7 +5350,6 @@ Object.assign(Story.prototype, {
 		window.passage = previousPassage;
 
 		var speaker = this.getPassageSpeaker(passage);
-		var nodes = this.buildPassageElement(passage, speaker, html);
 		var story = this;
 
 		// a `quiet` delivery happened off-screen: no arrival effects,
@@ -5322,6 +5359,21 @@ Object.assign(Story.prototype, {
 
 		var quietRead = passage.tags.indexOf('quiet-read') > -1;
 		var quiet = quietRead || passage.tags.indexOf('quiet') > -1;
+
+		// [sound …] cues play on live deliveries only
+
+		html = html.replace(
+			/<div class="chat-sound" data-src="([^"]*)"><\/div>/g,
+			function(match, src) {
+				if (!opts.instant && !quiet) {
+					story.playAudioFile(template.unescapeHtml(src));
+				}
+
+				return '';
+			}
+		);
+
+		var nodes = this.buildPassageElement(passage, speaker, html);
 
 		nodes.forEach(function(node) {
 			if (opts.instant || quiet) {

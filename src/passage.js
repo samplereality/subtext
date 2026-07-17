@@ -83,6 +83,16 @@ function render(source) {
 		}
 	);
 
+	// [sound some.mp3] on its own line plays an audio cue when the
+	// passage shows — nothing is rendered
+
+	result = result.replace(
+		/^[ \t]*\[sound[ \t]+([^\]\s]+)[ \t]*\][ \t]*$/gim,
+		function(match, src) {
+			return '<div class="chat-sound" data-src="' + template.escapeHtml(src) + '"></div>';
+		}
+	);
+
 	// [react ❤️] on its own line reacts to the player's last message
 	// with a tapback badge (extracted and applied when the passage shows)
 
