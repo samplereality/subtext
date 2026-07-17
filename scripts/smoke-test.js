@@ -1672,6 +1672,33 @@ async function run() {
 		) > -1
 	);
 
+	// dead-end detection: a speakered passage with no way forward is
+	// flagged; End tags, chains, deliveries-with-pills, and side
+	// content are not
+	check(
+		'story check flags dead ends but not legitimate endings',
+		await debugPage.evaluate(() => {
+			window.story.passages.push(
+				new window.Passage(9996, 'bait-hub', [], '[[go on->bait-dead]]\n[[or here->bait-finale]]'),
+				new window.Passage(9997, 'bait-dead', ['speaker-2'], 'and then nothing'),
+				new window.Passage(9998, 'bait-finale', ['speaker-2', 'End'], 'the end')
+			);
+
+			const findings = window.story.lint();
+
+			window.story.passages.length -= 3;
+
+			const deadEnds = findings.filter(
+				(f) => f.message.indexOf('dead end') > -1
+			);
+
+			return (
+				deadEnds.length === 1 &&
+				deadEnds[0].passage === 'bait-dead'
+			);
+		})
+	);
+
 	// the transcript export flattens what's on screen to Markdown
 	check(
 		'transcript export flattens the conversation to Markdown',
@@ -2404,6 +2431,78 @@ async function run() {
 		instantDelivery.arrived && instantDelivery.typingThread === null
 	);
 
+	// a quiet delivery: unread badge yes; banner, typing, arrival no
+	const quietDelivery = await inboxPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				document.getElementById('meta-notification').hidden = true;
+				window.story._bannerThread = null;
+				window.story._bannerQueue = [];
+
+				const before = window.story.unread.mom || 0;
+
+				window.story.deliver('mom-quiet');
+				setTimeout(() => {
+					const log = document.querySelector(
+						'.thread-log[data-thread="mom"]'
+					);
+
+					resolve({
+						arrived:
+							log.textContent.indexOf(
+								'saw my last message'
+							) > -1,
+						unread:
+							(window.story.unread.mom || 0) === before + 1,
+						banner: !document.getElementById(
+							'meta-notification'
+						).hidden,
+						typing: window.story._typingThread
+					});
+				}, 60);
+			})
+	);
+
+	check(
+		'a quiet delivery lands with a badge but no banner or typing',
+		quietDelivery.arrived &&
+			quietDelivery.unread &&
+			!quietDelivery.banner &&
+			quietDelivery.typing === null
+	);
+
+	// quiet-read goes further: not even an unread badge
+	const quietReadDelivery = await inboxPage.evaluate(
+		() =>
+			new Promise((resolve) => {
+				const before = window.story.unread.mom || 0;
+
+				window.story.deliver('mom-quiet-read');
+				setTimeout(() => {
+					const log = document.querySelector(
+						'.thread-log[data-thread="mom"]'
+					);
+
+					resolve({
+						arrived:
+							log.textContent.indexOf('hope you') > -1,
+						unreadUnchanged:
+							(window.story.unread.mom || 0) === before,
+						banner: !document.getElementById(
+							'meta-notification'
+						).hidden
+					});
+				}, 60);
+			})
+	);
+
+	check(
+		'a quiet-read delivery lands with no badge at all',
+		quietReadDelivery.arrived &&
+			quietReadDelivery.unreadUnchanged &&
+			!quietReadDelivery.banner
+	);
+
 	check(
 		'a seeded [tombstone] renders as a deleted message',
 		await inboxPage.evaluate(() => {
@@ -2434,6 +2533,28 @@ async function run() {
 				bare.indexOf('chat-tombstone') > -1 &&
 				custom.indexOf('You deleted this message') > -1
 			);
+		})
+	);
+
+	// renameThread updates the inbox row and, when viewing, the header
+	check(
+		'renameThread renames the inbox row and thread header',
+		await inboxPage.evaluate(() => {
+			window.story.openThread('family');
+			window.story.renameThread('family', 'Mom and Dad');
+
+			const header =
+				document.getElementById('ptitle').textContent ===
+				'Mom and Dad';
+
+			window.story.openInbox();
+
+			const row = Array.from(
+				document.querySelectorAll('.inbox-row .inbox-name')
+			).some((el) => el.textContent === 'Mom and Dad');
+
+			window.story.renameThread('family', 'The Fam'); // restore
+			return header && row;
 		})
 	);
 

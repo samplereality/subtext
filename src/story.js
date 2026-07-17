@@ -4390,6 +4390,41 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Renames a conversation mid-story: the inbox row, the thread
+	 header, and notification banners all use the new name from here
+	 on. Pairs with a [system …] chip announcing the rename. Called
+	 from a passage template, the rename replays with the passage on
+	 save/restore; undo does not revert it.
+
+	 Triggered event: `threadrenamed`, detail { thread, name, story }.
+	**/
+
+	renameThread: function(threadId, name) {
+		if (!this.threads[threadId]) {
+			this.threads[threadId] = {};
+		}
+
+		this.threads[threadId].name = name;
+
+		if (this.multiThread) {
+			this.renderInbox();
+
+			if (
+				this._screen === 'thread' &&
+				this._viewedThread === threadId
+			) {
+				this.applyThreadHeader(threadId);
+			}
+		}
+
+		dispatch('threadrenamed', {
+			thread: threadId,
+			name: name,
+			story: this
+		});
+	},
+
+	/**
 	 Moves a conversation to the Trash: out of the main inbox, still
 	 readable (and openable) under the inbox's Trash section, never
 	 deleted. Any message later landing in the thread recovers it
@@ -5049,7 +5084,7 @@ Object.assign(Story.prototype, {
 		return '';
 	},
 
-	noteThreadMessage: function(threadId, previewText, instant, speaker) {
+	noteThreadMessage: function(threadId, previewText, instant, speaker, quiet) {
 		if (!this.multiThread) {
 			return;
 		}
@@ -5062,7 +5097,10 @@ Object.assign(Story.prototype, {
 		if (!viewingIt && !instant) {
 			this.unread[threadId] = (this.unread[threadId] || 0) + 1;
 
-			if (this.config.threadNotifications && previewText) {
+			// quiet deliveries keep the unread badge but skip the
+			// banner: the message arrived off-screen, in story time
+
+			if (this.config.threadNotifications && previewText && !quiet) {
 				// in a group thread the notification names the sender,
 				// like a real phone: "Family" up top, "Matt: …" below
 
@@ -5231,9 +5269,13 @@ Object.assign(Story.prototype, {
 
 		// same pacing grammar as showDelayed: an explicit delay says
 		// WHEN it arrives, the target's `instant` tag says HOW (no
-		// typing state); otherwise pace by message length
+		// typing state); otherwise pace by message length. A `quiet`
+		// target also lands at once — it happened off-screen.
 
-		var instant = passage.tags.indexOf('instant') > -1;
+		var instant =
+			passage.tags.indexOf('instant') > -1 ||
+			passage.tags.indexOf('quiet') > -1 ||
+			passage.tags.indexOf('quiet-read') > -1;
 		var delay =
 			typeof opts.delay === 'number' && opts.delay >= 0
 				? opts.delay
@@ -5279,8 +5321,16 @@ Object.assign(Story.prototype, {
 		var nodes = this.buildPassageElement(passage, speaker, html);
 		var story = this;
 
+		// a `quiet` delivery happened off-screen: no arrival effects,
+		// no banner — just the message waiting in its thread, unread.
+		// `quiet-read` goes further: no unread badge either, as if the
+		// exchange happened and was read entirely off-camera.
+
+		var quietRead = passage.tags.indexOf('quiet-read') > -1;
+		var quiet = quietRead || passage.tags.indexOf('quiet') > -1;
+
 		nodes.forEach(function(node) {
-			if (opts.instant) {
+			if (opts.instant || quiet) {
 				node.classList.add('no-anim');
 			}
 
@@ -5293,7 +5343,7 @@ Object.assign(Story.prototype, {
 			this.timeline.push({ t: 'd', id: passage.id });
 		}
 
-		if (!opts.instant && speaker && speaker !== 'you') {
+		if (!opts.instant && !quiet && speaker && speaker !== 'you') {
 			this.playSound('receive');
 			this.notifyTitle();
 		}
@@ -5328,8 +5378,9 @@ Object.assign(Story.prototype, {
 		this.noteThreadMessage(
 			threadId,
 			this.previewText(html),
-			opts.instant,
-			speaker
+			opts.instant || quietRead,
+			speaker,
+			quiet
 		);
 
 		if (this._viewedThread === threadId) {
@@ -6229,21 +6280,35 @@ Object.assign(Story.prototype, {
 			});
 		}
 
+		// auto-advance edges come in two kinds: 'chain' (the story
+		// cursor moves there itself) and 'deliver' (side content that
+		// only takes the cursor if it carries pills)
+
 		var deliverRe = /\[deliver[ \t]+([^\]]+)\]/g;
 
 		while ((match = deliverRe.exec(source))) {
-			edges.push({ target: match[1].trim(), kind: 'auto' });
+			edges.push({ target: match[1].trim(), kind: 'deliver' });
 		}
 
-		// names passed to the API from templates count as edges too
-
-		var call = /\b(?:show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\1/g;
+		var call = /\b(show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\2/g;
 
 		while ((match = call.exec(source))) {
-			edges.push({ target: match[2], kind: 'auto' });
+			edges.push({
+				target: match[3],
+				kind: match[1] === 'deliver' ? 'deliver' : 'chain'
+			});
 		}
 
 		return edges;
+	},
+
+	/**
+	 Whether an edge is an auto-advance (chain or delivery) rather
+	 than a player choice.
+	**/
+
+	isAutoEdge: function(edge) {
+		return edge.kind === 'chain' || edge.kind === 'deliver';
 	},
 
 	/**
@@ -6344,7 +6409,7 @@ Object.assign(Story.prototype, {
 	**/
 
 	playEdge: function(edge) {
-		if (edge.kind === 'auto') {
+		if (this.isAutoEdge(edge)) {
 			return;
 		}
 
@@ -6576,6 +6641,106 @@ Object.assign(Story.prototype, {
 				findings.push({
 					level: 'note',
 					message: 'nothing links to "' + p.name + '"',
+					passage: p.name
+				});
+			}
+		});
+
+		// dead ends: a passage that takes the story cursor but leaves
+		// the player nothing to do — no pills, and no chain or
+		// delivery that eventually reaches choices. Exempt: End-tagged
+		// finales, seeds (history, not moves), side narration
+		// (speakerless and linkless — it never takes the cursor), and
+		// passages only ever reached by [deliver] (side content).
+
+		var continues = {};
+
+		var canContinue = function(name, trail) {
+			if (continues[name]) {
+				return true;
+			}
+
+			if (trail[name]) {
+				return false; // a cycle with no choices anywhere in it
+			}
+
+			trail[name] = true;
+
+			var p = story.passage(name);
+			var result = false;
+
+			if (p) {
+				var edges = story.passageEdges(p.source);
+
+				result = edges.some(function(edge) {
+					return !story.isAutoEdge(edge);
+				});
+
+				if (!result) {
+					result = edges.some(function(edge) {
+						return (
+							story.passage(edge.target) &&
+							canContinue(edge.target, trail)
+						);
+					});
+				}
+			}
+
+			delete trail[name];
+
+			if (result) {
+				continues[name] = true; // only sure results are cached
+			}
+
+			return result;
+		};
+
+		// which passages ever take the cursor: the start passage, and
+		// anything reached by a pill or a chain (not delivery alone)
+
+		var takesCursor = {};
+
+		if (start) {
+			takesCursor[start.name] = true;
+		}
+
+		content.forEach(function(p) {
+			story.passageEdges(p.source).forEach(function(edge) {
+				if (edge.kind !== 'deliver') {
+					takesCursor[edge.target] = true;
+				}
+			});
+		});
+
+		content.forEach(function(p) {
+			if (
+				p.tags.indexOf('End') > -1 ||
+				p.tags.indexOf('end') > -1 ||
+				p.tags.indexOf('seed') > -1 ||
+				!takesCursor[p.name]
+			) {
+				return;
+			}
+
+			var edges = story.passageEdges(p.source);
+			var hasChoices = edges.some(function(edge) {
+				return !story.isAutoEdge(edge);
+			});
+
+			// speakerless + linkless = side narration; never takes
+			// the cursor even when chained to
+
+			if (!story.getPassageSpeaker(p) && !hasChoices) {
+				return;
+			}
+
+			if (!canContinue(p.name, {})) {
+				findings.push({
+					level: 'warn',
+					message:
+						'dead end — no reply pills, and no chain or ' +
+						'delivery from here leads to choices (tag it ' +
+						'`End` if the story is meant to stop here)',
 					passage: p.name
 				});
 			}

@@ -149,6 +149,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 | `speaker-<id>` | Marks who sends the message | [Your first passage](#your-first-passage) |
 | `thread-<id>` | Routes the passage to a conversation | [Multiple conversations](#multiple-conversations) |
 | `seed` | Renders the passage into its thread as pre-existing, read history | [Multiple conversations](#multiple-conversations) |
+| `quiet` / `quiet-read` | A `[deliver]`ed passage lands with no banner, sound, or typing — with an unread badge (`quiet`) or none (`quiet-read`) | [Multiple conversations](#multiple-conversations) |
 | `meta-chat` / `meta-overlay` / `meta-notification` | Overrides the narration mode for one passage | [Narration](#narration) |
 | `aside-left` / `aside-right` | Renders narration as a margin note | [Asides](#asides) |
 | `aside-beats-<n>` / `aside-hold` / `aside-up-<n>` / `aside-down-<n>` | Tune an aside's lifetime and placement | [Asides](#asides) |
@@ -664,6 +665,17 @@ family: The Fam; members: mom, matt
 
 The members appear under the thread's name in the header, the inbox row shows a cluster of the first two members' avatars, and every notification banner and inbox preview names its sender ("Matt: …"). Inside the thread nothing special is required — any `speaker-*` can text into any thread, and each message carries its own name and color.
 
+**Renaming a conversation.** `story.renameThread(id, name)` changes a thread's display name mid-story — the inbox row, the thread header, and notification banners all use the new name from then on. It pairs with a `[system …]` chip announcing the change:
+
+```
+:: the-rename [thread-family speaker-matt]
+[system Matt renamed this conversation "Mom and Dad"]
+
+<% story.renameThread('family', 'Mom and Dad') %>there. now it's official
+```
+
+A `threadrenamed` event fires. Called from a passage template (as above), the rename replays with the passage on save/restore; undo does not revert it.
+
 **Hidden threads.** Declare a thread `hidden: true` and it stays out of the inbox until its first message arrives — for contacts that should not appear before they first text:
 
 ```
@@ -704,6 +716,35 @@ Did you eat today? You never answer me.
 ```
 
 Seeds follow passage order, survive save/restore, and stay put under undo (they're history, not moves). Note that seeding a hidden thread reveals it — old messages mean the contact isn't a surprise.
+
+**Quiet deliveries.** Tag a passage `quiet` and `[deliver]`ing it lands the message with no banner, no sound, no typing state, and no arrival animation — just an unread badge on the thread. Where a seed is history from before the story began, a quiet delivery is the mid-story equivalent: messages that arrived off-screen, in story time. After a time skip, deliver the catch-up quietly and the player finds it waiting:
+
+```
+:: six-months-later [speaker-sam clear]
+[timestamp Six months later]
+
+you're back
+
+[deliver mom-missed-1]
+[deliver mom-missed-2]
+
+[[I'm back->reply]]
+
+:: mom-missed-1 [thread-mom speaker-mom quiet]
+Are you getting my messages?
+
+:: mom-missed-2 [thread-mom speaker-mom quiet]
+Call when you can. No rush. But call.
+```
+
+`quiet-read` goes one step further: no unread badge either. The message (or `[system …]` chip) is simply part of the thread's history the next time the player looks, as if the exchange happened and was read entirely off-camera — useful for events like an off-screen thread rename:
+
+```
+:: family-renamed [thread-family speaker-matt quiet-read]
+[system Matt renamed this conversation "Mom and Dad"]
+
+<% story.renameThread('family', 'Mom and Dad') %>
+```
 
 **The Trash.** Conversations can be archived — out of the main inbox, never deleted. A **Trash** row appears at the bottom of the inbox; tapping it opens the Trash as its own screen, where the player can read everything inside. The header chevron leads back to the inbox, and a conversation opened from the Trash returns to the Trash (`story.openTrash()` opens the screen from code). Recovering the Trash's last conversation returns the player to the inbox. Declare a thread `archived: true` to start it there (old spam, defunct group chats), or move one mid-story:
 
@@ -788,7 +829,7 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
 - **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in).
 - **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. Also callable as `story.debugFastForward(name)`.
-- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, and passages nothing points to. Each finding links to the offending passage. It reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at; a passage you reach only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
+- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as `story.exportTranscript()`, which returns the Markdown string.
 - **Memory** — what the story has `remember()`ed across playthroughs, with a forget-all button.
 
@@ -934,6 +975,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `react(emoji, direction)` | Land a tapback on the last message | [Reactions](#reactions) |
 | `redactMessage(direction, label)` | Delete a message: the bubble stays, a tombstone replaces it | [Deleted messages](#deleted-messages) |
 | `remember(key, value)` / `recall(key, fallback)` / `forget(key)` | Cross-playthrough memory (survives restart) | [Recipes](#remember-across-playthroughs) |
+| `renameThread(id, name)` | Change a conversation's display name mid-story | [Multiple conversations](#multiple-conversations) |
 | `revealThread(id)` | Bring a hidden thread into the inbox | [Multiple conversations](#multiple-conversations) |
 | `save()` / `restore(hash)` | Write progress to the URL / replay a save | [Saving](#saving) |
 | `setHeader(title, subtitle)` | Repurpose the header mid-story | [Page chrome and menus](#page-chrome-and-menus) |
@@ -967,6 +1009,7 @@ window.addEventListener('photosent', function (e) {
 | `timeout` | a response timer expires | `{ target, text, story }` |
 | `textinput` | the player sends free-text input | `{ text, target, story }` |
 | `threadarchived` | a conversation moves to the Trash | `{ thread, story }` |
+| `threadrenamed` | a conversation's display name changes | `{ thread, name, story }` |
 | `threadrestored` | a conversation leaves the Trash | `{ thread, story }` |
 | `save` | progress is written to a save | `{ story }` |
 | `restore` | a save begins replaying | `{ story }` |
@@ -1152,6 +1195,9 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.8
 
+- **The `quiet` and `quiet-read` passage tags.** A `[deliver]`ed passage tagged `quiet` lands with no banner, sound, typing state, or arrival animation — just an unread badge; `quiet-read` drops the badge too, delivering already-read history. The mid-story counterpart of `seed`, for messages (or thread renames) that happened off-screen during a time skip.
+- **`story.renameThread(id, name)`** changes a conversation's display name mid-story — inbox row, thread header, and banners follow. Pairs with a `[system …]` chip announcing the rename; fires `threadrenamed`.
+- **The story check finds dead ends.** A passage that takes the story cursor but offers no way forward — no reply pills, and no chain or delivery that eventually reaches choices — is flagged as a warning. `End`-tagged finales, seeds, and side content are exempt.
 - **Documentation overhaul.** The docs site gains a persistent sidebar: a sticky table of contents along the left, generated from the section outline, with the current section highlighted while scrolling (a static contents block on narrow screens). The prose throughout was revised toward plain, objective description.
 
 ### Version 2.7.1
