@@ -822,17 +822,32 @@ a {
 	justify-content: center;
 }
 
-/* the quiet "your turn" mark on the conversation awaiting a reply */
+/* the quiet "your turn" treatment on the conversation awaiting a
+   reply: an accent edge that breathes, over a faint tint. With
+   reduced motion the breathing stops but the edge and tint stay. */
 
-.inbox-reply {
-	flex: none;
-	color: var(--t-accent);
-	font-size: 1.05rem;
-	line-height: 1;
-	animation: inbox-reply-pulse 2.4s ease-in-out infinite;
+.inbox-row--turn {
+	position: relative;
+	background: color-mix(in srgb, var(--t-accent) 6%, transparent);
 }
 
-@keyframes inbox-reply-pulse {
+.inbox-row--turn:hover {
+	background: color-mix(in srgb, var(--t-accent) 12%, transparent);
+}
+
+.inbox-row--turn::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 14%;
+	bottom: 14%;
+	width: 3px;
+	border-radius: 999px;
+	background: var(--t-accent);
+	animation: inbox-turn-pulse 3s ease-in-out infinite;
+}
+
+@keyframes inbox-turn-pulse {
 	0%,
 	100% {
 		opacity: 0.45;

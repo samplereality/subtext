@@ -1956,10 +1956,10 @@ async function run() {
 		(await inboxPage.locator('.inbox-row:has-text("Unknown")').count()) === 0
 	);
 	check(
-		'the conversation awaiting a reply carries the your-turn mark',
-		(await inboxPage.locator('.inbox-row:has-text("Sam") .inbox-reply').count()) === 1 &&
-		(await inboxPage.locator('.inbox-row:has-text("Mom") .inbox-reply').count()) === 0 &&
-		(await inboxPage.locator('.inbox-reply .visually-hidden').textContent()) ===
+		'the conversation awaiting a reply carries the your-turn treatment',
+		(await inboxPage.locator('.inbox-row--turn:has-text("Sam")').count()) === 1 &&
+		(await inboxPage.locator('.inbox-row--turn:has-text("Mom")').count()) === 0 &&
+		(await inboxPage.locator('.inbox-row--turn .visually-hidden').textContent()) ===
 			'awaiting your reply'
 	);
 	check(

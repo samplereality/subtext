@@ -4901,7 +4901,8 @@ Object.assign(Story.prototype, {
 			}
 
 			// wayfinding: the conversation holding the story's pending
-			// choices gets a quiet "your turn" mark
+			// choices gets a quiet "your turn" row treatment — an
+			// accent edge and a faint tint, no icon
 
 			if (
 				story.config.replyIndicator &&
@@ -4910,15 +4911,13 @@ Object.assign(Story.prototype, {
 				window.passage &&
 				window.passage.links.length > 0
 			) {
-				var reply = document.createElement('span');
+				button.classList.add('inbox-row--turn');
 
-				reply.className = 'inbox-reply';
-				reply.innerHTML =
-					'<span aria-hidden="true">↩</span>' +
-					'<span class="visually-hidden"></span>';
-				reply.querySelector('.visually-hidden').textContent =
-					story.config.replyIndicatorLabel;
-				button.appendChild(reply);
+				var turnLabel = document.createElement('span');
+
+				turnLabel.className = 'visually-hidden';
+				turnLabel.textContent = story.config.replyIndicatorLabel;
+				button.appendChild(turnLabel);
 			}
 
 			button.addEventListener('click', function() {
