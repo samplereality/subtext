@@ -83,6 +83,39 @@ function render(source) {
 		}
 	);
 
+	// [sound some.mp3] on its own line plays an audio cue when the
+	// passage shows — nothing is rendered
+
+	result = result.replace(
+		/^[ \t]*\[sound[ \t]+([^\]\s]+)[ \t]*\][ \t]*$/gim,
+		function(match, src) {
+			return '<div class="chat-sound" data-src="' + template.escapeHtml(src) + '"></div>';
+		}
+	);
+
+	// [then passage name] on its own line chains to that passage once
+	// this one lands — the twee form of story.showDelayed(). A trailing
+	// clause sets the delay: [then reply in 4s] or [then reply in 250ms]
+
+	result = result.replace(
+		/^[ \t]*\[then[ \t]+(.+?)(?:[ \t]+in[ \t]+(\d+(?:\.\d+)?)(ms|s))?[ \t]*\][ \t]*$/gim,
+		function(match, name, amount, unit) {
+			var delay = '';
+
+			if (amount) {
+				delay = String(Math.round(
+					unit === 's' ? parseFloat(amount) * 1000 : parseFloat(amount)
+				));
+			}
+
+			return (
+				'<div class="chat-then" data-passage="' +
+				template.escapeHtml(name.trim()) +
+				'" data-delay="' + delay + '"></div>'
+			);
+		}
+	);
+
 	// [react ❤️] on its own line reacts to the player's last message
 	// with a tapback badge (extracted and applied when the passage shows)
 

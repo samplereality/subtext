@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [API index](#api-index) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Sound cues](#sound-cues) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -166,7 +166,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 
 Everything you write in a passage falls into one of three shapes, each with one job:
 
-1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[location …]`, `[react …]`, `[deliver …]`, `[tombstone]`. Square brackets, lowercase, one line.
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[sound …]`, `[location …]`, `[react …]`, `[deliver …]`, `[then …]`, `[tombstone]`. Square brackets, lowercase, one line.
 2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
 3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
 
@@ -248,6 +248,23 @@ I can explain everything
 ```
 
 Any audio URL works, including data URIs for self-contained stories. Each memo is its own bubble; only one plays at a time. (A raw `<audio>` tag still works too — this just looks like a text exchange instead of a browser control.)
+
+### Sound cues
+
+Where `[voice …]` renders a playable message, `[sound …]` renders nothing — the audio simply plays when the passage shows. For diegetic sound effects: a phone buzzing with a call the player doesn't answer, a notification chime from another room:
+
+```
+:: the-call [speaker-sam]
+[sound audio/buzz.mp3]
+
+don't answer that
+
+[system Missed call from Unknown]
+
+[[who was it?->evasion]]
+```
+
+Cues play once, on live shows and deliveries only — never during a save replay, in seeds, or on `quiet`/`quiet-read` deliveries. Also callable as `story.playAudioFile('buzz.mp3')`. Two caveats: browsers allow sound only after the player's first interaction, so a cue in the very first passage may be silent; and a cue is invisible to players who can't hear it — pair it with something visible, like the `[system …]` chip above.
 
 ### Location sharing
 
@@ -373,20 +390,20 @@ One reaction per message; a newer one replaces it. Reactions participate in undo
 
 ### Message chains and montages
 
-A passage can send the next one itself — no reply pill in between — by calling `story.showDelayed()` from a template:
+A passage can send the next one itself — no reply pill in between — with the `[then …]` directive:
 
 ```
 :: Hobby 1 [speaker-jo]
 [timestamp Mar 14, 2011]
 picked up a ukulele at a yard sale. how hard can it be
 
-<% story.showDelayed('Hobby 2') %>
+[then Hobby 2]
 
 :: Hobby 2 [speaker-jo]
 [timestamp Aug 2, 2014]
 update: the ukulele is now decorative
 
-<% story.showDelayed('Hobby 3', 500) %>
+[then Hobby 3 in 500ms]
 
 :: Hobby 3 [speaker-jo]
 [timestamp Jan 9, 2019]
@@ -395,9 +412,9 @@ guess who just joined a ukulele band
 [[Eight years, three texts.->Hobby Reflection]]
 ```
 
-With no second argument each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. Pass a number of milliseconds to set the pace explicitly — **`0` shows the next message instantly, with no typing indicator**, which plays a chain like the one above as a montage of back-to-back messages. Chips stay with their messages either way, and a chain survives saving, undo, and reloading mid-flight.
+With no `in` clause each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. An `in` clause sets the pace explicitly, in milliseconds (`in 500ms`) or seconds (`in 2s`; decimals work) — and **`in 0s` shows the next message instantly, with no typing indicator**, which plays a chain like the one above as a montage of back-to-back messages. Chips stay with their messages either way, and a chain survives saving, undo, and reloading mid-flight. A chain fires only when its passage plays live: a `seed`ed passage never fires its `[then]`.
 
-The same call works anywhere story JavaScript runs — `story.showDelayed('Jo', 2000)` from an event listener replaces Trialogue's old `_.delay(...)` idiom.
+The directive is shorthand for `story.showDelayed(name, delay)`, which works anywhere story JavaScript runs — from a template when the target's name is computed at runtime (`<% story.showDelayed(s.nextScene) %>`), or from an event listener, where `story.showDelayed('Jo', 2000)` replaces Trialogue's old `_.delay(...)` idiom.
 
 To let the *player* pace the montage instead — a beat between texts so each one can be read — put a silent pill between passages and tag each incoming passage `instant`, so tapping the pill lands the next message immediately, with no typing indicator:
 
@@ -454,10 +471,10 @@ The note appears level with the most recent message, tracks it as new messages p
 | --- | --- |
 | `aside-left` / `aside-right` | which margin the note appears in |
 | `aside-beats-5` | how many messages it survives (default `3`, or `story.config.asideBeats`) |
-| `aside-hold` | never expires on its own — stays until it scrolls off, is replaced, or the thread is cleared |
+| `aside-hold` | never expires on its own — stays until it scrolls off or the thread is cleared |
 | `aside-up-2` / `aside-down-2` | nudge the note up or down by N rem for fine placement |
 
-One aside per side can be live at a time; a new one replaces the old. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so `hasVisited()` works).
+Asides on the same side stack: a newcomer sits below any note still on screen rather than replacing it, and each fades on its own clock. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so `hasVisited()` works).
 
 **On phones there is no margin**, so the note floats over the chat's edge instead — translucent and slightly tilted. To have it degrade to a centered in-chat chip on small screens instead, set `story.config.asideMobile = 'chip'`.
 
@@ -654,7 +671,7 @@ Three things move the story between threads:
 
 - **The player**, by opening the inbox (the ‹ chevron on the header's left) or tapping a notification banner, can read any thread at any time. The chevron can be staged: `story.config.inboxButton = false` starts the story as a single conversation, and `<% story.showInboxButton() %>` in a later passage reveals the inbox (`hideInboxButton()` reverses it). Only the thread holding the story's pending choices shows reply chips; a parked thread shows a grayed-out composer instead — *"Nothing to say right now"* (wording via `story.config.threadIdleHint`; set `''` for none).
 
-The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. The conversation holding the story's pending choices is marked with a slim accent edge (gently pulsing; static under reduced motion) over a faint tint — distinct from the unread badge, which indicates new messages rather than a pending turn. Disable it with `config.replyIndicator = false`, reword its screen-reader label via `config.replyIndicatorLabel`, or restyle it through `.inbox-row--turn`. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Notification banners cut long messages off with an ellipsis; media-only messages read as their kind (`📷 Photo`, `🎤 Voice message`, `📍 Location` — wording via `config.previewLabels`); several arrivals queue and show one at a time (`config.bannerSeconds` each; a newer message from the same thread updates its banner in place); inbox previews follow the same rules.
+The **inbox** lists every thread with its avatar, a preview of the last message, a live "typing…" indicator, and an unread count, sorted by most recent activity. The conversation holding the story's pending choices is marked with a slim accent edge (gently pulsing; static under reduced motion) over a faint tint — distinct from the unread badge, which indicates new messages rather than a pending turn. Disable it with `config.replyIndicator = false`, reword its screen-reader label via `config.replyIndicatorLabel`, or restyle it through `.inbox-row--turn`. Unread badges accumulate on conversations the player isn't looking at and clear when they open them. Notification banners cut long messages off with an ellipsis; media-only messages read as their kind (`📷 Photo`, `🎤 Voice message`, `📍 Location` — wording via `config.previewLabels`); several arrivals stack like a notification shade, each on its own `config.bannerSeconds` timer, up to `config.bannerStack` (default 3) at once — further ones wait for a free slot; inbox previews follow the same rules.
 
 **Group chats.** Give a thread `members:` — a comma-separated list of speaker ids — and it becomes a group conversation:
 
@@ -829,7 +846,7 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
 - **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in).
 - **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. In multi-conversation stories both land you in the target's own thread — a thread tag is honored directly, and an untagged passage's thread is inferred from the nearest tagged passage that links to it. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. Also callable as `story.debugFastForward(name)`.
-- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
+- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]`/`[then]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a `showDelayed` chain is reported once, at the passage where the chain stops. Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as `story.exportTranscript()`, which returns the Markdown string.
 - **Memory** — what the story has `remember()`ed across playthroughs, with a forget-all button.
 
@@ -905,7 +922,8 @@ story.config.autosave = true;
 | `sounds` | `false` | Subtle synthesized send/receive sounds (needs a user gesture) |
 | `titleNotifications` | `true` | Show `(2) Story Name` in the tab title while hidden |
 | `threadNotifications` | `true` | Announce cross-thread messages with a banner |
-| `bannerSeconds` | `5` | How long each notification banner stays up; queued banners follow in order |
+| `bannerSeconds` | `5` | How long each notification banner stays up |
+| `bannerStack` | `3` | How many banners can be on screen at once; further ones wait for a free slot |
 | `previewLabels` | `{ photo, voice, location }` | What banners and inbox previews say for media-only messages (`📷 Photo`, …) |
 | `threadIdleHint` | `'Nothing to say right now'` | Placeholder in the disabled composer on parked threads (`''` for none) |
 | `trashLabel` | `'Trash'` | Label on the inbox's archived-conversations section |
@@ -972,6 +990,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `markRead()` / `markUnread()` / `markFailed()` | Set the receipt on the player's last message | [Read receipts](#read-receipts) |
 | `openInbox()` / `openThread(id)` / `openTrash()` | Switch between the inbox, a conversation, and the Trash | [Multiple conversations](#multiple-conversations) |
 | `passage(idOrName)` | Fetch a passage object | [The story and passage globals](#the-story-and-passage-globals) |
+| `playAudioFile(src)` | Play an audio file once (the `[sound …]` engine) | [Sound cues](#sound-cues) |
 | `react(emoji, direction)` | Land a tapback on the last message | [Reactions](#reactions) |
 | `redactMessage(direction, label)` | Delete a message: the bubble stays, a tombstone replaces it | [Deleted messages](#deleted-messages) |
 | `remember(key, value)` / `recall(key, fallback)` / `forget(key)` | Cross-playthrough memory (survives restart) | [Recipes](#remember-across-playthroughs) |
@@ -1195,6 +1214,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.8
 
+- **The `[then …]` directive.** The twee form of `story.showDelayed()`: `[then next passage]` chains to a passage with natural pacing, and an `in` clause sets the delay — `[then next passage in 4s]`, `in 500ms`, or `in 0s` for an instant landing. The story check follows `[then]` links like any other edge. See [Message chains and montages](#message-chains-and-montages).
+- **Banners stack.** Messages arriving in a row each get their own notification banner, stacked in arrival order like a notification shade — a newer one no longer replaces (same thread) or delays (other thread) the one on screen. Each banner dismisses on its own `config.bannerSeconds` timer; up to `config.bannerStack` (default 3) show at once and further ones wait for a free slot.
+- **The `[sound …]` directive.** An audio cue that plays when its passage shows, rendering nothing — a phone buzzing, a chime from another room. Skipped on save replays, seeds, and quiet deliveries; also `story.playAudioFile(src)`. See [Sound cues](#sound-cues).
+- **Fixed: a new aside evicted a held one.** Only one aside per side could be live, so a newcomer replaced the previous note even when it was tagged `aside-hold`. Asides on the same side now stack — the newcomer sits below any note still on screen, and each fades on its own clock. See [Asides](#asides).
 - **Threads always open at the newest messages.** Reopening a conversation previously restored the player's last scroll position, which could hide messages (quiet deliveries especially) that arrived below it.
 - **Fixed: debug time travel ignored threads.** Rewinding or restoring replayed the conversation into whatever thread was on screen (the replay inherited the current hot thread instead of re-deriving it from the start passage), and a debug jump rendered an untagged passage into the current thread. Restores now rebuild thread context from the top; jump and play-to land the passage in its own conversation — tagged directly or inferred from the graph — and move the view there.
 - **The `quiet` and `quiet-read` passage tags.** A `[deliver]`ed passage tagged `quiet` lands with no banner, sound, typing state, or arrival animation — just an unread badge; `quiet-read` drops the badge too, delivering already-read history. The mid-story counterpart of `seed`, for messages (or thread renames) that happened off-screen during a time skip.

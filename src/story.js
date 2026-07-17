@@ -275,6 +275,9 @@ var Story = function() {
 		threadNotifications: true,
 		/* how long each notification banner stays up, in seconds */
 		bannerSeconds: 5,
+		/* how many banners can be on screen at once; further ones
+		   wait for a free slot */
+		bannerStack: 3,
 		/* what banners and inbox previews say for media-only messages
 		   (localize or restyle here) */
 		previewLabels: {
@@ -398,14 +401,17 @@ var Story = function() {
 	/** Which screen a viewed thread was opened from: inbox or trash. **/
 	this._threadOrigin = 'inbox';
 
-	/** Live margin asides, one per side. **/
-	this._asides = { left: null, right: null };
+	/** Live margin asides, oldest first, per side. **/
+	this._asides = { left: [], right: [] };
 	this._asideRaf = null;
 
 	/** Timestamp chips shown early, counted per passage id. **/
 	this._preShownStamps = null;
 
-	/** Thread banners waiting their turn; one shows at a time. **/
+	/** Live banner cards, oldest first. **/
+	this._banners = [];
+
+	/** Thread banners waiting for a free slot in the stack. **/
 	this._bannerQueue = [];
 
 	/** Redacted messages, so undo can restore their content. **/
@@ -510,46 +516,24 @@ Object.assign(Story.prototype, {
 			inboxButton: byId('nav-link-inbox'),
 			timerText: byId('timer-announcement'),
 			asideLayer: byId('aside-layer'),
+			bannerStack: byId('banner-stack'),
 			lightbox: byId('photo-lightbox'),
 			lightboxImg: byId('photo-lightbox-img')
 		};
 
 		this._responseTimer = null;
 
-		// tapping a notification banner dismisses it (but interactive
+		// tapping notification narration dismisses it (but interactive
 		// content inside it, like a voice memo, stays usable); the ×
-		// button does the same for keyboard and screen-reader users
+		// button does the same for keyboard and screen-reader users.
+		// Thread banners live in their own stack and wire their own
+		// taps when they're built.
 
 		this.dom.metaNotification.addEventListener('click', function(event) {
-			// after a dismissal, any queued banner takes the stage a
-			// beat later
-			var pumpSoon = function() {
-				window.setTimeout(function() {
-					story.pumpBanners();
-				}, 400);
-			};
-
-			if (event.target.closest('[data-notification-close]')) {
-				story.dom.metaNotification.hidden = true;
-				story._bannerThread = null;
-				pumpSoon();
-				return;
-			}
-
-			if (!event.target.closest('button, a')) {
-				// a thread banner is an invitation: tapping it jumps to
-				// that conversation
-
-				if (story._bannerThread) {
-					var target = story._bannerThread;
-
-					story._bannerThread = null;
-					story.dom.metaNotification.hidden = true;
-					story.openThread(target);
-					pumpSoon();
-					return;
-				}
-
+			if (
+				event.target.closest('[data-notification-close]') ||
+				!event.target.closest('button, a')
+			) {
 				story.dom.metaNotification.hidden = true;
 			}
 		});
@@ -1104,6 +1088,38 @@ Object.assign(Story.prototype, {
 			}
 		);
 
+		// play [sound …] cues (never while replaying a save)
+
+		html = html.replace(
+			/<div class="chat-sound" data-src="([^"]*)"><\/div>/g,
+			function(match, src) {
+				if (!opts.instant) {
+					story.playAudioFile(template.unescapeHtml(src));
+				}
+
+				return '';
+			}
+		);
+
+		// [then …] chains to the next passage — the directive form of
+		// showDelayed(), so replays treat it exactly like the call
+
+		html = html.replace(
+			/<div class="chat-then" data-passage="([^"]*)" data-delay="([^"]*)"><\/div>/g,
+			function(match, name, delay) {
+				var target = template.unescapeHtml(name);
+
+				if (delay === '') {
+					story.showDelayed(target);
+				}
+				else {
+					story.showDelayed(target, parseInt(delay, 10));
+				}
+
+				return '';
+			}
+		);
+
 		if (metaMode === 'aside') {
 			// asides are ephemeral: never rebuilt from a save replay
 
@@ -1271,6 +1287,18 @@ Object.assign(Story.prototype, {
 		var seenContent = false;
 
 		blocks = blocks.filter(function(block) {
+			// sound cues and [then …] chains render nothing; any not
+			// consumed by a show path (seeds, for instance) are dropped
+			// silently — seeded history never fires a chain
+
+			if (
+				block.nodeType === Node.ELEMENT_NODE &&
+				(block.classList.contains('chat-sound') ||
+					block.classList.contains('chat-then'))
+			) {
+				return false;
+			}
+
 			var isChip =
 				block.nodeType === Node.ELEMENT_NODE &&
 				(block.classList.contains('chat-timestamp') ||
@@ -3037,11 +3065,11 @@ Object.assign(Story.prototype, {
 		var cleared = threadId || this._hotThread;
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
-
-			if (aside && aside.thread === cleared) {
-				story.removeAside(side);
-			}
+			story._asides[side].slice().forEach(function(aside) {
+				if (aside.thread === cleared) {
+					story.removeAsideEntry(side, aside);
+				}
+			});
 		});
 
 		this.logFor(cleared).textContent = '';
@@ -3084,6 +3112,20 @@ Object.assign(Story.prototype, {
 	 Only when config.sounds is on, and only once the browser has
 	 unlocked audio after a user gesture.
 	**/
+
+	/**
+	 Plays an audio file once — the [sound …] directive's engine, also
+	 callable directly: story.playAudioFile('buzz.mp3'). Browsers
+	 allow sound only after the player's first interaction, so a cue
+	 on the very first passage may be silent.
+	**/
+
+	playAudioFile: function(src) {
+		var audio = new Audio(src);
+
+		this._cueAudio = audio; // hold a reference while it plays
+		audio.play().catch(function() { /* autoplay blocked */ });
+	},
 
 	playSound: function(kind) {
 		if (!this.config.sounds) {
@@ -3467,10 +3509,6 @@ Object.assign(Story.prototype, {
 				this.config.metaNotificationLabel || this.name;
 			this.dom.metaNotificationBody.innerHTML = html;
 			this.buildRichContent(this.dom.metaNotificationBody);
-			// authored narration is never clamped like a thread banner
-			this.dom.metaNotification.classList.remove(
-				'meta-notification--thread'
-			);
 			this.dom.metaNotification.hidden = false;
 		}
 		else {
@@ -3492,19 +3530,7 @@ Object.assign(Story.prototype, {
 	hideMeta: function() {
 		this.dom.metaOverlay.hidden = true;
 		this.dom.metaNotification.hidden = true;
-		this._bannerThread = null;
 		this.updateInboxButton();
-
-		// banners still waiting in the queue return once the new
-		// content has settled
-
-		if (this._bannerQueue.length) {
-			var story = this;
-
-			window.setTimeout(function() {
-				story.pumpBanners();
-			}, 600);
-		}
 	},
 
 	/**
@@ -3565,9 +3591,8 @@ Object.assign(Story.prototype, {
 			}
 		});
 
-		// one live aside per side; a newcomer replaces the old one
-
-		this.removeAside(side);
+		// asides stack per side — a newcomer joins below any still live,
+		// and each fades on its own clock (beats, holds, scrolling away)
 
 		var el = document.createElement('div');
 
@@ -3582,39 +3607,45 @@ Object.assign(Story.prototype, {
 		var anchor = this.logFor(threadId).lastElementChild || null;
 
 		this.dom.asideLayer.appendChild(el);
-		this._asides[side] = {
+		this._asides[side].push({
 			el: el,
 			anchor: anchor,
 			thread: threadId,
 			beats: hold ? Infinity : Math.max(1, beats),
 			nudge: nudge
-		};
+		});
 
 		this.syncAsides();
 		this.startAsideLoop();
 	},
 
 	/**
-	 Fades out and removes the aside on one side, if any.
+	 Fades out and removes one live aside.
 	**/
 
-	removeAside: function(side) {
-		var aside = this._asides[side];
+	removeAsideEntry: function(side, entry) {
+		var list = this._asides[side];
+		var index = list.indexOf(entry);
 
-		if (!aside) {
+		if (index === -1) {
 			return;
 		}
 
-		this._asides[side] = null;
-		aside.el.classList.add('chat-aside--out');
+		list.splice(index, 1);
+		entry.el.classList.add('chat-aside--out');
 		window.setTimeout(function() {
-			aside.el.remove();
+			entry.el.remove();
 		}, 450);
 	},
 
 	clearAsides: function() {
-		this.removeAside('left');
-		this.removeAside('right');
+		var story = this;
+
+		['left', 'right'].forEach(function(side) {
+			story._asides[side].slice().forEach(function(aside) {
+				story.removeAsideEntry(side, aside);
+			});
+		});
 	},
 
 	/**
@@ -3626,15 +3657,15 @@ Object.assign(Story.prototype, {
 		var story = this;
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
+			story._asides[side].slice().forEach(function(aside) {
+				if (aside.thread === threadId) {
+					aside.beats -= 1;
 
-			if (aside && aside.thread === threadId) {
-				aside.beats -= 1;
-
-				if (aside.beats <= 0) {
-					story.removeAside(side);
+					if (aside.beats <= 0) {
+						story.removeAsideEntry(side, aside);
+					}
 				}
-			}
+			});
 		});
 	},
 
@@ -3662,83 +3693,90 @@ Object.assign(Story.prototype, {
 		var panelRect = this.dom.panel.getBoundingClientRect();
 
 		['left', 'right'].forEach(function(side) {
-			var aside = story._asides[side];
+			var prevBottom = null;
 
-			if (!aside) {
-				return;
-			}
+			story._asides[side].slice().forEach(function(aside) {
+				// the message it commented on is gone (undo, clear-thread)
 
-			// the message it commented on is gone (undo, clear-thread)
+				if (aside.anchor && !aside.anchor.isConnected) {
+					story.removeAsideEntry(side, aside);
+					return;
+				}
 
-			if (aside.anchor && !aside.anchor.isConnected) {
-				story.removeAside(side);
-				return;
-			}
+				var el = aside.el;
 
-			var el = aside.el;
+				// hidden while another conversation or the inbox is on screen
 
-			// hidden while another conversation or the inbox is on screen
+				var visible = !story.multiThread ||
+					(story._screen === 'thread' &&
+						story._viewedThread === aside.thread);
 
-			var visible = !story.multiThread ||
-				(story._screen === 'thread' &&
-					story._viewedThread === aside.thread);
+				el.classList.toggle('chat-aside--hidden', !visible);
 
-			el.classList.toggle('chat-aside--hidden', !visible);
+				if (!visible) {
+					return;
+				}
 
-			if (!visible) {
-				return;
-			}
+				el.classList.toggle('chat-aside--over', over);
 
-			el.classList.toggle('chat-aside--over', over);
+				var top = aside.anchor
+					? aside.anchor.getBoundingClientRect().top
+					: panelRect.top + 12;
 
-			var top = aside.anchor
-				? aside.anchor.getBoundingClientRect().top
-				: panelRect.top + 12;
+				top += aside.nudge * 16;
 
-			top += aside.nudge * 16;
+				// it followed its message off the top of the screen: done
 
-			// it followed its message off the top of the screen: done
+				if (top + el.offsetHeight < panelRect.top + 4) {
+					story.removeAsideEntry(side, aside);
+					return;
+				}
 
-			if (top + el.offsetHeight < panelRect.top + 4) {
-				story.removeAside(side);
-				return;
-			}
+				top = Math.min(top, panelRect.bottom - el.offsetHeight - 8);
 
-			el.style.top =
-				Math.min(top, panelRect.bottom - el.offsetHeight - 8) + 'px';
+				// stack below any earlier aside on this side rather
+				// than overlapping it
 
-			if (over) {
-				// no margin: hug the phone's inner edge, over the chat
+				if (prevBottom !== null && top < prevBottom + 8) {
+					top = prevBottom + 8;
+				}
 
-				el.style.maxWidth =
-					Math.min(appRect.width * 0.64, 250) + 'px';
+				el.style.top = top + 'px';
+				prevBottom = top + el.offsetHeight;
 
-				if (side === 'left') {
-					el.style.left = (appRect.left + 10) + 'px';
-					el.style.right = 'auto';
+				if (over) {
+					// no margin: hug the phone's inner edge, over the chat
+
+					el.style.maxWidth =
+						Math.min(appRect.width * 0.64, 250) + 'px';
+
+					if (side === 'left') {
+						el.style.left = (appRect.left + 10) + 'px';
+						el.style.right = 'auto';
+					}
+					else {
+						el.style.right =
+							(window.innerWidth - appRect.right + 10) + 'px';
+						el.style.left = 'auto';
+					}
 				}
 				else {
-					el.style.right =
-						(window.innerWidth - appRect.right + 10) + 'px';
-					el.style.left = 'auto';
-				}
-			}
-			else {
-				var gap = 14;
+					var gap = 14;
 
-				el.style.maxWidth =
-					Math.min(margin - gap * 2, 270) + 'px';
+					el.style.maxWidth =
+						Math.min(margin - gap * 2, 270) + 'px';
 
-				if (side === 'left') {
-					el.style.right =
-						(window.innerWidth - appRect.left + gap) + 'px';
-					el.style.left = 'auto';
+					if (side === 'left') {
+						el.style.right =
+							(window.innerWidth - appRect.left + gap) + 'px';
+						el.style.left = 'auto';
+					}
+					else {
+						el.style.left = (appRect.right + gap) + 'px';
+						el.style.right = 'auto';
+					}
 				}
-				else {
-					el.style.left = (appRect.right + gap) + 'px';
-					el.style.right = 'auto';
-				}
-			}
+			});
 		});
 	},
 
@@ -3749,7 +3787,7 @@ Object.assign(Story.prototype, {
 
 		var story = this;
 		var tick = function() {
-			if (!story._asides.left && !story._asides.right) {
+			if (!story._asides.left.length && !story._asides.right.length) {
 				story._asideRaf = null;
 				return;
 			}
@@ -3874,7 +3912,7 @@ Object.assign(Story.prototype, {
 		this.clearAsides();
 		this.clearUserResponses();
 		this._preShownStamps = null;
-		this._bannerQueue = [];
+		this.clearBanners();
 
 		// everything since the checkpoint is discarded
 
@@ -5033,7 +5071,8 @@ Object.assign(Story.prototype, {
 		probe.innerHTML = html;
 		probe
 			.querySelectorAll(
-				'.chat-timestamp, .chat-system, .chat-react, .chat-deliver'
+				'.chat-timestamp, .chat-system, .chat-react, ' +
+					'.chat-deliver, .chat-sound, .chat-then'
 			)
 			.forEach(function(el) {
 				el.remove();
@@ -5153,31 +5192,12 @@ Object.assign(Story.prototype, {
 			preview = preview.slice(0, 89).replace(/\s+\S*$/, '') + '…';
 		}
 
-		// a newer message from the SAME thread updates the banner (or
-		// its queued entry) in place; banners for other threads wait
-		// their turn instead of overwriting the one on screen
+		// each message gets its own banner; they stack newest-last
+		// like a notification shade, and overflow waits for a free
+		// slot instead of overwriting what's on screen
 
-		if (this._bannerThread === threadId) {
-			this.dom.metaNotificationBody.textContent = preview;
-			this.armBannerTimer(threadId);
-			return;
-		}
-
-		if (!this.dom.metaNotification.hidden) {
-			var queued = this._bannerQueue.filter(function(entry) {
-				return entry.threadId === threadId;
-			})[0];
-
-			if (queued) {
-				queued.preview = preview;
-			}
-			else {
-				this._bannerQueue.push({
-					threadId: threadId,
-					preview: preview
-				});
-			}
-
+		if (this._banners.length >= this.config.bannerStack) {
+			this._bannerQueue.push({ threadId: threadId, preview: preview });
 			return;
 		}
 
@@ -5185,42 +5205,96 @@ Object.assign(Story.prototype, {
 	},
 
 	displayThreadBanner: function(threadId, preview) {
-		this.dom.metaNotificationLabel.textContent =
-			this.getThreadDisplayName(threadId);
-		this.dom.metaNotificationBody.textContent = preview;
-		this.dom.metaNotification.classList.add('meta-notification--thread');
-		this.dom.metaNotification.hidden = false;
-		this._bannerThread = threadId;
-		this.armBannerTimer(threadId);
-	},
-
-	armBannerTimer: function(threadId) {
 		var story = this;
+		var card = document.createElement('div');
 
-		window.clearTimeout(this._bannerTimer);
-		this._bannerTimer = window.setTimeout(function() {
-			if (story._bannerThread === threadId) {
-				story.dom.metaNotification.hidden = true;
-				story._bannerThread = null;
-				story.pumpBanners();
+		card.className = 'meta-notification-card meta-notification--thread';
+		card.innerHTML =
+			'<div class="meta-notification-header">' +
+			'<span class="meta-notification-label"></span>' +
+			'<span class="meta-notification-time">now</span>' +
+			'<button type="button" class="meta-notification-close" ' +
+			'aria-label="Dismiss notification">&times;</button>' +
+			'</div>' +
+			'<div class="meta-notification-body"></div>';
+		card.querySelector('.meta-notification-label').textContent =
+			this.getThreadDisplayName(threadId);
+		card.querySelector('.meta-notification-body').textContent = preview;
+
+		var entry = { threadId: threadId, el: card, timer: null };
+
+		// tapping a banner is an invitation: it jumps to that
+		// conversation; the × just dismisses, for keyboard and
+		// screen-reader users
+
+		card.addEventListener('click', function(event) {
+			if (event.target.closest('.meta-notification-close')) {
+				story.dismissBanner(entry);
+				return;
 			}
+
+			if (!event.target.closest('button, a')) {
+				story.dismissBanner(entry);
+				story.openThread(entry.threadId);
+			}
+		});
+
+		this.dom.bannerStack.appendChild(card);
+		this._banners.push(entry);
+
+		entry.timer = window.setTimeout(function() {
+			story.dismissBanner(entry);
 		}, this.config.bannerSeconds * 1000);
 	},
 
 	/**
-	 Shows the next waiting thread banner, if the banner slot is free.
+	 Fades out one banner card; a queued banner takes the freed slot
+	 a beat later.
 	**/
 
-	pumpBanners: function() {
-		if (!this.dom.metaNotification.hidden) {
+	dismissBanner: function(entry) {
+		var story = this;
+		var index = this._banners.indexOf(entry);
+
+		if (index === -1) {
 			return;
 		}
 
-		var next = this._bannerQueue.shift();
+		this._banners.splice(index, 1);
+		window.clearTimeout(entry.timer);
+		entry.el.classList.add('banner-out');
+		window.setTimeout(function() {
+			entry.el.remove();
+			story.pumpBanners();
+		}, 350);
+	},
 
-		if (next) {
+	/**
+	 Shows waiting banners while the stack has free slots.
+	**/
+
+	pumpBanners: function() {
+		while (
+			this._banners.length < this.config.bannerStack &&
+			this._bannerQueue.length
+		) {
+			var next = this._bannerQueue.shift();
+
 			this.displayThreadBanner(next.threadId, next.preview);
 		}
+	},
+
+	/**
+	 Removes every banner instantly — undo, restore, scene resets.
+	**/
+
+	clearBanners: function() {
+		this._banners.forEach(function(entry) {
+			window.clearTimeout(entry.timer);
+			entry.el.remove();
+		});
+		this._banners = [];
+		this._bannerQueue = [];
 	},
 
 	/**
@@ -5312,7 +5386,6 @@ Object.assign(Story.prototype, {
 		window.passage = previousPassage;
 
 		var speaker = this.getPassageSpeaker(passage);
-		var nodes = this.buildPassageElement(passage, speaker, html);
 		var story = this;
 
 		// a `quiet` delivery happened off-screen: no arrival effects,
@@ -5322,6 +5395,40 @@ Object.assign(Story.prototype, {
 
 		var quietRead = passage.tags.indexOf('quiet-read') > -1;
 		var quiet = quietRead || passage.tags.indexOf('quiet') > -1;
+
+		// [sound …] cues play on live deliveries only
+
+		html = html.replace(
+			/<div class="chat-sound" data-src="([^"]*)"><\/div>/g,
+			function(match, src) {
+				if (!opts.instant && !quiet) {
+					story.playAudioFile(template.unescapeHtml(src));
+				}
+
+				return '';
+			}
+		);
+
+		// a [then …] chain in a delivered passage fires like a
+		// showDelayed() call in one would
+
+		html = html.replace(
+			/<div class="chat-then" data-passage="([^"]*)" data-delay="([^"]*)"><\/div>/g,
+			function(match, name, delay) {
+				var target = template.unescapeHtml(name);
+
+				if (delay === '') {
+					story.showDelayed(target);
+				}
+				else {
+					story.showDelayed(target, parseInt(delay, 10));
+				}
+
+				return '';
+			}
+		);
+
+		var nodes = this.buildPassageElement(passage, speaker, html);
 
 		nodes.forEach(function(node) {
 			if (opts.instant || quiet) {
@@ -5873,7 +5980,7 @@ Object.assign(Story.prototype, {
 			this.clearAsides();
 			this.clearUserResponses();
 			this._preShownStamps = null;
-			this._bannerQueue = [];
+			this.clearBanners();
 			this.state = {};
 			this.timeline = [];
 			this.history = [];
@@ -6199,7 +6306,7 @@ Object.assign(Story.prototype, {
 		this.clearAsides();
 		this.clearUserResponses();
 		this._preShownStamps = null;
-		this._bannerQueue = [];
+		this.clearBanners();
 		this._currentNodes = [];
 
 		var story = this;
@@ -6376,7 +6483,14 @@ Object.assign(Story.prototype, {
 			edges.push({ target: match[1].trim(), kind: 'deliver' });
 		}
 
-		var call = /\b(show|showDelayed|deliver|debugJump)\(\s*(['"])([^'"]+)\2/g;
+		var thenRe =
+			/^[ \t]*\[then[ \t]+(.+?)(?:[ \t]+in[ \t]+\d+(?:\.\d+)?(?:ms|s))?[ \t]*\][ \t]*$/gim;
+
+		while ((match = thenRe.exec(source))) {
+			edges.push({ target: match[1].trim(), kind: 'chain' });
+		}
+
+		var call = /\b(show|showDelayed|deliver|debugJump)\s*\(\s*(['"])([^'"]+)\2/g;
 
 		while ((match = call.exec(source))) {
 			edges.push({
@@ -6804,6 +6918,8 @@ Object.assign(Story.prototype, {
 			});
 		});
 
+		var deadEnds = {};
+
 		content.forEach(function(p) {
 			if (
 				p.tags.indexOf('End') > -1 ||
@@ -6827,13 +6943,49 @@ Object.assign(Story.prototype, {
 			}
 
 			if (!canContinue(p.name, {})) {
+				deadEnds[p.name] = p;
+			}
+		});
+
+		// a dead end at the far end of a chain fails canContinue for
+		// every passage along it — report only where the chain stops,
+		// not every ancestor that (correctly) leads there. The walk
+		// passes through exempt intermediaries (asides, deliveries).
+
+		var leadsToDeeper = function(name, seen) {
+			if (seen[name]) {
+				return false;
+			}
+
+			seen[name] = true;
+
+			var p = story.passage(name);
+
+			if (!p) {
+				return false;
+			}
+
+			return story.passageEdges(p.source).some(function(edge) {
+				if (!story.isAutoEdge(edge) || !story.passage(edge.target)) {
+					return false;
+				}
+
+				return (
+					!!deadEnds[edge.target] ||
+					leadsToDeeper(edge.target, seen)
+				);
+			});
+		};
+
+		Object.keys(deadEnds).forEach(function(name) {
+			if (!leadsToDeeper(name, {})) {
 				findings.push({
 					level: 'warn',
 					message:
 						'dead end — no reply pills, and no chain or ' +
 						'delivery from here leads to choices (tag it ' +
 						'`End` if the story is meant to stop here)',
-					passage: p.name
+					passage: name
 				});
 			}
 		});

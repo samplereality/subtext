@@ -201,14 +201,14 @@ handy for a "start" button, or a terse choice that reads fuller in the thread
 
 found my old flip phone in a drawer
 
-<% story.showDelayed('montage-2', 400) %>
+[then montage-2 in 400ms]
 
 :: montage-2 [speaker-2]
 [timestamp Fri, Jul 18, 2014]
 
 the charger still works?!
 
-<% story.showDelayed('montage-3', 0) %>
+[then montage-3 in 0s]
 
 :: montage-3 [speaker-2]
 [timestamp Sat, Feb 3, 2018]
@@ -223,6 +223,15 @@ twelve missed calls on here from 2013
 ok the flip phone is going back in the drawer
 
 [[start over?->Start]]
+
+:: missed-call [speaker-2 unlinked]
+[sound data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=]
+
+☎️ you hear the phone buzz across the room
+
+[system Missed call]
+
+[[what was that?->Start]]
 
 :: margin-note [aside-right unlinked]
 A note in the margin that asks nothing of you.

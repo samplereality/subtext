@@ -880,6 +880,45 @@ async function run() {
 		(await asidePage.locator('.chat-aside').count()) === 0
 	);
 
+	// asides stack: a held aside survives a newcomer on the same side
+	await asidePage.evaluate(() => {
+		window.story.passages.push(
+			new window.Passage(
+				9985,
+				'held-note',
+				['aside-right', 'aside-hold'],
+				'a note that holds'
+			),
+			new window.Passage(9986, 'later-note', ['aside-right'], 'a second note')
+		);
+		window.story.show('held-note');
+		window.story.showUserBubble('a beat passes');
+		window.story.show('later-note');
+	});
+	await asidePage.waitForTimeout(600);
+	const stackedAsides = await asidePage.evaluate(() => {
+		const asides = Array.from(
+			document.querySelectorAll('.chat-aside--right:not(.chat-aside--out)')
+		);
+		const rects = asides.map((el) => el.getBoundingClientRect());
+		return {
+			count: asides.length,
+			apart:
+				rects.length === 2 &&
+				(rects[0].bottom <= rects[1].top + 1 ||
+					rects[1].bottom <= rects[0].top + 1)
+		};
+	});
+	check(
+		'a held aside survives a same-side newcomer, stacked apart',
+		stackedAsides.count === 2 && stackedAsides.apart
+	);
+	await asidePage.evaluate(() => {
+		window.story.clearAsides();
+		window.story.passages.length -= 2;
+	});
+	await asidePage.waitForTimeout(600);
+
 	// the left margin, via tag
 	await asidePage.evaluate(() => window.story.show('aside-demo-left'));
 	await asidePage.waitForSelector('#aside-layer .chat-aside--left', {
@@ -1115,6 +1154,30 @@ async function run() {
 		await chainShape()
 	);
 
+	// the montage chains via the [then …] directive — its marker must
+	// never leak into the transcript
+	check(
+		'the [then] marker renders nothing in the transcript',
+		await chainPage.evaluate(
+			() => document.querySelectorAll('.chat-then').length === 0
+		)
+	);
+
+	check(
+		'[then] parses into chain edges, with or without an in-clause',
+		await chainPage.evaluate(() => {
+			const edges = window.story.passageEdges(
+				'hello\n\n[then next stop]\n\n[then later in 2.5s]'
+			);
+			return (
+				edges.length === 2 &&
+				edges[0].target === 'next stop' &&
+				edges[1].target === 'later' &&
+				edges.every((e) => e.kind === 'chain')
+			);
+		})
+	);
+
 	// a completed chain restored from a save must not re-run its
 	// showDelayed echoes on top of the replayed messages
 	await chainPage.evaluate(() =>
@@ -1342,6 +1405,46 @@ async function run() {
 			sideNarration.pills === sideNarration.before.pills &&
 			sideNarration.notes === sideNarration.before.notes + 1 &&
 			sideNarration.cursor === 'pill-demo'
+	);
+
+	// [sound] cues play when the passage shows — once, invisibly, and
+	// never during a save replay
+	const soundCue = await page.evaluate(() => {
+		const played = [];
+		const orig = window.story.playAudioFile;
+
+		window.story.playAudioFile = (src) => played.push(src);
+		window.story.show('missed-call');
+
+		const liveCount = played.length;
+
+		window.story.restore(window.story.saveHash());
+		window.story.playAudioFile = orig;
+
+		const wrapper = Array.from(
+			document.querySelectorAll(
+				'.chat-passage-wrapper[data-speaker="2"]'
+			)
+		).find((w) => w.textContent.indexOf('phone buzz') > -1);
+
+		return {
+			liveCount,
+			replayCount: played.length,
+			rendered: !!wrapper,
+			noEmptyBubble: wrapper
+				? Array.from(
+						wrapper.querySelectorAll('.chat-passage')
+					).every((b) => b.textContent.trim() !== '')
+				: false
+		};
+	});
+
+	check(
+		'[sound] plays on show, once, and not on replay',
+		soundCue.liveCount === 1 &&
+			soundCue.replayCount === 1 &&
+			soundCue.rendered &&
+			soundCue.noEmptyBubble
 	);
 
 	console.log('deleted messages');
@@ -1699,6 +1802,33 @@ async function run() {
 		})
 	);
 
+	// a dead end deep in a showDelayed chain is reported once, at the
+	// chain's end — not on every passage that (correctly) leads there
+	check(
+		'a chained dead end is flagged only where the chain stops',
+		await debugPage.evaluate(() => {
+			window.story.passages.push(
+				new window.Passage(9995, 'chain-hub', [], '[[go->chain-1]]'),
+				new window.Passage(9996, 'chain-1', ['speaker-2'], 'first\n\n<% story.showDelayed("chain-aside") %>'),
+				new window.Passage(9997, 'chain-aside', ['aside-left'], 'a note\n\n<% story.showDelayed("chain-end") %>'),
+				new window.Passage(9998, 'chain-end', ['speaker-2'], 'silence')
+			);
+
+			const findings = window.story.lint();
+
+			window.story.passages.length -= 4;
+
+			const deadEnds = findings.filter(
+				(f) => f.message.indexOf('dead end') > -1
+			);
+
+			return (
+				deadEnds.length === 1 &&
+				deadEnds[0].passage === 'chain-end'
+			);
+		})
+	);
+
 	// the transcript export flattens what's on screen to Markdown
 	check(
 		'transcript export flattens the conversation to Markdown',
@@ -1944,19 +2074,22 @@ async function run() {
 		})
 	);
 
+	await inboxPage.evaluate(() => window.story.clearBanners());
 	await inboxPage.click('.user-response:has-text("what happened")');
-	await inboxPage.waitForSelector('#meta-notification:not([hidden])', {
+	await inboxPage.waitForSelector('#banner-stack .meta-notification-card', {
 		timeout: 25000
 	});
 	check(
 		'a delivery to another thread raises a banner',
-		(await inboxPage.textContent('#meta-notification-label')) === 'Mom'
+		(await inboxPage.textContent(
+			'#banner-stack .meta-notification-label'
+		)) === 'Mom'
 	);
 	check(
 		'banner shows the message body, not its [timestamp] chip',
 		await inboxPage.evaluate(() => {
-			const body = document.getElementById(
-				'meta-notification-body'
+			const body = document.querySelector(
+				'#banner-stack .meta-notification-body'
 			).textContent;
 			return body.indexOf('Honey') === 0 && body.indexOf('2:03') === -1;
 		})
@@ -1964,13 +2097,13 @@ async function run() {
 	check(
 		'long deliveries are cut off like real notifications',
 		await inboxPage.evaluate(() => {
-			const body = document.getElementById('meta-notification-body');
+			const body = document.querySelector(
+				'#banner-stack .meta-notification-body'
+			);
 			return (
 				body.textContent.length <= 92 &&
 				body.textContent.slice(-1) === '…' &&
-				document
-					.getElementById('meta-notification')
-					.classList.contains('meta-notification--thread')
+				body.closest('.meta-notification--thread') !== null
 			);
 		})
 	);
@@ -2119,16 +2252,13 @@ async function run() {
 	check('returning to the live thread re-offers its choices', true);
 
 	await inboxPage.click('.user-response:has-text("be careful")');
-	await inboxPage.waitForFunction(
-		() =>
-			!document.getElementById('meta-notification').hidden &&
-			document
-				.getElementById('meta-notification-label')
-				.textContent.indexOf('Unknown') === 0,
-		null,
+	await inboxPage.waitForSelector(
+		'#banner-stack .meta-notification-card:has-text("Unknown")',
 		{ timeout: 30000 }
 	);
-	await inboxPage.click('.meta-notification-card');
+	await inboxPage.click(
+		'#banner-stack .meta-notification-card:has-text("Unknown")'
+	);
 	await inboxPage.waitForSelector(
 		'.thread-log[data-thread="unknown"]:not([hidden])'
 	);
@@ -2154,14 +2284,13 @@ async function run() {
 			.locator('.thread-log[data-thread="sam"] .chat-passage[data-speaker="you"]:has-text("texting me")')
 			.count()) === 1
 	);
-	await inboxPage.waitForFunction(
-		() =>
-			!document.getElementById('meta-notification').hidden &&
-			document.getElementById('meta-notification-label').textContent === 'Mom',
-		null,
+	await inboxPage.waitForSelector(
+		'#banner-stack .meta-notification-card:has-text("Mom")',
 		{ timeout: 30000 }
 	);
-	await inboxPage.click('.meta-notification-card');
+	await inboxPage.click(
+		'#banner-stack .meta-notification-card:has-text("Mom")'
+	);
 	await inboxPage.waitForSelector('.user-response:has-text("stay inside")', {
 		timeout: 25000
 	});
@@ -2250,20 +2379,22 @@ async function run() {
 	// name the actual sender, and reply pills travel with the message
 	await inboxPage.evaluate(() => {
 		// clear any banner left over from the previous checks
-		document.getElementById('meta-notification').hidden = true;
+		window.story.clearBanners();
 
 		window.story.config.minTypingDelay = 50;
 		window.story.config.maxTypingDelay = 100;
 		window.story.openThread('sam');
 		window.story.deliver('mom-crossover');
 	});
-	await inboxPage.waitForSelector('#meta-notification:not([hidden])');
+	await inboxPage.waitForSelector('#banner-stack .meta-notification-card');
 	check(
 		'a cross-speaker delivery names its sender in the banner',
-		(await inboxPage.textContent('#meta-notification-label')) === 'Mom' &&
-			(await inboxPage.textContent('#meta-notification-body')).indexOf(
-				'Sam: '
-			) === 0
+		(await inboxPage.textContent(
+			'#banner-stack .meta-notification-label'
+		)) === 'Mom' &&
+			(await inboxPage.textContent(
+				'#banner-stack .meta-notification-body'
+			)).indexOf('Sam: ') === 0
 	);
 
 	await inboxPage.evaluate(() => window.story.openThread('mom'));
@@ -2325,49 +2456,59 @@ async function run() {
 		)
 	);
 
-	// banners queue: same-thread updates collapse, other threads wait
-	const bannerQueue = await inboxPage.evaluate(
+	// banners stack: each message gets its own card, oldest on top;
+	// past the stack limit they wait for a free slot
+	const bannerStackState = await inboxPage.evaluate(
 		() =>
 			new Promise((resolve) => {
-				document.getElementById('meta-notification').hidden = true;
-				window.story._bannerThread = null;
-				window.story._bannerQueue = [];
+				window.story.clearBanners();
 				window.story.config.bannerSeconds = 0.5;
 
 				window.story.showThreadBanner('mom', 'first message');
-				window.story.showThreadBanner('mom', 'first, updated');
-				window.story.showThreadBanner('pizza', 'second message');
+				window.story.showThreadBanner('mom', 'second message');
+				window.story.showThreadBanner('pizza', 'third message');
+				window.story.showThreadBanner('sam', 'fourth message');
 
-				const first = {
-					label: document.getElementById('meta-notification-label')
-						.textContent,
-					body: document.getElementById('meta-notification-body')
-						.textContent,
-					queued: window.story._bannerQueue.length
-				};
+				const read = () =>
+					Array.from(
+						document.querySelectorAll(
+							'#banner-stack .meta-notification-card:not(.banner-out)'
+						)
+					).map((card) => ({
+						label: card.querySelector('.meta-notification-label')
+							.textContent,
+						body: card.querySelector('.meta-notification-body')
+							.textContent
+					}));
 
+				const atOnce = { cards: read(), queued: window.story._bannerQueue.length };
+
+				// the stack expires; the queued banner takes a freed slot
 				setTimeout(() => {
-					resolve({
-						first,
-						secondLabel: document.getElementById(
-							'meta-notification-label'
-						).textContent,
-						secondBody: document.getElementById(
-							'meta-notification-body'
-						).textContent
-					});
-				}, 800);
+					resolve({ atOnce, later: read() });
+				}, 1100);
 			})
 	);
 
 	check(
-		'banners queue instead of overwriting (same thread collapses)',
-		bannerQueue.first.label === 'Mom' &&
-			bannerQueue.first.body === 'first, updated' &&
-			bannerQueue.first.queued === 1 &&
-			bannerQueue.secondLabel === 'Pizza Palace' &&
-			bannerQueue.secondBody === 'second message'
+		'each notification is its own banner, stacked in arrival order',
+		bannerStackState.atOnce.cards.length === 3 &&
+			bannerStackState.atOnce.cards[0].label === 'Mom' &&
+			bannerStackState.atOnce.cards[0].body === 'first message' &&
+			bannerStackState.atOnce.cards[1].body === 'second message' &&
+			bannerStackState.atOnce.cards[2].label === 'Pizza Palace' &&
+			bannerStackState.atOnce.queued === 1
 	);
+	check(
+		'an overflow banner waits for a free slot, then shows',
+		bannerStackState.later.length === 1 &&
+			bannerStackState.later[0].label === 'Sam' &&
+			bannerStackState.later[0].body === 'fourth message'
+	);
+	await inboxPage.evaluate(() => {
+		window.story.clearBanners();
+		window.story.config.bannerSeconds = 5;
+	});
 
 	// group chats: member subtitle, cluster avatar, sender previews
 	await inboxPage.evaluate(() => window.story.openThread('family'));
@@ -2435,9 +2576,7 @@ async function run() {
 	const quietDelivery = await inboxPage.evaluate(
 		() =>
 			new Promise((resolve) => {
-				document.getElementById('meta-notification').hidden = true;
-				window.story._bannerThread = null;
-				window.story._bannerQueue = [];
+				window.story.clearBanners();
 
 				const before = window.story.unread.mom || 0;
 
@@ -2454,9 +2593,10 @@ async function run() {
 							) > -1,
 						unread:
 							(window.story.unread.mom || 0) === before + 1,
-						banner: !document.getElementById(
-							'meta-notification'
-						).hidden,
+						banner:
+							document.querySelectorAll(
+								'#banner-stack .meta-notification-card'
+							).length > 0,
 						typing: window.story._typingThread
 					});
 				}, 60);
@@ -2488,9 +2628,10 @@ async function run() {
 							log.textContent.indexOf('hope you') > -1,
 						unreadUnchanged:
 							(window.story.unread.mom || 0) === before,
-						banner: !document.getElementById(
-							'meta-notification'
-						).hidden
+						banner:
+							document.querySelectorAll(
+								'#banner-stack .meta-notification-card'
+							).length > 0
 					});
 				}, 60);
 			})
