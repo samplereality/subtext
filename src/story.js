@@ -97,6 +97,67 @@ function unquoteName(name) {
 	return name;
 }
 
+/* readable words in passage source: message and narration prose, pill
+   labels, and (send: …) text — with code, comments, directive lines,
+   and markup stripped. An approximation: text a template prints at
+   runtime isn't counted. */
+
+function countWords(source) {
+	var text = source
+		.replace(/\/\*[\s\S]*?\*\//g, ' ')
+		.replace(/^[ \t]*\/\/.*$/gm, ' ')
+		.replace(/<%[\s\S]*?%>/g, ' ')
+
+		// links: keep the pill label and any (send: …) text — the
+		// player reads both
+
+		.replace(/\[\[(.*?)\]\]/g, function(match, inner) {
+			var arrow = inner.indexOf('->');
+
+			if (arrow > -1) {
+				inner = inner.slice(0, arrow);
+			}
+			else {
+				var back = inner.indexOf('<-');
+
+				if (back > -1) {
+					inner = inner.slice(back + 2);
+				}
+				else {
+					var bar = /(^|[^|])\|(?!\|)/.exec(inner);
+
+					if (bar) {
+						inner = inner.slice(0, bar.index + bar[1].length);
+					}
+				}
+			}
+
+			return ' ' + inner.replace(/\(send:([^)]*)\)/gi, ' $1 ') + ' ';
+		})
+
+		// directive lines are chrome, not prose
+
+		.replace(
+			/^[ \t]*\[(?:timestamp|system|voice|sound|location|react|deliver|then|tombstone)\b[^\]]*\][ \t]*$/gim,
+			' '
+		)
+
+		// span/div shorthand selectors and HTML tags
+
+		.replace(/\{[^}]*\}/g, ' ')
+		.replace(/<[^>]+>/g, ' ');
+
+	var count = 0;
+
+	text.split(/\s+/).forEach(function(token) {
+		if (/[A-Za-z0-9\u00C0-\uFFFF]/.test(token)) {
+			count += 1;
+		}
+	});
+
+	return count;
+}
+
 function deepClone(value) {
 	try {
 		return JSON.parse(JSON.stringify(value));
@@ -6775,6 +6836,44 @@ Object.assign(Story.prototype, {
 	 the linter reads source, it never runs it.
 	**/
 
+	/**
+	 Word counts for the piece. story.wordCount('name') returns the
+	 readable words in that passage (null if it doesn't exist);
+	 story.wordCount() totals every content passage — special Story*
+	 passages and script/stylesheet passages excluded — returning
+	 { words, passages }. Counts cover message and narration prose,
+	 pill labels, and (send: …) text; code, comments, directive lines,
+	 and markup are not words. Text printed by templates at runtime
+	 can't be counted from source, so treat totals as close, not exact.
+	**/
+
+	wordCount: function(idOrName) {
+		if (idOrName !== undefined) {
+			var passage = this.passage(idOrName);
+
+			return passage ? countWords(passage.source) : null;
+		}
+
+		var words = 0;
+		var counted = 0;
+
+		this.passages.forEach(function(p) {
+			if (
+				!p ||
+				p.name.indexOf('Story') === 0 ||
+				p.tags.indexOf('script') > -1 ||
+				p.tags.indexOf('stylesheet') > -1
+			) {
+				return;
+			}
+
+			words += countWords(p.source);
+			counted += 1;
+		});
+
+		return { words: words, passages: counted };
+	},
+
 	lint: function() {
 		var story = this;
 		var findings = [];
@@ -7209,8 +7308,22 @@ Object.assign(Story.prototype, {
 
 			lintBox.textContent = '';
 
+			// the piece's size, alongside its health
+
+			var stats = story.wordCount();
+			var statsLine = document.createElement('p');
+
+			statsLine.className = 'debug-note';
+			statsLine.id = 'debug-wordcount';
+			statsLine.textContent =
+				stats.words.toLocaleString() + ' words across ' +
+				stats.passages + ' passages';
+			lintBox.appendChild(statsLine);
+
 			if (findings.length === 0) {
-				lintBox.textContent = '✓ no problems found';
+				lintBox.appendChild(
+					document.createTextNode('✓ no problems found')
+				);
 				return;
 			}
 
@@ -7270,7 +7383,10 @@ Object.assign(Story.prototype, {
 				(story.multiThread && story._hotThread
 					? ' · ' + story._hotThread
 					: '') +
-				' · turn ' + story.history.length;
+				' · turn ' + story.history.length +
+				(window.passage
+					? ' · ' + story.wordCount(window.passage.name) + ' words'
+					: '');
 
 			// state variables
 
