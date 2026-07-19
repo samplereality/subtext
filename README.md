@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.0"
+  "format-version": "2.8.1"
 }
 ```
 
@@ -652,7 +652,7 @@ not over text. I'm checking something
 
 Three things move the story between threads:
 
-- **A link to a passage in another thread** pulls the whole conversation there — the player follows the story's cursor, and the header shows the new contact. This is the normal way to advance.
+- **A link to a passage in another thread** pulls the whole conversation there — the view switches the moment the pill is tapped, the typing indicator runs in the new thread, and the header shows the new contact. Any text the pill sent stays as a bubble in the conversation it was sent from. This is the normal way to advance, and it applies to every reply kind: text pills, reactions, photos, locations, free-text input, and timed responses.
 - **`[deliver passage-name]`** drops a passage into *its* thread **without** moving the story. The conversation the player is in keeps its choices; the other thread gains a new message and an unread badge. While the player is texting Sam, Mom's thread can fill up in the background:
 
   ```
@@ -844,11 +844,11 @@ While writing, Subtext can run with a debug panel — a devtools-style drawer se
 
 A `🐛 debug` button appears in the corner; it opens a panel that stays open until closed — across reloads too — with:
 
-- **Where you are** — current passage, thread, and turn count, always in view.
+- **Where you are** — current passage, thread, turn count, and the current passage's word count, always in view.
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
 - **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in).
 - **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. In multi-conversation stories both land you in the target's own thread — a thread tag is honored directly, and an untagged passage's thread is inferred from the nearest tagged passage that links to it. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. Also callable as `story.debugFastForward(name)`.
-- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]`/`[then]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a `showDelayed` chain is reported once, at the passage where the chain stops. Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array.
+- **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]`/`[then]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a `showDelayed` chain is reported once, at the passage where the chain stops. Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array. The section opens with the piece's size: total words across all content passages. Counts cover what a player reads — message and narration prose, pill labels, `(send: …)` text — and skip code, comments, directive lines, and markup; text printed by templates at runtime can't be counted from source, so treat totals as close rather than exact. Also callable as `story.wordCount()` (the whole piece, as `{ words, passages }`) or `story.wordCount('passage name')` (one passage's count).
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as `story.exportTranscript()`, which returns the Markdown string.
 - **Memory** — what the story has `remember()`ed across playthroughs, with a forget-all button.
 
@@ -989,6 +989,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `enableDebug()` | Turn on the debug panel from code | [Debug mode](#debug-mode) |
 | `exportTranscript()` | The visible conversation, flattened to Markdown | [Debug mode](#debug-mode) |
 | `lint()` | The story check's findings, as an array | [Debug mode](#debug-mode) |
+| `wordCount(name?)` | One passage's word count, or story totals as `{ words, passages }` | [Debug mode](#debug-mode) |
 | `markRead()` / `markUnread()` / `markFailed()` | Set the receipt on the player's last message | [Read receipts](#read-receipts) |
 | `openInbox()` / `openThread(id)` / `openTrash()` | Switch between the inbox, a conversation, and the Trash | [Multiple conversations](#multiple-conversations) |
 | `passage(idOrName)` | Fetch a passage object | [The story and passage globals](#the-story-and-passage-globals) |
@@ -1213,6 +1214,11 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.8.1
+
+- **Fixed: a cross-thread link didn't move the view.** The docs promised that a link to a passage in another conversation pulls the player there; in practice the passage landed off-screen and announced itself with a notification banner. A player-chosen advance — a text pill, reaction, photo, location, free-text reply, or timed response — now switches the view to the target's thread at the moment of the tap, so the typing indicator and arrival play out where the player is watching. Autonomous arrivals (`[deliver]`, chains into another thread) still notify instead. See [Multiple conversations](#multiple-conversations).
+- **Word counts.** The debug panel's header shows the current passage's word count, and the story check opens with the piece's total words across all content passages. Counts cover readable text — prose, pill labels, `(send: …)` text — and exclude code, comments, directives, and markup. Also `story.wordCount()` / `story.wordCount('passage name')`. See [Debug mode](#debug-mode).
 
 ### Version 2.8
 

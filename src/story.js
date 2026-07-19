@@ -97,6 +97,67 @@ function unquoteName(name) {
 	return name;
 }
 
+/* readable words in passage source: message and narration prose, pill
+   labels, and (send: …) text — with code, comments, directive lines,
+   and markup stripped. An approximation: text a template prints at
+   runtime isn't counted. */
+
+function countWords(source) {
+	var text = source
+		.replace(/\/\*[\s\S]*?\*\//g, ' ')
+		.replace(/^[ \t]*\/\/.*$/gm, ' ')
+		.replace(/<%[\s\S]*?%>/g, ' ')
+
+		// links: keep the pill label and any (send: …) text — the
+		// player reads both
+
+		.replace(/\[\[(.*?)\]\]/g, function(match, inner) {
+			var arrow = inner.indexOf('->');
+
+			if (arrow > -1) {
+				inner = inner.slice(0, arrow);
+			}
+			else {
+				var back = inner.indexOf('<-');
+
+				if (back > -1) {
+					inner = inner.slice(back + 2);
+				}
+				else {
+					var bar = /(^|[^|])\|(?!\|)/.exec(inner);
+
+					if (bar) {
+						inner = inner.slice(0, bar.index + bar[1].length);
+					}
+				}
+			}
+
+			return ' ' + inner.replace(/\(send:([^)]*)\)/gi, ' $1 ') + ' ';
+		})
+
+		// directive lines are chrome, not prose
+
+		.replace(
+			/^[ \t]*\[(?:timestamp|system|voice|sound|location|react|deliver|then|tombstone)\b[^\]]*\][ \t]*$/gim,
+			' '
+		)
+
+		// span/div shorthand selectors and HTML tags
+
+		.replace(/\{[^}]*\}/g, ' ')
+		.replace(/<[^>]+>/g, ' ');
+
+	var count = 0;
+
+	text.split(/\s+/).forEach(function(token) {
+		if (/[A-Za-z0-9\u00C0-\uFFFF]/.test(token)) {
+			count += 1;
+		}
+	});
+
+	return count;
+}
+
 function deepClone(value) {
 	try {
 		return JSON.parse(JSON.stringify(value));
@@ -961,9 +1022,9 @@ Object.assign(Story.prototype, {
 		var target = this.passage(targetName);
 
 		if (parts.length === 0 && target && !this.getPassageSpeaker(target)) {
-			this.show(targetName, { noMove: true });
+			this.show(targetName, { noMove: true, follow: true });
 		} else {
-			this.showDelayed(targetName, { noMove: true });
+			this.showDelayed(targetName, { noMove: true, follow: true });
 		}
 	},
 
@@ -975,6 +1036,8 @@ Object.assign(Story.prototype, {
 	   noMove  - don't move the current passage into history first
 	   record  - if false, don't record this passage in the timeline
 	   instant - skip entrance animations (used when restoring)
+	   follow  - a player action chose this passage: if it belongs to
+	             another conversation, move the view there
 	**/
 
 	show: function(idOrName, opts) {
@@ -990,6 +1053,10 @@ Object.assign(Story.prototype, {
 				)
 			);
 			return;
+		}
+
+		if (opts.follow) {
+			this.followTargetThread(passage);
 		}
 
 		/**
@@ -2115,7 +2182,7 @@ Object.assign(Story.prototype, {
 
 		dispatch('textinput', { text: text, target: targetName, story: this });
 
-		this.showDelayed(targetName, { noMove: true });
+		this.showDelayed(targetName, { noMove: true, follow: true });
 	},
 
 	/**
@@ -2219,7 +2286,7 @@ Object.assign(Story.prototype, {
 			story: this
 		});
 
-		this.showDelayed(offer.target, { noMove: true });
+		this.showDelayed(offer.target, { noMove: true, follow: true });
 	},
 
 	/**
@@ -2312,7 +2379,7 @@ Object.assign(Story.prototype, {
 				story.state.playerLocation = null;
 			}
 
-			story.showDelayed(targetName, { noMove: true });
+			story.showDelayed(targetName, { noMove: true, follow: true });
 		};
 
 		if (!navigator.geolocation) {
@@ -2597,7 +2664,7 @@ Object.assign(Story.prototype, {
 
 		dispatch('photosent', { name: name, target: targetName, story: this });
 
-		this.showDelayed(targetName, { noMove: true });
+		this.showDelayed(targetName, { noMove: true, follow: true });
 	},
 
 	/**
@@ -3067,7 +3134,7 @@ Object.assign(Story.prototype, {
 
 		dispatch('reaction', { emoji: emoji, story: this });
 
-		this.showDelayed(targetName, { noMove: true });
+		this.showDelayed(targetName, { noMove: true, follow: true });
 	},
 
 	/**
@@ -4746,6 +4813,25 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Moves the view to the thread a player-chosen passage belongs to.
+	 Tapping a pill that advances the story into another conversation
+	 pulls the player along with the cursor — unlike autonomous
+	 arrivals ([deliver], chains), which raise a notification instead.
+	**/
+
+	followTargetThread: function(passage) {
+		if (!this.multiThread) {
+			return;
+		}
+
+		var threadId = this.getPassageThread(passage);
+
+		if (this._screen !== 'thread' || this._viewedThread !== threadId) {
+			this.openThread(threadId);
+		}
+	},
+
+	/**
 	 Shows the inbox: every conversation with previews and unread
 	 badges, most recent first.
 	**/
@@ -5557,6 +5643,16 @@ Object.assign(Story.prototype, {
 		if (!passage) {
 			this.show(idOrName, opts); // surfaces the error message
 			return;
+		}
+
+		// a player-chosen target in another conversation pulls the view
+		// there now, so the typing indicator runs where the player is
+		// watching; the deferred show doesn't need to pull again (and
+		// shouldn't yank a player who wandered off mid-delay)
+
+		if (opts.follow) {
+			this.followTargetThread(passage);
+			opts.follow = false;
 		}
 
 		var speaker = this.getPassageSpeaker(passage);
@@ -6740,6 +6836,44 @@ Object.assign(Story.prototype, {
 	 the linter reads source, it never runs it.
 	**/
 
+	/**
+	 Word counts for the piece. story.wordCount('name') returns the
+	 readable words in that passage (null if it doesn't exist);
+	 story.wordCount() totals every content passage — special Story*
+	 passages and script/stylesheet passages excluded — returning
+	 { words, passages }. Counts cover message and narration prose,
+	 pill labels, and (send: …) text; code, comments, directive lines,
+	 and markup are not words. Text printed by templates at runtime
+	 can't be counted from source, so treat totals as close, not exact.
+	**/
+
+	wordCount: function(idOrName) {
+		if (idOrName !== undefined) {
+			var passage = this.passage(idOrName);
+
+			return passage ? countWords(passage.source) : null;
+		}
+
+		var words = 0;
+		var counted = 0;
+
+		this.passages.forEach(function(p) {
+			if (
+				!p ||
+				p.name.indexOf('Story') === 0 ||
+				p.tags.indexOf('script') > -1 ||
+				p.tags.indexOf('stylesheet') > -1
+			) {
+				return;
+			}
+
+			words += countWords(p.source);
+			counted += 1;
+		});
+
+		return { words: words, passages: counted };
+	},
+
 	lint: function() {
 		var story = this;
 		var findings = [];
@@ -7174,8 +7308,22 @@ Object.assign(Story.prototype, {
 
 			lintBox.textContent = '';
 
+			// the piece's size, alongside its health
+
+			var stats = story.wordCount();
+			var statsLine = document.createElement('p');
+
+			statsLine.className = 'debug-note';
+			statsLine.id = 'debug-wordcount';
+			statsLine.textContent =
+				stats.words.toLocaleString() + ' words across ' +
+				stats.passages + ' passages';
+			lintBox.appendChild(statsLine);
+
 			if (findings.length === 0) {
-				lintBox.textContent = '✓ no problems found';
+				lintBox.appendChild(
+					document.createTextNode('✓ no problems found')
+				);
 				return;
 			}
 
@@ -7235,7 +7383,10 @@ Object.assign(Story.prototype, {
 				(story.multiThread && story._hotThread
 					? ' · ' + story._hotThread
 					: '') +
-				' · turn ' + story.history.length;
+				' · turn ' + story.history.length +
+				(window.passage
+					? ' · ' + story.wordCount(window.passage.name) + ' words'
+					: '');
 
 			// state variables
 

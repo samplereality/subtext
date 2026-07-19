@@ -1801,6 +1801,45 @@ async function run() {
 		) > -1
 	);
 
+	// word counts: readable prose and pill text, not code or chrome
+	check(
+		'wordCount counts prose and pills, not code or directives',
+		await debugPage.evaluate(() => {
+			window.story.passages.push(
+				new window.Passage(
+					9990,
+					'wc-probe',
+					[],
+					'hello there\n\n<% s.x = 1 %>\n' +
+						'[timestamp Tonight 2 AM]\n// a comment\n' +
+						'[[go on (send:on my way)->next]]\nlast words'
+				)
+			);
+			const one = window.story.wordCount('wc-probe');
+			const all = window.story.wordCount();
+			window.story.passages.length -= 1;
+			return (
+				one === 9 &&
+				all.words > one &&
+				all.passages > 5 &&
+				window.story.wordCount('no such passage') === null
+			);
+		})
+	);
+	check(
+		'debug panel shows the story and passage word counts',
+		await debugPage.evaluate(() => {
+			const stats = document.getElementById(
+				'debug-wordcount'
+			).textContent;
+			const where = document.getElementById('debug-where').textContent;
+			return (
+				/[\d,]+ words across \d+ passages/.test(stats) &&
+				/ · \d+ words$/.test(where)
+			);
+		})
+	);
+
 	// dead-end detection: a speakered passage with no way forward is
 	// flagged; End tags, chains, deliveries-with-pills, and side
 	// content are not
@@ -2310,17 +2349,19 @@ async function run() {
 			.locator('.thread-log[data-thread="sam"] .chat-passage[data-speaker="you"]:has-text("texting me")')
 			.count()) === 1
 	);
-	await inboxPage.waitForSelector(
-		'#banner-stack .meta-notification-card:has-text("Mom")',
-		{ timeout: 30000 }
-	);
-	await inboxPage.click(
-		'#banner-stack .meta-notification-card:has-text("Mom")'
-	);
+	// mom-2 is a direct cross-thread link: picking the pill moves the
+	// view to the mom thread with the cursor — no banner detour
 	await inboxPage.waitForSelector('.user-response:has-text("stay inside")', {
-		timeout: 25000
+		timeout: 30000
 	});
-	check('a cross-thread link moves the conversation there', true);
+	check(
+		'a cross-thread link pulls the view along with the cursor',
+		await inboxPage.evaluate(
+			() =>
+				window.story._viewedThread === 'mom' &&
+				document.getElementById('ptitle').textContent === 'Mom'
+		)
+	);
 
 	await inboxPage.click('.user-response:has-text("stay inside")');
 	await inboxPage.waitForSelector('.thread-log[data-thread="mom"] .chat-reaction', {
