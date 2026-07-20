@@ -174,7 +174,7 @@ The first two follow one convention: **incoming is a directive, outgoing is a li
 
 ## Story state
 
-Everything the format tracks automatically lives in `s` (alias of `story.state`), participates in undo and save/restore, and is watchable live in [debug mode](#debug-mode):
+Everything the format tracks automatically lives in `s` (alias of `story.state`), participates in undo and save/restore, and is watchable live in [debug mode](#debug-mode). The `s` name is in scope only inside `<% %>` templates — in Story JavaScript, event listeners, or the console, use `story.state`, and read it fresh each time rather than keeping a reference (the object is replaced wholesale on restore and undo):
 
 | `s` value | Is | Set by |
 | --- | --- | --- |
@@ -1134,19 +1134,21 @@ window.addEventListener('choice', function (e) {
 
 ### Gate the story on exploration, not a timer
 
-After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in `s`, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count.
+After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in story state, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count. (Note `story.state` here, not `s` — the `s` shorthand exists only inside `<% %>` templates. And grab `story.state` fresh inside each listener call, as below, rather than once at the top of your Story JavaScript: the state object is replaced wholesale on restore and undo, so a reference captured at load time goes stale.)
 
 ```js
 window.addEventListener('threadopened', function (e) {
-  s.seen = s.seen || {};
-  s.seen[e.detail.thread] = true;
+  var state = story.state;
+
+  state.seen = state.seen || {};
+  state.seen[e.detail.thread] = true;
 
   var toExplore = ['dad', 'mom', 'matt'];
-  var browsed = toExplore.filter(function (id) { return s.seen[id]; });
+  var browsed = toExplore.filter(function (id) { return state.seen[id]; });
 
   // resume once they've opened all three — but only the first time
-  if (browsed.length === toExplore.length && !s.resumed) {
-    s.resumed = true;
+  if (browsed.length === toExplore.length && !state.resumed) {
+    state.resumed = true;
     story.deliver('the-story-picks-up');   // lights a your-turn indicator
   }
 });
