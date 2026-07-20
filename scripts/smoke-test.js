@@ -2740,6 +2740,52 @@ async function run() {
 		)
 	);
 
+	// the threadopened event: fires on player navigation into a thread,
+	// carries the id, and repeats on re-open (dedup is the author's job)
+	check(
+		'opening a thread fires threadopened with its id',
+		await inboxPage.evaluate(() => {
+			const seen = [];
+			const handler = (e) => seen.push(e.detail.thread);
+
+			window.addEventListener('threadopened', handler);
+			window.story.openInbox();
+			window.story.openThread('mom');
+			window.story.openInbox();
+			window.story.openThread('sam');
+			window.story.openThread('sam');
+			window.removeEventListener('threadopened', handler);
+
+			return (
+				seen.length === 3 &&
+				seen[0] === 'mom' &&
+				seen[1] === 'sam' &&
+				seen[2] === 'sam'
+			);
+		})
+	);
+
+	// rebuilding the viewed thread from a save must stay silent, so a
+	// reload never re-announces where the player was
+	check(
+		'restoring a save does not re-fire threadopened',
+		await inboxPage.evaluate(() => {
+			window.story.openThread('mom');
+
+			const hash = window.story.saveHash();
+			let fired = false;
+			const handler = () => {
+				fired = true;
+			};
+
+			window.addEventListener('threadopened', handler);
+			window.story.restore(hash);
+			window.removeEventListener('threadopened', handler);
+
+			return !fired && window.story._viewedThread === 'mom';
+		})
+	);
+
 	check(
 		'a seeded [tombstone] renders as a deleted message',
 		await inboxPage.evaluate(() => {

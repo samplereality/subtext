@@ -1038,6 +1038,7 @@ window.addEventListener('photosent', function (e) {
 | `showpassage:after` | a passage has rendered and is on screen | `{ passage }` |
 | `hidepassage` | the current passage is leaving | `{ passage }` |
 | `choice` | the player picks a reply pill (or code calls `story.choose`) | `{ label, sent, target, story }` |
+| `threadopened` | the player opens a conversation (navigation, not a choice) | `{ thread, story }` |
 | `photosent` | the player sends a photo | `{ name, target, story }` |
 | `locationshared` | the player shares real coordinates | `{ lat, lon, story }` |
 | `reaction` | the player reacts with a tapback | `{ emoji, story }` |
@@ -1130,6 +1131,28 @@ window.addEventListener('choice', function (e) {
   gtag('event', 'reply', { label: e.detail.label });
 });
 ```
+
+### Gate the story on exploration, not a timer
+
+After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in `s`, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count.
+
+```js
+window.addEventListener('threadopened', function (e) {
+  s.seen = s.seen || {};
+  s.seen[e.detail.thread] = true;
+
+  var toExplore = ['dad', 'mom', 'matt'];
+  var browsed = toExplore.filter(function (id) { return s.seen[id]; });
+
+  // resume once they've opened all three — but only the first time
+  if (browsed.length === toExplore.length && !s.resumed) {
+    s.resumed = true;
+    story.deliver('the-story-picks-up');   // lights a your-turn indicator
+  }
+});
+```
+
+Resuming with a `deliver` (rather than moving the story outright) means a player still mid-browse isn't yanked away — a your-turn indicator lights up and waits for them to surface. Lower the threshold (`browsed.length >= 1`) for a gentler gate that only asks the player to look at *something* before the story continues. The event does not fire while a save is being rebuilt, so a reload never re-trips the gate.
 
 ### Affinity and stat meters
 
@@ -1231,6 +1254,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.8.1
 
+- **The `threadopened` event.** Fires when the player opens a conversation — the navigational counterpart to `choice`, with `{ thread, story }`. It lets a story track which threads the player has browsed (for example, to gate the story's resumption on inbox exploration rather than a timer) without polling. It stays silent while a save or checkpoint is rebuilt, so a reload never re-fires it. See [Events](#events) and the [exploration-gate recipe](#gate-the-story-on-exploration-not-a-timer).
 - **A VS Code extension.** Syntax highlighting for Subtext twee source — passage headers, directives (with the `[then …]` delay clause and quoted names), reply pills and their kinds, `(send: …)` text, comments, and embedded JavaScript/CSS/JSON in the special passages — plus auto-closing pairs (`<%` → `%>`, `[[` → `]]`) and snippets for the design language. See [Editor support](#editor-support).
 - **Fixed: a cross-thread link didn't move the view.** The docs promised that a link to a passage in another conversation pulls the player there; in practice the passage landed off-screen and announced itself with a notification banner. A player-chosen advance — a text pill, reaction, photo, location, free-text reply, or timed response — now switches the view to the target's thread at the moment of the tap, so the typing indicator and arrival play out where the player is watching. Autonomous arrivals (`[deliver]`, chains into another thread) still notify instead. See [Multiple conversations](#multiple-conversations).
 - **Word counts.** The debug panel's header shows the current passage's word count, and the story check opens with the piece's total words across all content passages. Counts cover readable text — prose, pill labels, `(send: …)` text — and exclude code, comments, directives, and markup. Also `story.wordCount()` / `story.wordCount('passage name')`. See [Debug mode](#debug-mode).

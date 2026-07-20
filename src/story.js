@@ -4112,7 +4112,10 @@ Object.assign(Story.prototype, {
 				this.openTrash();
 			}
 			else {
-				this.openThread(checkpoint.viewedThread || this._hotThread);
+				this.openThread(
+					checkpoint.viewedThread || this._hotThread,
+					{ silent: true }
+				);
 			}
 		}
 		else {
@@ -4749,10 +4752,12 @@ Object.assign(Story.prototype, {
 	 Shows a thread's conversation.
 	**/
 
-	openThread: function(threadId) {
+	openThread: function(threadId, opts) {
 		if (!this.multiThread) {
 			return;
 		}
+
+		opts = opts || {};
 
 		var story = this;
 		var log = this.logFor(threadId);
@@ -4810,6 +4815,20 @@ Object.assign(Story.prototype, {
 		window.requestAnimationFrame(function() {
 			story.dom.panel.scrollTop = story.dom.panel.scrollHeight;
 		});
+
+		/**
+		 Triggered when the player opens a conversation — the
+		 navigational counterpart to `choice`. Fires for inbox taps,
+		 banner taps, chevron navigation, and the story pulling the
+		 player into a thread; it does NOT fire while a save or
+		 checkpoint is being rebuilt (pass { silent: true }), so a
+		 reload never re-announces the thread the player was viewing.
+		 detail: { thread, story }.
+		**/
+
+		if (!opts.silent) {
+			dispatch('threadopened', { thread: threadId, story: this });
+		}
 	},
 
 	/**
@@ -6272,7 +6291,8 @@ Object.assign(Story.prototype, {
 				}
 				else {
 					this.openThread(
-						ts.viewed || this._hotThread || this.threadOrder[0]
+						ts.viewed || this._hotThread || this.threadOrder[0],
+						{ silent: true }
 					);
 				}
 			}
