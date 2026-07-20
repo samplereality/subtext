@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.1"
+  "format-version": "2.8.11"
 }
 ```
 
@@ -1252,12 +1252,15 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Version 2.8.1
+### Version 2.8.11
 
 - **Fixed: play-to duplicated delivered messages and could land in the wrong thread.** A fast-forward route that crossed a `[deliver]` edge rendered the delivered message twice — once by the sending passage's directive and again as a bogus cursor move — and repeated fast-forward/rewind cycles stacked further copies. The deliver step now only walks the graph, and a fast-forward lands the view in the target's own conversation even when the target is a delivery or side narration (which never takes the story cursor, however it's tagged).
 - **Fixed: rewinding to a player move could re-send it.** Rewinding the timeline to a "you: …" entry left the story mid-move — the reply already in the transcript, but the same pills re-offered — so continuing (a tap, or play-to choosing for you) sent the same reply again, doubling bubbles with each cycle. A rewind now lands just *before* the move, pills up and the move un-made.
 - **The `threadopened` event.** Fires when the player opens a conversation — the navigational counterpart to `choice`, with `{ thread, story }`. It lets a story track which threads the player has browsed (for example, to gate the story's resumption on inbox exploration rather than a timer) without polling. It stays silent while a save or checkpoint is rebuilt, so a reload never re-fires it. See [Events](#events) and the [exploration-gate recipe](#gate-the-story-on-exploration-not-a-timer).
 - **A VS Code extension.** Syntax highlighting for Subtext twee source — passage headers, directives (with the `[then …]` delay clause and quoted names), reply pills and their kinds, `(send: …)` text, comments, and embedded JavaScript/CSS/JSON in the special passages — plus auto-closing pairs (`<%` → `%>`, `[[` → `]]`) and snippets for the design language. See [Editor support](#editor-support).
+
+### Version 2.8.1
+
 - **Fixed: a cross-thread link didn't move the view.** The docs promised that a link to a passage in another conversation pulls the player there; in practice the passage landed off-screen and announced itself with a notification banner. A player-chosen advance — a text pill, reaction, photo, location, free-text reply, or timed response — now switches the view to the target's thread at the moment of the tap, so the typing indicator and arrival play out where the player is watching. Autonomous arrivals (`[deliver]`, chains into another thread) still notify instead. See [Multiple conversations](#multiple-conversations).
 - **Word counts.** The debug panel's header shows the current passage's word count, and the story check opens with the piece's total words across all content passages. Counts cover readable text — prose, pill labels, `(send: …)` text — and exclude code, comments, directives, and markup. Also `story.wordCount()` / `story.wordCount('passage name')`. See [Debug mode](#debug-mode).
 
