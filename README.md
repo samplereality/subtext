@@ -24,7 +24,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Story structure** — [Clearing the thread](#clearing-the-thread) · [Multiple conversations](#multiple-conversations) · [Saving](#saving)
 
-**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus) · [Debug mode](#debug-mode)
+**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus) · [Debug mode](#debug-mode) · [Editor support](#editor-support)
 
 **More** — [Extending Subtext](#extending-subtext) · [Recipes](#recipes) · [Accessibility](#accessibility) · [Migrating from Trialogue](#migrating-from-trialogue) · [Changelog](#changelog) · [Credits](#credits)
 
@@ -856,6 +856,18 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 
 Players never see any of this: without one of the four switches above, the debug code adds no UI.
 
+## Editor support
+
+The repository ships a VS Code extension with syntax highlighting for Subtext twee source, in [`editor/vscode-subtext`](editor/vscode-subtext). It colors passage headers (with `speaker-*` and `thread-*` tags distinguished), every directive — including quoted passage names and the `in 2s` delay clause on `[then …]` — reply pills with their `photo:`/`react:`/`input:`/`timeout:` kinds and `(send: …)` text, and comments; `<% %>` templates highlight as embedded JavaScript, and `Story JavaScript`, `[stylesheet]`, and `StoryData` passages as JavaScript, CSS, and JSON.
+
+To install, copy the folder into VS Code's extensions directory and reload:
+
+```sh
+cp -r editor/vscode-subtext ~/.vscode/extensions/subtext-syntax
+```
+
+`.twee` and `.tw` files then open as "Subtext (Twee)". The folder's own README covers packaging a VSIX instead, and how to coexist with the Twee 3 Language Tools extension if it's installed.
+
 ## Configuration
 
 Adjust behavior from your story's JavaScript, any time before or during play:
@@ -1217,6 +1229,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Version 2.8.1
 
+- **VS Code syntax highlighting.** The repository now ships an editor extension for Subtext twee source — passage headers, directives (with the `[then …]` delay clause and quoted names), reply pills and their kinds, `(send: …)` text, comments, and embedded JavaScript/CSS/JSON in the special passages. See [Editor support](#editor-support).
 - **Fixed: a cross-thread link didn't move the view.** The docs promised that a link to a passage in another conversation pulls the player there; in practice the passage landed off-screen and announced itself with a notification banner. A player-chosen advance — a text pill, reaction, photo, location, free-text reply, or timed response — now switches the view to the target's thread at the moment of the tap, so the typing indicator and arrival play out where the player is watching. Autonomous arrivals (`[deliver]`, chains into another thread) still notify instead. See [Multiple conversations](#multiple-conversations).
 - **Word counts.** The debug panel's header shows the current passage's word count, and the story check opens with the piece's total words across all content passages. Counts cover readable text — prose, pill labels, `(send: …)` text — and exclude code, comments, directives, and markup. Also `story.wordCount()` / `story.wordCount('passage name')`. See [Debug mode](#debug-mode).
 
