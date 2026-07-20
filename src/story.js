@@ -4112,7 +4112,10 @@ Object.assign(Story.prototype, {
 				this.openTrash();
 			}
 			else {
-				this.openThread(checkpoint.viewedThread || this._hotThread);
+				this.openThread(
+					checkpoint.viewedThread || this._hotThread,
+					{ silent: true }
+				);
 			}
 		}
 		else {
@@ -4749,10 +4752,12 @@ Object.assign(Story.prototype, {
 	 Shows a thread's conversation.
 	**/
 
-	openThread: function(threadId) {
+	openThread: function(threadId, opts) {
 		if (!this.multiThread) {
 			return;
 		}
+
+		opts = opts || {};
 
 		var story = this;
 		var log = this.logFor(threadId);
@@ -4810,6 +4815,20 @@ Object.assign(Story.prototype, {
 		window.requestAnimationFrame(function() {
 			story.dom.panel.scrollTop = story.dom.panel.scrollHeight;
 		});
+
+		/**
+		 Triggered when the player opens a conversation — the
+		 navigational counterpart to `choice`. Fires for inbox taps,
+		 banner taps, chevron navigation, and the story pulling the
+		 player into a thread; it does NOT fire while a save or
+		 checkpoint is being rebuilt (pass { silent: true }), so a
+		 reload never re-announces the thread the player was viewing.
+		 detail: { thread, story }.
+		**/
+
+		if (!opts.silent) {
+			dispatch('threadopened', { thread: threadId, story: this });
+		}
 	},
 
 	/**
@@ -6272,7 +6291,8 @@ Object.assign(Story.prototype, {
 				}
 				else {
 					this.openThread(
-						ts.viewed || this._hotThread || this.threadOrder[0]
+						ts.viewed || this._hotThread || this.threadOrder[0],
+						{ silent: true }
 					);
 				}
 			}
@@ -6455,6 +6475,20 @@ Object.assign(Story.prototype, {
 
 	debugRewind: function(count) {
 		var prefix = this.timeline.slice(0, count);
+
+		// a player move is not a resting point: rewinding to "you:
+		// yes" lands just BEFORE the yes is sent — pills up, move
+		// un-made. Landing just after it would strand the story
+		// mid-move (bubble sent, same pills still offered), and
+		// continuing from there — a tap, or play-to choosing for
+		// you — would send the same reply a second time.
+
+		while (
+			prefix.length &&
+			'uilr'.indexOf(prefix[prefix.length - 1].t) > -1
+		) {
+			prefix.pop();
+		}
 
 		if (prefix.length === 0) {
 			return;
@@ -6710,16 +6744,29 @@ Object.assign(Story.prototype, {
 		// fast-forward behaves like arriving normally.
 
 		steps.forEach(function(step) {
+			// a deliver edge's message was already rendered by the
+			// passage that sent it — its [deliver] directive fired
+			// (instantly) when that passage was shown a step ago. The
+			// step only walks the graph: showing the target too would
+			// render it twice, and would move the story cursor onto a
+			// passage the story never actually visits.
+
+			if (step.edge.kind === 'deliver') {
+				return;
+			}
+
 			story.cancelTimers();
 			story.hideTyping();
 			story.playEdge(step.edge);
 			story.show(step.edge.target, { instant: true });
 		});
 
-		// land the view where the story landed
+		// land the view in the target's own thread — the cursor can
+		// legitimately sit elsewhere (a delivered or side-narration
+		// target never takes it)
 
 		if (this.multiThread) {
-			this.openThread(this._hotThread);
+			this.openThread(this.getPassageThread(target));
 		}
 
 		this.scrollChatIntoView();

@@ -1644,6 +1644,61 @@ async function run() {
 		})
 	);
 
+	// a player move is not a resting point: rewinding to a "you: …"
+	// entry lands just BEFORE the reply is sent, pills re-offered —
+	// so continuing can never send the same reply twice
+	check(
+		'rewinding to a player move lands before it, move un-made',
+		await debugPage.evaluate(() => {
+			const idx = window.story.timeline.findIndex(
+				(e) => e.t === 'u' && e.text === 'montage time'
+			);
+
+			if (idx === -1) {
+				return false;
+			}
+
+			window.story.debugRewind(idx + 1);
+
+			const sent = Array.from(
+				document.querySelectorAll('#phistory .chat-passage')
+			).filter((b) => b.textContent.trim() === 'montage time');
+			const pill = Array.from(
+				document.querySelectorAll('.user-response')
+			).some((b) => b.textContent.indexOf('montage time') > -1);
+
+			return sent.length === 0 && pill;
+		})
+	);
+
+	// …and taking the move again produces exactly one bubble
+	await debugPage.click('.user-response:has-text("montage time")');
+	await debugPage.waitForSelector('.user-response:has-text("and then?")', {
+		timeout: 15000
+	});
+	check(
+		'replaying the move after such a rewind sends it once',
+		await debugPage.evaluate(
+			() =>
+				Array.from(
+					document.querySelectorAll('#phistory .chat-passage')
+				).filter((b) => b.textContent.trim() === 'montage time')
+					.length === 1
+		)
+	);
+
+	// put the story back where the undo check below expects it
+	await debugPage.evaluate(() => {
+		const idx = window.story.timeline.findIndex(
+			(e) =>
+				e.t === 'p' &&
+				(window.story.passage(e.id) || {}).name === 'montage-2'
+		);
+
+		window.story.debugRewind(idx + 1);
+	});
+	await debugPage.waitForTimeout(600);
+
 	// the replay rebuilt checkpoints, so undo works right after a
 	// rewind (and, by the same machinery, after any reload)
 	check(
@@ -2740,6 +2795,52 @@ async function run() {
 		)
 	);
 
+	// the threadopened event: fires on player navigation into a thread,
+	// carries the id, and repeats on re-open (dedup is the author's job)
+	check(
+		'opening a thread fires threadopened with its id',
+		await inboxPage.evaluate(() => {
+			const seen = [];
+			const handler = (e) => seen.push(e.detail.thread);
+
+			window.addEventListener('threadopened', handler);
+			window.story.openInbox();
+			window.story.openThread('mom');
+			window.story.openInbox();
+			window.story.openThread('sam');
+			window.story.openThread('sam');
+			window.removeEventListener('threadopened', handler);
+
+			return (
+				seen.length === 3 &&
+				seen[0] === 'mom' &&
+				seen[1] === 'sam' &&
+				seen[2] === 'sam'
+			);
+		})
+	);
+
+	// rebuilding the viewed thread from a save must stay silent, so a
+	// reload never re-announces where the player was
+	check(
+		'restoring a save does not re-fire threadopened',
+		await inboxPage.evaluate(() => {
+			window.story.openThread('mom');
+
+			const hash = window.story.saveHash();
+			let fired = false;
+			const handler = () => {
+				fired = true;
+			};
+
+			window.addEventListener('threadopened', handler);
+			window.story.restore(hash);
+			window.removeEventListener('threadopened', handler);
+
+			return !fired && window.story._viewedThread === 'mom';
+		})
+	);
+
 	check(
 		'a seeded [tombstone] renders as a deleted message',
 		await inboxPage.evaluate(() => {
@@ -2852,7 +2953,52 @@ async function run() {
 		})
 	);
 
-	await inboxPage.evaluate(() => window.story.openInbox());
+	// fast-forwarding across a [deliver] edge: the sender's directive
+	// renders the message once; the step only walks the graph, and the
+	// view lands in the DELIVERED thread, not the sender's
+	await inboxPage.evaluate(() => {
+		// from sam-2 (where the previous check left us), mom-1 is
+		// reachable only through sam-2's [deliver mom-1]
+		window.story.debugFastForward('mom-1');
+	});
+	await inboxPage.waitForFunction(
+		() =>
+			document
+				.querySelector('.thread-log[data-thread="mom"]')
+				.textContent.indexOf('Honey, are you awake') > -1,
+		null,
+		{ timeout: 15000 }
+	);
+	check(
+		'fast-forward to a delivered passage: once, in its own thread',
+		await inboxPage.evaluate(() => {
+			const copies = Array.from(
+				document.querySelectorAll(
+					'.thread-log[data-thread="mom"] .chat-passage'
+				)
+			).filter(
+				(b) => b.textContent.indexOf('Honey, are you awake') > -1
+			);
+
+			return (
+				copies.length === 1 &&
+				window.story._viewedThread === 'mom' &&
+				// the cursor stays with the sender: deliveries never
+				// take it
+				window.passage.name === 'sam-2'
+			);
+		})
+	);
+
+	await inboxPage.evaluate(() => {
+		window.story.openInbox();
+
+		// a banner mid-fade blends its text toward the background, so
+		// sampling one is meaningless — audit a settled banner instead
+		window.story.clearBanners();
+		window.story.showThreadBanner('mom', 'a settled banner for the audit');
+	});
+	await inboxPage.waitForTimeout(600);
 
 	const inboxAxe = await inboxPage.evaluate(async () => {
 		const results = await window.axe.run(document, {
@@ -2861,7 +3007,14 @@ async function run() {
 
 		return results.violations
 			.filter((v) => ['serious', 'critical'].includes(v.impact))
-			.map((v) => v.id);
+			.map(
+				(v) =>
+					v.id +
+					' @ ' +
+					v.nodes
+						.map((n) => n.target.join(' ') + ' :: ' + n.failureSummary)
+						.join(' | ')
+			);
 	});
 
 	check(

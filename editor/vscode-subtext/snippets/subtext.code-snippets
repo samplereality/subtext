@@ -1,0 +1,77 @@
+{
+	"Passage": {
+		"prefix": "passage",
+		"body": [":: ${1:passage name} [${2:speaker-1}]", "$0"],
+		"description": "A passage header with tags"
+	},
+	"Reply pill": {
+		"prefix": "link",
+		"body": "[[${1:label}->${2:target passage}]]$0",
+		"description": "A reply pill: display label, target passage"
+	},
+	"Reply pill with send text": {
+		"prefix": "send",
+		"body": "[[${1:label} (send:${2:text to send})->${3:target passage}]]$0",
+		"description": "A reply pill that sends different text than its label ((send:) empty sends nothing)"
+	},
+	"Then chain": {
+		"prefix": "then",
+		"body": "[then ${1:passage name}]$0",
+		"description": "Chain to the next passage with natural pacing (story.showDelayed)"
+	},
+	"Then chain with delay": {
+		"prefix": "then-in",
+		"body": "[then ${1:passage name} in ${2:2}s]$0",
+		"description": "Chain to the next passage after a delay (0s = instant, no typing dots)"
+	},
+	"Timestamp chip": {
+		"prefix": "timestamp",
+		"body": "[timestamp ${1:Today 9:41 AM}]$0",
+		"description": "A centered timestamp chip above the message"
+	},
+	"System message": {
+		"prefix": "system",
+		"body": "[system ${1:Someone has left the conversation}]$0",
+		"description": "A centered system-event chip"
+	},
+	"Deliver to another thread": {
+		"prefix": "deliver",
+		"body": "[deliver ${1:passage name}]$0",
+		"description": "Send a passage to its own conversation without moving the story there"
+	},
+	"Sound cue": {
+		"prefix": "sound",
+		"body": "[sound ${1:file.mp3}]$0",
+		"description": "Play an audio cue when the passage shows (renders nothing)"
+	},
+	"Voice memo": {
+		"prefix": "voice",
+		"body": "[voice ${1:file.mp3}]$0",
+		"description": "A playable voice-memo bubble"
+	},
+	"Location card": {
+		"prefix": "location",
+		"body": "[location ${1:52.3676},${2:4.9041} ${3:label}]$0",
+		"description": "A map-card bubble linking to OpenStreetMap"
+	},
+	"Reaction": {
+		"prefix": "react",
+		"body": "[react ${1:❤️}]$0",
+		"description": "React to the player's last message with a tapback badge"
+	},
+	"Tombstone": {
+		"prefix": "tombstone",
+		"body": "[tombstone]$0",
+		"description": "A deleted-message bubble for seeded history"
+	},
+	"Template block": {
+		"prefix": "template",
+		"body": "<% ${1:code} %>$0",
+		"description": "Run story JavaScript (s = state, story = the runtime)"
+	},
+	"Template print": {
+		"prefix": "print",
+		"body": "<%= ${1:expression} %>$0",
+		"description": "Print an expression into the message"
+	}
+}

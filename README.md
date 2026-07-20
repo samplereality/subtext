@@ -24,7 +24,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Story structure** — [Clearing the thread](#clearing-the-thread) · [Multiple conversations](#multiple-conversations) · [Saving](#saving)
 
-**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus) · [Debug mode](#debug-mode)
+**Interface** — [Notifications](#notifications) · [Page chrome and menus](#page-chrome-and-menus) · [Debug mode](#debug-mode) · [Editor support](#editor-support)
 
 **More** — [Extending Subtext](#extending-subtext) · [Recipes](#recipes) · [Accessibility](#accessibility) · [Migrating from Trialogue](#migrating-from-trialogue) · [Changelog](#changelog) · [Credits](#credits)
 
@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.1"
+  "format-version": "2.8.11"
 }
 ```
 
@@ -846,8 +846,8 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 
 - **Where you are** — current passage, thread, turn count, and the current passage's word count, always in view.
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …).
-- **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in).
-- **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. In multi-conversation stories both land you in the target's own thread — a thread tag is honored directly, and an untagged passage's thread is inferred from the nearest tagged passage that links to it. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. Also callable as `story.debugFastForward(name)`.
+- **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in). Rewinding to a player move ("you: …") lands just *before* the reply is sent — pills up, move un-made — so continuing from there, by tap or by play-to, never sends the same reply twice.
+- **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. In multi-conversation stories both land you in the target's own thread — a thread tag is honored directly, and an untagged passage's thread is inferred from the nearest tagged passage that links to it. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. A route that crosses a `[deliver]` renders the delivered message once, by the passage that sends it, and both jump and play-to land the view in the target's own conversation — even when the target is a delivery or side narration that never takes the story cursor. Also callable as `story.debugFastForward(name)`.
 - **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]`/`[then]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a `showDelayed` chain is reported once, at the passage where the chain stops. Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array. The section opens with the piece's size: total words across all content passages. Counts cover what a player reads — message and narration prose, pill labels, `(send: …)` text — and skip code, comments, directive lines, and markup; text printed by templates at runtime can't be counted from source, so treat totals as close rather than exact. Also callable as `story.wordCount()` (the whole piece, as `{ words, passages }`) or `story.wordCount('passage name')` (one passage's count).
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as `story.exportTranscript()`, which returns the Markdown string.
 - **Memory** — what the story has `remember()`ed across playthroughs, with a forget-all button.
@@ -855,6 +855,20 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 **Position survives rebuilds.** Debug mode turns on autosave and saves the position by passage *name* rather than id. With `tweego -w` watching the Twee files and a live-preview browser tab reloading on every rebuild, the story resumes where it was, even after the rebuild renumbers every passage: save the file, the tab reloads, the story is still at the scene being edited. (Restart, in the menu or the debug panel, clears the autosave for a clean run.)
 
 Players never see any of this: without one of the four switches above, the debug code adds no UI.
+
+## Editor support
+
+The repository ships a VS Code extension with syntax highlighting for Subtext twee source, in [`editor/vscode-subtext`](editor/vscode-subtext). It colors passage headers (with `speaker-*` and `thread-*` tags distinguished), every directive — including quoted passage names and the `in 2s` delay clause on `[then …]` — reply pills with their `photo:`/`react:`/`input:`/`timeout:` kinds and `(send: …)` text, and comments; `<% %>` templates highlight as embedded JavaScript, and `Story JavaScript`, `[stylesheet]`, and `StoryData` passages as JavaScript, CSS, and JSON.
+
+It also auto-closes as you type — `<%` inserts the closing `%>`, `[[` nests to `[[]]`, a lone `[` closes for directives — and ships snippets for the whole design language: `then`, `deliver`, `timestamp`, `link`, `send`, `template`, and the rest, each with tab-through blanks. The extension's README lists them all.
+
+To install, copy the folder into VS Code's extensions directory and reload:
+
+```sh
+cp -r editor/vscode-subtext ~/.vscode/extensions/subtext-syntax
+```
+
+`.twee` and `.tw` files then open as "Subtext (Twee)". The folder's own README covers packaging a VSIX instead, and how to coexist with the Twee 3 Language Tools extension if it's installed.
 
 ## Configuration
 
@@ -1024,6 +1038,7 @@ window.addEventListener('photosent', function (e) {
 | `showpassage:after` | a passage has rendered and is on screen | `{ passage }` |
 | `hidepassage` | the current passage is leaving | `{ passage }` |
 | `choice` | the player picks a reply pill (or code calls `story.choose`) | `{ label, sent, target, story }` |
+| `threadopened` | the player opens a conversation (navigation, not a choice) | `{ thread, story }` |
 | `photosent` | the player sends a photo | `{ name, target, story }` |
 | `locationshared` | the player shares real coordinates | `{ lat, lon, story }` |
 | `reaction` | the player reacts with a tapback | `{ emoji, story }` |
@@ -1116,6 +1131,28 @@ window.addEventListener('choice', function (e) {
   gtag('event', 'reply', { label: e.detail.label });
 });
 ```
+
+### Gate the story on exploration, not a timer
+
+After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in `s`, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count.
+
+```js
+window.addEventListener('threadopened', function (e) {
+  s.seen = s.seen || {};
+  s.seen[e.detail.thread] = true;
+
+  var toExplore = ['dad', 'mom', 'matt'];
+  var browsed = toExplore.filter(function (id) { return s.seen[id]; });
+
+  // resume once they've opened all three — but only the first time
+  if (browsed.length === toExplore.length && !s.resumed) {
+    s.resumed = true;
+    story.deliver('the-story-picks-up');   // lights a your-turn indicator
+  }
+});
+```
+
+Resuming with a `deliver` (rather than moving the story outright) means a player still mid-browse isn't yanked away — a your-turn indicator lights up and waits for them to surface. Lower the threshold (`browsed.length >= 1`) for a gentler gate that only asks the player to look at *something* before the story continues. The event does not fire while a save is being rebuilt, so a reload never re-trips the gate.
 
 ### Affinity and stat meters
 
@@ -1214,6 +1251,13 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.8.11
+
+- **Fixed: play-to duplicated delivered messages and could land in the wrong thread.** A fast-forward route that crossed a `[deliver]` edge rendered the delivered message twice — once by the sending passage's directive and again as a bogus cursor move — and repeated fast-forward/rewind cycles stacked further copies. The deliver step now only walks the graph, and a fast-forward lands the view in the target's own conversation even when the target is a delivery or side narration (which never takes the story cursor, however it's tagged).
+- **Fixed: rewinding to a player move could re-send it.** Rewinding the timeline to a "you: …" entry left the story mid-move — the reply already in the transcript, but the same pills re-offered — so continuing (a tap, or play-to choosing for you) sent the same reply again, doubling bubbles with each cycle. A rewind now lands just *before* the move, pills up and the move un-made.
+- **The `threadopened` event.** Fires when the player opens a conversation — the navigational counterpart to `choice`, with `{ thread, story }`. It lets a story track which threads the player has browsed (for example, to gate the story's resumption on inbox exploration rather than a timer) without polling. It stays silent while a save or checkpoint is rebuilt, so a reload never re-fires it. See [Events](#events) and the [exploration-gate recipe](#gate-the-story-on-exploration-not-a-timer).
+- **A VS Code extension.** Syntax highlighting for Subtext twee source — passage headers, directives (with the `[then …]` delay clause and quoted names), reply pills and their kinds, `(send: …)` text, comments, and embedded JavaScript/CSS/JSON in the special passages — plus auto-closing pairs (`<%` → `%>`, `[[` → `]]`) and snippets for the design language. See [Editor support](#editor-support).
 
 ### Version 2.8.1
 

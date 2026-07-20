@@ -1,0 +1,154 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Subtext (Twee)",
+	"scopeName": "source.subtext-twee",
+	"patterns": [
+		{ "include": "#storyDataPassage" },
+		{ "include": "#scriptPassage" },
+		{ "include": "#stylesheetPassage" },
+		{ "include": "#passageHeader" },
+		{ "include": "#commentBlock" },
+		{ "include": "#commentLine" },
+		{ "include": "#template" },
+		{ "include": "#directive" },
+		{ "include": "#link" },
+		{ "include": "#spanShorthand" }
+	],
+	"repository": {
+		"passageHeader": {
+			"match": "^(::)[ \\t]*([^\\[\\{]+?)[ \\t]*(\\[[^\\]]*\\])?[ \\t]*(\\{.*\\})?[ \\t]*$",
+			"captures": {
+				"1": { "name": "punctuation.definition.heading.subtext" },
+				"2": { "name": "entity.name.section.passage.subtext" },
+				"3": {
+					"patterns": [
+						{ "match": "speaker-[\\w-]+", "name": "support.class.speaker.subtext" },
+						{ "match": "thread-[\\w-]+", "name": "support.type.thread.subtext" },
+						{ "match": "[\\w-]+", "name": "entity.other.attribute-name.tag.subtext" }
+					]
+				},
+				"4": { "name": "comment.block.metadata.subtext" }
+			}
+		},
+		"storyDataPassage": {
+			"begin": "^(::)[ \\t]*(StoryData)[ \\t]*$",
+			"beginCaptures": {
+				"1": { "name": "punctuation.definition.heading.subtext" },
+				"2": { "name": "entity.name.section.passage.subtext" }
+			},
+			"end": "^(?=::)",
+			"contentName": "meta.embedded.block.json",
+			"patterns": [{ "include": "source.json" }]
+		},
+		"scriptPassage": {
+			"begin": "^(::)[ \\t]*([^\\[\\{]+?)[ \\t]*(\\[[^\\]]*\\bscript\\b[^\\]]*\\])[ \\t]*$",
+			"beginCaptures": {
+				"1": { "name": "punctuation.definition.heading.subtext" },
+				"2": { "name": "entity.name.section.passage.subtext" },
+				"3": { "name": "entity.other.attribute-name.tag.subtext" }
+			},
+			"end": "^(?=::)",
+			"contentName": "meta.embedded.block.javascript",
+			"patterns": [{ "include": "source.js" }]
+		},
+		"stylesheetPassage": {
+			"begin": "^(::)[ \\t]*([^\\[\\{]+?)[ \\t]*(\\[[^\\]]*\\bstylesheet\\b[^\\]]*\\])[ \\t]*$",
+			"beginCaptures": {
+				"1": { "name": "punctuation.definition.heading.subtext" },
+				"2": { "name": "entity.name.section.passage.subtext" },
+				"3": { "name": "entity.other.attribute-name.tag.subtext" }
+			},
+			"end": "^(?=::)",
+			"contentName": "meta.embedded.block.css",
+			"patterns": [{ "include": "source.css" }]
+		},
+		"commentBlock": {
+			"begin": "/\\*",
+			"end": "\\*/",
+			"name": "comment.block.subtext"
+		},
+		"commentLine": {
+			"match": "^//.*$",
+			"name": "comment.line.double-slash.subtext"
+		},
+		"template": {
+			"begin": "<%=?",
+			"end": "%>",
+			"name": "meta.embedded.inline.javascript",
+			"beginCaptures": {
+				"0": { "name": "punctuation.section.embedded.begin.subtext" }
+			},
+			"endCaptures": {
+				"0": { "name": "punctuation.section.embedded.end.subtext" }
+			},
+			"patterns": [{ "include": "source.js" }]
+		},
+		"directive": {
+			"match": "^[ \\t]*(\\[)(timestamp|system|voice|sound|location|react|deliver|then|tombstone)\\b[ \\t]*([^\\]]*)(\\])[ \\t]*$",
+			"name": "meta.directive.subtext",
+			"captures": {
+				"1": { "name": "punctuation.definition.directive.begin.subtext" },
+				"2": { "name": "keyword.control.directive.subtext" },
+				"3": {
+					"patterns": [
+						{
+							"match": "[ \\t]*\\b(in)[ \\t]+(\\d*\\.?\\d+)(ms|s)[ \\t]*$",
+							"captures": {
+								"1": { "name": "keyword.operator.word.subtext" },
+								"2": { "name": "constant.numeric.subtext" },
+								"3": { "name": "keyword.other.unit.subtext" }
+							}
+						},
+						{ "match": "'[^']*'|\"[^\"]*\"", "name": "string.quoted.passage-name.subtext" },
+						{ "match": "-?[\\d.]+[ \\t]*,[ \\t]*-?[\\d.]+", "name": "constant.numeric.coordinates.subtext" },
+						{
+							"match": ".+?(?=[ \\t]+in[ \\t]+\\d*\\.?\\d+(?:ms|s)[ \\t]*$|[ \\t]*$)",
+							"name": "string.unquoted.directive-argument.subtext"
+						}
+					]
+				},
+				"4": { "name": "punctuation.definition.directive.end.subtext" }
+			}
+		},
+		"link": {
+			"begin": "\\[\\[",
+			"end": "\\]\\]",
+			"name": "meta.link.subtext",
+			"beginCaptures": {
+				"0": { "name": "punctuation.definition.link.begin.subtext" }
+			},
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.link.end.subtext" }
+			},
+			"patterns": [
+				{
+					"match": "(->|<-)([^\\]]*)",
+					"captures": {
+						"1": { "name": "keyword.operator.arrow.subtext" },
+						"2": { "name": "entity.name.section.target.subtext" }
+					}
+				},
+				{
+					"match": "\\((send):([^)]*)\\)",
+					"captures": {
+						"1": { "name": "support.function.send.subtext" },
+						"2": { "name": "string.unquoted.sent-text.subtext" }
+					}
+				},
+				{
+					"match": "\\b(photo|location|react|input|timeout)(:)",
+					"captures": {
+						"1": { "name": "keyword.other.reply-kind.subtext" },
+						"2": { "name": "punctuation.separator.subtext" }
+					}
+				},
+				{ "match": "\\|", "name": "punctuation.separator.display-target.subtext" },
+				{ "match": "[^\\]|<>()-]+", "name": "string.other.link.title.subtext" }
+			]
+		},
+		"spanShorthand": {
+			"match": "\\{[.#][^}]*\\}",
+			"name": "entity.other.attribute-name.selector.subtext"
+		}
+	}
+}

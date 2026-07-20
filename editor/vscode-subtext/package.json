@@ -1,0 +1,49 @@
+{
+	"name": "subtext-syntax",
+	"displayName": "Subtext (Twee) Syntax",
+	"description": "Syntax highlighting for Subtext chat-fiction twee source: passage headers, directives, reply pills, templates, and embedded Story JavaScript/Stylesheet/StoryData blocks.",
+	"version": "2.8.11",
+	"publisher": "subtext",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.50.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"contributes": {
+		"languages": [
+			{
+				"id": "subtext-twee",
+				"aliases": [
+					"Subtext (Twee)",
+					"subtext"
+				],
+				"extensions": [
+					".twee",
+					".tw"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "subtext-twee",
+				"scopeName": "source.subtext-twee",
+				"path": "./syntaxes/subtext.tmLanguage.json",
+				"embeddedLanguages": {
+					"meta.embedded.inline.javascript": "javascript",
+					"meta.embedded.block.javascript": "javascript",
+					"meta.embedded.block.css": "css",
+					"meta.embedded.block.json": "json"
+				}
+			}
+		],
+		"snippets": [
+			{
+				"language": "subtext-twee",
+				"path": "./snippets/subtext.code-snippets"
+			}
+		]
+	}
+}
