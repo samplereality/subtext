@@ -6476,6 +6476,20 @@ Object.assign(Story.prototype, {
 	debugRewind: function(count) {
 		var prefix = this.timeline.slice(0, count);
 
+		// a player move is not a resting point: rewinding to "you:
+		// yes" lands just BEFORE the yes is sent — pills up, move
+		// un-made. Landing just after it would strand the story
+		// mid-move (bubble sent, same pills still offered), and
+		// continuing from there — a tap, or play-to choosing for
+		// you — would send the same reply a second time.
+
+		while (
+			prefix.length &&
+			'uilr'.indexOf(prefix[prefix.length - 1].t) > -1
+		) {
+			prefix.pop();
+		}
+
 		if (prefix.length === 0) {
 			return;
 		}
@@ -6730,16 +6744,29 @@ Object.assign(Story.prototype, {
 		// fast-forward behaves like arriving normally.
 
 		steps.forEach(function(step) {
+			// a deliver edge's message was already rendered by the
+			// passage that sent it — its [deliver] directive fired
+			// (instantly) when that passage was shown a step ago. The
+			// step only walks the graph: showing the target too would
+			// render it twice, and would move the story cursor onto a
+			// passage the story never actually visits.
+
+			if (step.edge.kind === 'deliver') {
+				return;
+			}
+
 			story.cancelTimers();
 			story.hideTyping();
 			story.playEdge(step.edge);
 			story.show(step.edge.target, { instant: true });
 		});
 
-		// land the view where the story landed
+		// land the view in the target's own thread — the cursor can
+		// legitimately sit elsewhere (a delivered or side-narration
+		// target never takes it)
 
 		if (this.multiThread) {
-			this.openThread(this._hotThread);
+			this.openThread(this.getPassageThread(target));
 		}
 
 		this.scrollChatIntoView();
