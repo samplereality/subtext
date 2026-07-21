@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.11"
+  "format-version": "2.8.12"
 }
 ```
 
@@ -174,7 +174,7 @@ The first two follow one convention: **incoming is a directive, outgoing is a li
 
 ## Story state
 
-Everything the format tracks automatically lives in `s` (alias of `story.state`), participates in undo and save/restore, and is watchable live in [debug mode](#debug-mode):
+Everything the format tracks automatically lives in `s` (alias of `story.state`), participates in undo and save/restore, and is watchable live in [debug mode](#debug-mode). The `s` name is in scope only inside `<% %>` templates — in Story JavaScript, event listeners, or the console, use `story.state`, and read it fresh each time rather than keeping a reference (the object is replaced wholesale on restore and undo):
 
 | `s` value | Is | Set by |
 | --- | --- | --- |
@@ -705,6 +705,14 @@ unknown: Unknown Number; color: #52525e; hidden: true
 
 The thread appears the moment anything lands in it (a `[deliver]`, the story moving there, a seed) — or reveal it manually with `story.revealThread('unknown')`. Reveal state is derived from thread activity, so undo and save/restore handle it automatically.
 
+**`story.concealThread(id)` is the inverse:** it removes a conversation from the inbox entirely — not into the Trash, just gone, as if it had never spoken. The transcript is kept, so anything landing in the thread later (a `[deliver]`, `revealThread`) brings it back with its history intact, and undoing past the conceal brings it back too. Three rules for calling it:
+
+- **Call it from a passage template** — `<% story.concealThread('errand') %>` — so it replays on save and restore, like `renameThread`. (Declaring the thread `hidden: true` in `StoryThreads` as well makes the concealment doubly durable.)
+- **Call it from a passage *outside* the thread being concealed.** A message landing in a concealed conversation reveals it again, so a passage cannot conceal its own thread — the conceal would be undone the moment its own message arrives.
+- **Never conceal the conversation holding the story's pending choices** — the player would have no way to reach them.
+
+A `threadconcealed` event fires. See the [disposable intro conversations](#disposable-intro-conversations) recipe for the pattern this was built for.
+
 **Seeding old messages.** Tag passages `seed` and they render into their threads at story start: instant, already read, no badges or banners — pre-existing history. Seeds alternate speakers freely, so a whole past exchange works:
 
 ```
@@ -1013,6 +1021,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `remember(key, value)` / `recall(key, fallback)` / `forget(key)` | Cross-playthrough memory (survives restart) | [Recipes](#remember-across-playthroughs) |
 | `renameThread(id, name)` | Change a conversation's display name mid-story | [Multiple conversations](#multiple-conversations) |
 | `revealThread(id)` | Bring a hidden thread into the inbox | [Multiple conversations](#multiple-conversations) |
+| `concealThread(id)` | Remove a conversation from the inbox entirely (not the Trash) | [Multiple conversations](#multiple-conversations) |
 | `save()` / `restore(hash)` | Write progress to the URL / replay a save | [Saving](#saving) |
 | `setHeader(title, subtitle)` | Repurpose the header mid-story | [Page chrome and menus](#page-chrome-and-menus) |
 | `setMenu(html, title)` | Fill (and retitle) the menu dialog | [Page chrome and menus](#page-chrome-and-menus) |
@@ -1046,6 +1055,7 @@ window.addEventListener('photosent', function (e) {
 | `timeout` | a response timer expires | `{ target, text, story }` |
 | `textinput` | the player sends free-text input | `{ text, target, story }` |
 | `threadarchived` | a conversation moves to the Trash | `{ thread, story }` |
+| `threadconcealed` | a conversation is removed from the inbox | `{ thread, story }` |
 | `threadrenamed` | a conversation's display name changes | `{ thread, name, story }` |
 | `threadrestored` | a conversation leaves the Trash | `{ thread, story }` |
 | `save` | progress is written to a save | `{ story }` |
@@ -1132,21 +1142,59 @@ window.addEventListener('choice', function (e) {
 });
 ```
 
+### Disposable intro conversations
+
+A story that opens by introducing its cast one conversation at a time faces a spoiler problem: if the introductions play in each contact's real thread, the player is sitting on top of all that thread's [seeded history](#multiple-conversations) — history that should be a discovery for later, when they get to explore the inbox. The pattern: play each introduction in a stand-in thread, then dispose of it.
+
+In `StoryThreads`, declare each real thread alongside an intro twin with the *same display name* (declaring the twin `hidden: true` also makes its later concealment doubly durable):
+
+```
+:: StoryThreads
+ren: Ren
+ren_intro: Ren; hidden: true
+```
+
+Keep the inbox unreachable during the introductions (`story.config.inboxButton = false` in Story JavaScript), and play each one in its intro thread — the header says "Ren" either way, so the player can't tell:
+
+```
+:: ren says hi [thread-ren_intro speaker-ren]
+it's ren. the ONLY person in this family who answers texts
+
+[[noted (send:)->the pivot]]
+```
+
+Seed the real thread with its deep history **plus** `seed`-tagged copies of the intro texts, so the exchange the player just had is part of the record they'll find. Then the pivot passage — in another thread, or as narration — disposes of the intro threads, baits the real ones, and opens the inbox:
+
+```
+:: the pivot [meta-overlay]
+Three conversations. One family. The phone remembers more than you do.
+
+<% story.concealThread('ren_intro') %>
+[deliver ren catchup]
+<% story.showInboxButton() %>
+
+[[Look at the phone (send:)->exploring]]
+```
+
+The `[deliver]` target is tagged `quiet`, so it lands silently with just an unread badge — each real thread now sits in the inbox wearing a badge, its seeds waiting underneath. The intro threads are gone (see the [three rules](#multiple-conversations) for `concealThread`), and the [exploration gate](#gate-the-story-on-exploration-not-a-timer) below pairs naturally with what happens next.
+
 ### Gate the story on exploration, not a timer
 
-After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in `s`, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count.
+After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in story state, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count. (Note `story.state` here, not `s` — the `s` shorthand exists only inside `<% %>` templates. And grab `story.state` fresh inside each listener call, as below, rather than once at the top of your Story JavaScript: the state object is replaced wholesale on restore and undo, so a reference captured at load time goes stale.)
 
 ```js
 window.addEventListener('threadopened', function (e) {
-  s.seen = s.seen || {};
-  s.seen[e.detail.thread] = true;
+  var state = story.state;
+
+  state.seen = state.seen || {};
+  state.seen[e.detail.thread] = true;
 
   var toExplore = ['dad', 'mom', 'matt'];
-  var browsed = toExplore.filter(function (id) { return s.seen[id]; });
+  var browsed = toExplore.filter(function (id) { return state.seen[id]; });
 
   // resume once they've opened all three — but only the first time
-  if (browsed.length === toExplore.length && !s.resumed) {
-    s.resumed = true;
+  if (browsed.length === toExplore.length && !state.resumed) {
+    state.resumed = true;
     story.deliver('the-story-picks-up');   // lights a your-turn indicator
   }
 });
@@ -1251,6 +1299,11 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.8.12
+
+- **`story.concealThread(id)`** removes a conversation from the inbox entirely — not the Trash, just gone, as if it had never spoken. The inverse of `revealThread`: the transcript is kept, and any later message (or `revealThread`) brings it back with history intact. Built for disposable intro conversations — introduce a contact in a stand-in thread, conceal it, and let the real, seeded thread be a discovery. Fires `threadconcealed`. See [Multiple conversations](#multiple-conversations) and the [disposable intro conversations](#disposable-intro-conversations) recipe.
+- **Docs fix: the exploration-gate recipe used `s` outside a template.** The `s` state alias exists only inside `<% %>` templates; in Story JavaScript and event listeners the object is `story.state`, read fresh each time (it is replaced wholesale on restore and undo). The recipe is corrected and the [Story state](#story-state) section now states the scoping rule.
 
 ### Version 2.8.11
 

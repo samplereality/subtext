@@ -4514,6 +4514,79 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Removes a conversation from the inbox entirely — not the Trash,
+	 just gone, as if it had never spoken. The inverse of
+	 revealThread(): the thread is marked hidden and its activity is
+	 cleared, so the same rule that kept it out of the inbox before
+	 its first message keeps it out again. The transcript is kept:
+	 any message landing in the thread later (a [deliver], the story
+	 moving there, revealThread) brings it back, history intact —
+	 and so does undoing past the conceal, since reveal state rides
+	 on thread activity.
+
+	 Call it from a passage template so it replays on save/restore
+	 (like renameThread), and call it from a passage OUTSIDE the
+	 thread being concealed — a message landing in a concealed
+	 conversation reveals it again, so a passage cannot conceal its
+	 own thread. Don't conceal the conversation holding the story's
+	 pending choices; the player would have no way to reach them.
+
+	 Triggered event: `threadconcealed`, detail { thread, story }.
+	**/
+
+	concealThread: function(threadId) {
+		if (!this.multiThread) {
+			return;
+		}
+
+		if (!this.threads[threadId]) {
+			this.threads[threadId] = {};
+		}
+
+		this.threads[threadId].hidden = true;
+		delete this._threadActivity[threadId];
+		this.unread[threadId] = 0;
+
+		if (this._typingThread === threadId) {
+			this.setThreadTyping(null);
+		}
+
+		// notifications inviting the player into a concealed
+		// conversation would lead nowhere
+
+		var story = this;
+
+		this._banners.slice().forEach(function(entry) {
+			if (entry.threadId === threadId) {
+				story.dismissBanner(entry);
+			}
+		});
+		this._bannerQueue = this._bannerQueue.filter(function(entry) {
+			return entry.threadId !== threadId;
+		});
+
+		['left', 'right'].forEach(function(side) {
+			story._asides[side].slice().forEach(function(aside) {
+				if (aside.thread === threadId) {
+					story.removeAsideEntry(side, aside);
+				}
+			});
+		});
+
+		// never strand the player inside a conversation that no
+		// longer exists
+
+		if (this._screen === 'thread' && this._viewedThread === threadId) {
+			this.openInbox();
+		}
+		else {
+			this.renderInbox();
+		}
+
+		dispatch('threadconcealed', { thread: threadId, story: this });
+	},
+
+	/**
 	 Renames a conversation mid-story: the inbox row, the thread
 	 header, and notification banners all use the new name from here
 	 on. Pairs with a [system …] chip announcing the rename. Called

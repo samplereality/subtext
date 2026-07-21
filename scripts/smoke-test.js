@@ -2896,6 +2896,87 @@ async function run() {
 		})
 	);
 
+	// concealThread: the inverse of revealThread — the row disappears
+	// from the inbox (not the Trash), transcript kept
+	check(
+		'concealThread removes the conversation from the inbox',
+		await inboxPage.evaluate(() => {
+			let event = null;
+			const handler = (e) => { event = e.detail.thread; };
+
+			window.addEventListener('threadconcealed', handler);
+			window.story.concealThread('unknown');
+			window.removeEventListener('threadconcealed', handler);
+			window.story.openInbox();
+
+			return (
+				document.querySelectorAll('.inbox-row').length > 0 &&
+				!Array.from(document.querySelectorAll('.inbox-row')).some(
+					(row) => row.textContent.indexOf('Unknown') > -1
+				) &&
+				event === 'unknown'
+			);
+		})
+	);
+
+	check(
+		'a concealed conversation returns with its history intact',
+		await inboxPage.evaluate(() => {
+			window.story.revealThread('unknown');
+
+			const row = Array.from(
+				document.querySelectorAll('.inbox-row')
+			).some((r) => r.textContent.indexOf('Unknown') > -1);
+			const log = document.querySelector(
+				'.thread-log[data-thread="unknown"]'
+			);
+
+			return row && log.textContent.indexOf('awake') > -1;
+		})
+	);
+
+	check(
+		'concealing the viewed conversation lands the player at the inbox',
+		await inboxPage.evaluate(() => {
+			window.story.openThread('unknown');
+			window.story.concealThread('unknown');
+
+			return window.story._screen === 'inbox';
+		})
+	);
+
+	// called from a passage template, the conceal replays with the
+	// passage — so it survives save/restore
+	check(
+		'a template-called conceal survives save and restore',
+		await inboxPage.evaluate(() => {
+			window.story.revealThread('unknown');
+			window.story.passages.push(
+				new window.Passage(
+					9980,
+					'conceal-pivot',
+					[],
+					"<% story.concealThread('unknown') %>"
+				)
+			);
+			window.story.show('conceal-pivot');
+
+			const hash = window.story.saveHash();
+
+			window.story.restore(hash);
+			window.story.openInbox();
+
+			const gone = !Array.from(
+				document.querySelectorAll('.inbox-row')
+			).some((r) => r.textContent.indexOf('Unknown') > -1);
+
+			// status quo for the checks that follow
+			window.story.revealThread('unknown');
+
+			return gone;
+		})
+	);
+
 	check(
 		'transcript export sections multi-thread stories by conversation',
 		await inboxPage.evaluate(() => {
