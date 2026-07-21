@@ -4697,106 +4697,157 @@ Object.assign(Story.prototype, {
 				return;
 			}
 
-			var threadId = story.getPassageThread(passage);
-			var log = story.logFor(threadId);
-			var previousPassage = window.passage;
+			story.seedPassage(passage);
+		});
 
-			window.passage = passage;
-			passage.links = [];
+		this._seeding = false;
+		this.renderInbox();
+	},
 
-			var html;
+	/**
+	 Renders one seed passage into its thread as read history. The
+	 shared engine behind seedThreads() and reseedThread().
+	**/
 
-			try {
-				html = passage.render();
-			}
-			catch (error) {
-				window.passage = previousPassage;
-				story.showError(
-					story.errorMessage.replace('%s', error.message)
-				);
-				return;
-			}
+	seedPassage: function(passage) {
+		var story = this;
+		var threadId = story.getPassageThread(passage);
+		var log = story.logFor(threadId);
+		var previousPassage = window.passage;
 
+		window.passage = passage;
+		passage.links = [];
+
+		var html;
+
+		try {
+			html = passage.render();
+		}
+		catch (error) {
 			window.passage = previousPassage;
+			story.showError(
+				story.errorMessage.replace('%s', error.message)
+			);
+			return;
+		}
 
-			// a [react …] in a seed is an old tapback: it lands on the
-			// previous seeded message from the other side, once that
-			// message is in the log. [deliver …] means nothing in
-			// history and is dropped.
+		window.passage = previousPassage;
 
-			var reactions = [];
+		// a [react …] in a seed is an old tapback: it lands on the
+		// previous seeded message from the other side, once that
+		// message is in the log. [deliver …] means nothing in
+		// history and is dropped.
 
-			html = html
-				.replace(
-					/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
-					function(match, emoji) {
-						reactions.push(template.unescapeHtml(emoji));
-						return '';
-					}
-				)
-				.replace(
-					/<div class="chat-deliver" data-passage="[^"]*"><\/div>/g,
-					''
-				);
+		var reactions = [];
 
-			var speaker = story.getPassageSpeaker(passage);
-			var nodes = story.buildPassageElement(passage, speaker, html);
-
-			nodes.forEach(function(node) {
-				node.classList.add('no-anim');
-				node.classList.add('is-history');
-				story.applyGrouping(node, log);
-				log.appendChild(node);
-			});
-
-			reactions.forEach(function(emoji) {
-				var selector =
-					speaker === 'you'
-						? '.chat-passage-wrapper:not([data-speaker="you"])'
-						: '.chat-passage-wrapper[data-speaker="you"]';
-				var targets = log.querySelectorAll(selector);
-				var target = targets[targets.length - 1];
-
-				if (target) {
-					story.attachReaction(target, emoji);
+		html = html
+			.replace(
+				/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
+				function(match, emoji) {
+					reactions.push(template.unescapeHtml(emoji));
+					return '';
 				}
-			});
+			)
+			.replace(
+				/<div class="chat-deliver" data-passage="[^"]*"><\/div>/g,
+				''
+			);
 
-			// a seeded player message honors the receipt tags: `unread`
-			// leaves it on Delivered, `failed` on Not Delivered, `read`
-			// on Read — an old message that never got an answer
+		var speaker = story.getPassageSpeaker(passage);
+		var nodes = story.buildPassageElement(passage, speaker, html);
 
-			if (speaker === 'you') {
-				var status =
-					passage.tags.indexOf('failed') > -1
-						? 'failed'
-						: passage.tags.indexOf('unread') > -1
-							? 'delivered'
-							: passage.tags.indexOf('read') > -1
-								? 'read'
-								: null;
+		nodes.forEach(function(node) {
+			node.classList.add('no-anim');
+			node.classList.add('is-history');
+			story.applyGrouping(node, log);
+			log.appendChild(node);
+		});
 
-				if (status) {
-					var wrapper = nodes.find(function(node) {
-						return node.classList.contains(
-							'chat-passage-wrapper'
-						);
-					});
+		reactions.forEach(function(emoji) {
+			var selector =
+				speaker === 'you'
+					? '.chat-passage-wrapper:not([data-speaker="you"])'
+					: '.chat-passage-wrapper[data-speaker="you"]';
+			var targets = log.querySelectorAll(selector);
+			var target = targets[targets.length - 1];
 
-					if (wrapper) {
-						story.attachReceipt(
-							wrapper,
-							wrapper.querySelector('.chat-bubbles'),
-							{ status: status }
-						);
-					}
+			if (target) {
+				story.attachReaction(target, emoji);
+			}
+		});
+
+		// a seeded player message honors the receipt tags: `unread`
+		// leaves it on Delivered, `failed` on Not Delivered, `read`
+		// on Read — an old message that never got an answer
+
+		if (speaker === 'you') {
+			var status =
+				passage.tags.indexOf('failed') > -1
+					? 'failed'
+					: passage.tags.indexOf('unread') > -1
+						? 'delivered'
+						: passage.tags.indexOf('read') > -1
+							? 'read'
+							: null;
+
+			if (status) {
+				var wrapper = nodes.find(function(node) {
+					return node.classList.contains(
+						'chat-passage-wrapper'
+					);
+				});
+
+				if (wrapper) {
+					story.attachReceipt(
+						wrapper,
+						wrapper.querySelector('.chat-bubbles'),
+						{ status: status }
+					);
 				}
 			}
+		}
 
-			// old messages order the inbox (and reveal their thread)
-			// but are already read: no badge, no banner
+		// old messages order the inbox (and reveal their thread)
+		// but are already read: no badge, no banner
 
-			story.bumpThreadActivity(threadId);
+		story.bumpThreadActivity(threadId);
+	},
+
+	/**
+	 Re-renders a conversation's seeded history with CURRENT story
+	 state. Seeds render once, at boot — before the player has chosen
+	 anything — so a seed that interpolates state assigned later
+	 (an echo of the player's reply, <%= s.renReply %>) renders empty.
+	 Once the state exists, reseed the thread: its seed passages
+	 re-render in place, in their original order, values filled in.
+
+	 The transcript is rebuilt from the thread's seeds alone, so call
+	 it BEFORE anything else lands in the conversation — in the
+	 disposable-intro pattern, at the pivot, ahead of the badge-bait
+	 delivery. Anything non-seed already in the log is discarded.
+	 Call it from a passage template so it replays on save/restore:
+
+	   <% story.reseedThread('family') %>
+	**/
+
+	reseedThread: function(threadId) {
+		if (!this.multiThread) {
+			return;
+		}
+
+		var story = this;
+
+		this.logFor(threadId).textContent = '';
+		this._seeding = true;
+
+		this.passages.forEach(function(passage) {
+			if (
+				passage &&
+				passage.tags.indexOf('seed') > -1 &&
+				story.getPassageThread(passage) === threadId
+			) {
+				story.seedPassage(passage);
+			}
 		});
 
 		this._seeding = false;

@@ -3188,6 +3188,45 @@ async function run() {
 		})
 	);
 
+	// reseedThread: a thread's seeds re-render with CURRENT state, so
+	// an echo seed can interpolate a value assigned mid-story — at its
+	// authored position in the history, not appended
+	check(
+		'reseedThread fills a late-bound echo seed in place',
+		await inboxPage.evaluate(() => {
+			const id = window.story.passages.length + 50;
+
+			window.story.state.echoReply = 'sounds good';
+			window.story.passages[id] = new window.Passage(
+				id,
+				'fam-echo-probe',
+				['thread-family', 'speaker-you', 'seed'],
+				'<%= s.echoReply %>'
+			);
+			window.story.reseedThread('family');
+
+			const log = document.querySelector(
+				'.thread-log[data-thread="family"]'
+			);
+			const filled = Array.from(
+				log.querySelectorAll('.chat-passage')
+			).some((b) => b.textContent.trim() === 'sounds good');
+			const outgoing = Array.from(
+				log.querySelectorAll('.chat-passage-wrapper')
+			).some(
+				(w) =>
+					w.textContent.indexOf('sounds good') > -1 &&
+					w.getAttribute('data-speaker') === 'you'
+			);
+
+			// drop the probe seed and rebuild the thread's history
+			window.story.passages.length = id;
+			window.story.reseedThread('family');
+
+			return filled && outgoing;
+		})
+	);
+
 	// debug time travel respects threads: a jump lands the passage in
 	// its own conversation (tagged, or inferred from the graph for
 	// untagged passages) and moves the view there. These wipe the

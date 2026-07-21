@@ -1039,6 +1039,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `renameThread(id, name)` | Change a conversation's display name mid-story | [Multiple conversations](#multiple-conversations) |
 | `revealThread(id)` | Bring a hidden thread into the inbox | [Multiple conversations](#multiple-conversations) |
 | `concealThread(id)` | Remove a conversation from the inbox entirely (not the Trash) | [Multiple conversations](#multiple-conversations) |
+| `reseedThread(id)` | Re-render a thread's seeded history with current state | [Disposable intro conversations](#disposable-intro-conversations) |
 | `save()` / `restore(hash)` | Write progress to the URL / replay a save | [Saving](#saving) |
 | `setHeader(title, subtitle)` | Repurpose the header mid-story | [Page chrome and menus](#page-chrome-and-menus) |
 | `setMenu(html, title)` | Fill (and retitle) the menu dialog | [Page chrome and menus](#page-chrome-and-menus) |
@@ -1196,22 +1197,23 @@ Three conversations. One family. The phone remembers more than you do.
 
 The `[deliver]` target is tagged `quiet`, so it lands silently with just an unread badge — each real thread now sits in the inbox wearing a badge, its seeds waiting underneath. The intro threads are gone (see the [three rules](#multiple-conversations) for `concealThread`), and the [exploration gate](#gate-the-story-on-exploration-not-a-timer) below pairs naturally with what happens next.
 
-**Echoing the player's replies.** Seeds render once, at boot — before the player has chosen anything — so a seed can never interpolate a variable assigned later (`<%= s.renReply %>` in a `seed` passage renders `undefined`). The mid-story counterpart of a seed is a `quiet-read` delivery, and it renders *at the moment it's delivered*, with live state. So: capture the reply in the intro (`<% s.renReply = s.lastChoice %>`), and make the echo a `quiet-read` passage delivered from the pivot rather than a boot seed:
+**Echoing the player's replies.** Seeds render once, at boot — before the player has chosen anything — so a seed that interpolates a variable assigned later (`<%= s.renReply %>`) renders empty at first. Write the echo as an ordinary seed anyway, at its natural place in the thread's history (an empty seed renders nothing, so there's no gap):
 
 ```
-:: echo ren reply [thread-ren speaker-you quiet-read unlinked]
+:: echo ren reply [thread-ren speaker-you seed]
 <%= s.renReply %>
 ```
 
-Deliver the whole echoed exchange from the pivot, in order — `quiet` deliveries land instantly and in sequence, so the conversation rebuilds line by line, the player's reply as an outgoing bubble among them:
+Capture the reply during the intro (`<% s.renReply = s.lastChoice %>`), then have the pivot re-render the thread's seeded history with current state:
 
 ```
-[deliver echo ren 1]
-[deliver echo ren reply]
-[deliver echo ren 2]
+<% story.concealThread('ren_intro'); story.reseedThread('ren'); %>
+[deliver ren catchup]
 ```
 
-Boot seeds carry the *static* deep history; pivot deliveries carry anything that depends on what the player did. Because deliveries append, the echoed exchange lands below the seeded history — which is chronologically right: it's the newest thing that happened. The split survives save and restore: choices are timeline moments, so a replay restores `s.lastChoice` before re-running the templates that captured it.
+`story.reseedThread(id)` rebuilds the conversation from its seed passages alone — original order, values filled in — so the echoed exchange can sit *anywhere* in the history, not just at the end. Two rules: call it before anything else lands in the thread (above: before the badge-bait delivery — anything non-seed already in the log is discarded), and call it from a passage template so it replays on save/restore. The replay interpolates correctly because choices are timeline moments: `s.lastChoice` is restored before the templates that captured it re-run.
+
+(If the echoed exchange is the *newest* thing in the thread rather than mid-history, `quiet-read` deliveries from the pivot work too — deliveries render with live state and append in order.)
 
 ### Gate the story on exploration, not a timer
 
@@ -1337,6 +1339,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Unreleased
 
+- **`story.reseedThread(id)`** re-renders a conversation's seeded history with *current* story state, in the seeds' original order. Built for echoing the player's replies into a fuller thread: write the echo as a normal seed (`<%= s.renReply %>` — it renders empty at boot, invisibly), and reseed the thread from the pivot once the value exists. The echo lands at its authored position in the history, not appended. Call it before anything non-seed lands in the thread, and from a passage template so it replays. See the [disposable intro conversations](#disposable-intro-conversations) recipe.
 - **Fixed: templates that captured a choice re-rendered wrong on restore.** `s.lastChoice` and `s.timedOut` were only ever set by live play, so a template that read them (`<% s.renReply = s.lastChoice %>`) re-ran with stale values while a save replayed — anything rendered from the captured value came back empty or wrong. Choices are now first-class timeline moments: the replay restores both trackers before re-running dependent templates, empty `(send:)` choices keep their undo checkpoint across reloads, and the debug timeline lists them ("chose: …"). This is what makes the [reply-echo pattern](#disposable-intro-conversations) — re-printing the player's intro replies in a fuller thread via `quiet-read` deliveries — survive save/restore.
 - **`speaker-you` passages play the send sound.** Authored player-character messages used to show silently — the send sound only accompanied an actual tapped reply. A `speaker-you` passage (shown or delivered) now sounds like sending, the symmetric counterpart of an incoming speaker's receive sound, so a montage that mixes speakers is audible on every beat. Replays, seeds, and `quiet` deliveries stay silent as before. See [Notifications](#notifications).
 
