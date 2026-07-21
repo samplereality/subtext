@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.11"
+  "format-version": "2.8.12"
 }
 ```
 
@@ -1300,9 +1300,13 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Version 2.8.11
+### Version 2.8.12
 
 - **`story.concealThread(id)`** removes a conversation from the inbox entirely — not the Trash, just gone, as if it had never spoken. The inverse of `revealThread`: the transcript is kept, and any later message (or `revealThread`) brings it back with history intact. Built for disposable intro conversations — introduce a contact in a stand-in thread, conceal it, and let the real, seeded thread be a discovery. Fires `threadconcealed`. See [Multiple conversations](#multiple-conversations) and the [disposable intro conversations](#disposable-intro-conversations) recipe.
+- **Docs fix: the exploration-gate recipe used `s` outside a template.** The `s` state alias exists only inside `<% %>` templates; in Story JavaScript and event listeners the object is `story.state`, read fresh each time (it is replaced wholesale on restore and undo). The recipe is corrected and the [Story state](#story-state) section now states the scoping rule.
+
+### Version 2.8.11
+
 - **Fixed: play-to duplicated delivered messages and could land in the wrong thread.** A fast-forward route that crossed a `[deliver]` edge rendered the delivered message twice — once by the sending passage's directive and again as a bogus cursor move — and repeated fast-forward/rewind cycles stacked further copies. The deliver step now only walks the graph, and a fast-forward lands the view in the target's own conversation even when the target is a delivery or side narration (which never takes the story cursor, however it's tagged).
 - **Fixed: rewinding to a player move could re-send it.** Rewinding the timeline to a "you: …" entry left the story mid-move — the reply already in the transcript, but the same pills re-offered — so continuing (a tap, or play-to choosing for you) sent the same reply again, doubling bubbles with each cycle. A rewind now lands just *before* the move, pills up and the move un-made.
 - **The `threadopened` event.** Fires when the player opens a conversation — the navigational counterpart to `choice`, with `{ thread, story }`. It lets a story track which threads the player has browsed (for example, to gate the story's resumption on inbox exploration rather than a timer) without polling. It stays silent while a save or checkpoint is rebuilt, so a reload never re-fires it. See [Events](#events) and the [exploration-gate recipe](#gate-the-story-on-exploration-not-a-timer).
