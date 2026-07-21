@@ -988,6 +988,13 @@ Object.assign(Story.prototype, {
 			this.state.lastChoice = chosen;
 		}
 
+		// the choice itself is a timeline moment: replaying it restores
+		// lastChoice and timedOut mid-replay (templates that captured
+		// them re-run with the right values), and an empty (send:)
+		// choice keeps its undo checkpoint across reloads
+
+		this.timeline.push(chosen !== '' ? { t: 'c', l: chosen } : { t: 'c' });
+
 		/**
 		 Triggered whenever the player picks a reply pill (or code calls
 		 story.choose). detail: { label, sent, target, story }.
@@ -2281,6 +2288,7 @@ Object.assign(Story.prototype, {
 		this.clearUserResponses();
 
 		this.state.timedOut = true;
+		this.timeline.push({ t: 'c', to: 1 });
 
 		if (offer.text) {
 			this.showUserBubble(offer.text);
@@ -6301,7 +6309,7 @@ Object.assign(Story.prototype, {
 
 			var story = this;
 
-			timeline.forEach(function(entry) {
+			timeline.forEach(function(entry, entryIndex) {
 				// a replayed passage's template re-runs its side effects,
 				// re-arming any story.showDelayed() chain it started. The
 				// timeline already holds everything that arrived before
@@ -6311,9 +6319,35 @@ Object.assign(Story.prototype, {
 
 				story.cancelTimers();
 
+				// a choice entry: its undo checkpoint, plus the trackers
+				// that templates rendering mid-replay depend on —
+				// lastChoice and timedOut are only ever set by live
+				// play, so the replay re-establishes them here
+
+				if (entry.t === 'c') {
+					story.pushCheckpoint();
+					story.state.timedOut = !!entry.to;
+
+					if (entry.l) {
+						story.state.lastChoice = entry.l;
+					}
+
+					story.timeline.push(
+						entry.l
+							? { t: 'c', l: entry.l }
+							: entry.to
+								? { t: 'c', to: 1 }
+								: { t: 'c' }
+					);
+					return;
+				}
+
 				// every player move gets its checkpoint back, so undo
 				// keeps working across reloads (state is mid-rebuild
-				// here, exactly as it was when the move was made)
+				// here, exactly as it was when the move was made). A
+				// bubble right after a choice entry shares the choice's
+				// checkpoint; saves from before choice entries existed
+				// checkpoint at the bubble, as they always did.
 
 				if (
 					entry.t === 'u' ||
@@ -6321,7 +6355,12 @@ Object.assign(Story.prototype, {
 					entry.t === 'l' ||
 					entry.t === 'r'
 				) {
-					story.pushCheckpoint();
+					if (
+						entryIndex === 0 ||
+						timeline[entryIndex - 1].t !== 'c'
+					) {
+						story.pushCheckpoint();
+					}
 				}
 
 				var receipt = entry.r
@@ -6667,7 +6706,7 @@ Object.assign(Story.prototype, {
 
 		while (
 			prefix.length &&
-			'uilr'.indexOf(prefix[prefix.length - 1].t) > -1
+			'uilrc'.indexOf(prefix[prefix.length - 1].t) > -1
 		) {
 			prefix.pop();
 		}
@@ -7029,6 +7068,17 @@ Object.assign(Story.prototype, {
 		if (edge.kind === 'text' && edge.display.trim() !== '') {
 			this.state.lastChoice = edge.display.trim();
 		}
+
+		// the same choice entry a live tap records, so a fast-forwarded
+		// timeline replays with the right trackers
+
+		this.timeline.push(
+			edge.kind === 'timeout'
+				? { t: 'c', to: 1 }
+				: edge.display.trim() !== ''
+					? { t: 'c', l: edge.display.trim() }
+					: { t: 'c' }
+		);
 
 		if (edge.kind === 'timeout') {
 			dispatch('timeout', {
@@ -7675,6 +7725,15 @@ Object.assign(Story.prototype, {
 				}
 				else if (entry.t === 'u') {
 					text = 'you: ' + brief(entry.text);
+				}
+				else if (entry.t === 'c') {
+					text =
+						'chose: ' +
+						(entry.l
+							? brief(entry.l)
+							: entry.to
+								? '(timed out)'
+								: '(continue)');
 				}
 				else {
 					text = '[' + entry.t + ']';

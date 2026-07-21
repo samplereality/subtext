@@ -1508,6 +1508,54 @@ async function run() {
 		})
 	);
 
+	// choices are timeline moments: a replay restores lastChoice before
+	// re-running the templates that captured it, so text interpolated
+	// from a choice survives save/restore
+	await page.evaluate(() => {
+		window.__preChoice = window.story.saveHash();
+		window.__preLen = window.story.passages.length;
+		// id-indexed: the replay resolves timeline entries by
+		// passages[id], so the index must match the id
+		window.story.passages[9977] = new window.Passage(
+			9977,
+			'echo-target',
+			['speaker-2'],
+			'you said <%= s.lastChoice %>'
+		);
+		window.story.choose('echo-target', '', 'sure thing');
+	});
+	await page.waitForFunction(
+		() =>
+			Array.from(document.querySelectorAll('#phistory .chat-passage')).some(
+				(b) => b.textContent.trim() === 'you said sure thing'
+			),
+		null,
+		{ timeout: 15000 }
+	);
+	check(
+		'a choice replays with lastChoice intact for mid-replay templates',
+		await page.evaluate(() => {
+			const texts = () =>
+				Array.from(
+					document.querySelectorAll('#phistory .chat-passage')
+				).filter(
+					(b) => b.textContent.indexOf('you said') === 0
+				).map((b) => b.textContent.trim());
+
+			window.story.restore(window.story.saveHash());
+
+			const replayed = texts();
+
+			window.story.restore(window.__preChoice);
+			window.story.passages.length = window.__preLen;
+
+			return (
+				replayed.length === 1 &&
+				replayed[0] === 'you said sure thing'
+			);
+		})
+	);
+
 	console.log('deleted messages');
 
 	// redactMessage tombstones in place — the node is never removed,

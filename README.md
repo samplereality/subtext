@@ -1196,6 +1196,23 @@ Three conversations. One family. The phone remembers more than you do.
 
 The `[deliver]` target is tagged `quiet`, so it lands silently with just an unread badge — each real thread now sits in the inbox wearing a badge, its seeds waiting underneath. The intro threads are gone (see the [three rules](#multiple-conversations) for `concealThread`), and the [exploration gate](#gate-the-story-on-exploration-not-a-timer) below pairs naturally with what happens next.
 
+**Echoing the player's replies.** Seeds render once, at boot — before the player has chosen anything — so a seed can never interpolate a variable assigned later (`<%= s.renReply %>` in a `seed` passage renders `undefined`). The mid-story counterpart of a seed is a `quiet-read` delivery, and it renders *at the moment it's delivered*, with live state. So: capture the reply in the intro (`<% s.renReply = s.lastChoice %>`), and make the echo a `quiet-read` passage delivered from the pivot rather than a boot seed:
+
+```
+:: echo ren reply [thread-ren speaker-you quiet-read unlinked]
+<%= s.renReply %>
+```
+
+Deliver the whole echoed exchange from the pivot, in order — `quiet` deliveries land instantly and in sequence, so the conversation rebuilds line by line, the player's reply as an outgoing bubble among them:
+
+```
+[deliver echo ren 1]
+[deliver echo ren reply]
+[deliver echo ren 2]
+```
+
+Boot seeds carry the *static* deep history; pivot deliveries carry anything that depends on what the player did. Because deliveries append, the echoed exchange lands below the seeded history — which is chronologically right: it's the newest thing that happened. The split survives save and restore: choices are timeline moments, so a replay restores `s.lastChoice` before re-running the templates that captured it.
+
 ### Gate the story on exploration, not a timer
 
 After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their [seeds](#multiple-conversations) before the story resumes — without a "go read your messages" prompt, and without a fixed timer that fires whether they've looked or not. The [`threadopened` event](#events) is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track *which* threads they've pressed into and resume once they've explored enough. Because you record the exploration in story state, it saves and restores for free; because you key it by thread id, re-opening the same one doesn't double-count. (Note `story.state` here, not `s` — the `s` shorthand exists only inside `<% %>` templates. And grab `story.state` fresh inside each listener call, as below, rather than once at the top of your Story JavaScript: the state object is replaced wholesale on restore and undo, so a reference captured at load time goes stale.)
@@ -1320,6 +1337,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ### Unreleased
 
+- **Fixed: templates that captured a choice re-rendered wrong on restore.** `s.lastChoice` and `s.timedOut` were only ever set by live play, so a template that read them (`<% s.renReply = s.lastChoice %>`) re-ran with stale values while a save replayed — anything rendered from the captured value came back empty or wrong. Choices are now first-class timeline moments: the replay restores both trackers before re-running dependent templates, empty `(send:)` choices keep their undo checkpoint across reloads, and the debug timeline lists them ("chose: …"). This is what makes the [reply-echo pattern](#disposable-intro-conversations) — re-printing the player's intro replies in a fuller thread via `quiet-read` deliveries — survive save/restore.
 - **`speaker-you` passages play the send sound.** Authored player-character messages used to show silently — the send sound only accompanied an actual tapped reply. A `speaker-you` passage (shown or delivered) now sounds like sending, the symmetric counterpart of an incoming speaker's receive sound, so a montage that mixes speakers is audible on every beat. Replays, seeds, and `quiet` deliveries stay silent as before. See [Notifications](#notifications).
 
 ### Version 2.8.14
