@@ -2,7 +2,7 @@
 	"name": "subtext-syntax",
 	"displayName": "Subtext (Twee) Syntax",
 	"description": "Syntax highlighting for Subtext chat-fiction twee source: passage headers, directives, reply pills, templates, and embedded Story JavaScript/Stylesheet/StoryData blocks.",
-	"version": "2.8.13",
+	"version": "2.8.14",
 	"publisher": "subtext",
 	"license": "MIT",
 	"engines": {

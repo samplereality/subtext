@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.13"
+  "format-version": "2.8.14"
 }
 ```
 
@@ -1318,7 +1318,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.14
 
 - **The debug timeline gains ▶ resume.** A rewind lands *paused right there* — deliberately, so a replayed chain doesn't overshoot the picked moment — which left mid-chain rewinds with no pills and nothing in flight, reading as "my pills are gone." Resume is that pause's play button: it re-arms the frozen chain from the latest message and the story continues from the paused moment. Also `story.debugResume()`. See [Debug mode](#debug-mode).
 - **`threadopened` state is live and durable.** State a `threadopened` listener records (an exploration tracker's `story.state.seen`, say) is now persisted on every thread open — previously only a passage show saved it, so exploration between passages was lost on reload and the debug panel's Variables table looked stale until the next choice. The panel now refreshes on `threadopened` too.
