@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.15"
+  "format-version": "2.8.16"
 }
 ```
 
@@ -1339,7 +1339,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.16
 
 - **Resume replays the rewind's kept future.** Rewinding kept nothing, so resume had to guess the way forward from written chain edges — and a chain fired from a computed or random template name (`either(…)`, `s.route`) couldn't be followed at all, leaving the story frozen with no pills and nothing to do but restart. A rewind now keeps everything it cuts off, and each press of resume steps the next beat back in — choices included — exactly as it originally played. Tapping any pill diverges and discards the rest; after a jump, resume falls back to re-arming written chain edges as before. See [Debug mode](#debug-mode).
 - **The debug Variables table gains a watchlist.** A watch box filters the table to matching variable names (comma-separated terms, substring match; blank shows all), folds the rest into an `(+N unwatched)` count, and persists across reloads — for stories whose state has outgrown one screen. See [Debug mode](#debug-mode).
