@@ -495,6 +495,9 @@ var Story = function() {
 	/** Thread banners waiting for a free slot in the stack. **/
 	this._bannerQueue = [];
 
+	/** What the last debug rewind cut off; resume replays it. **/
+	this._timelineFuture = [];
+
 	/** Redacted messages, so undo can restore their content. **/
 	this._redactionLog = [];
 
@@ -4014,6 +4017,13 @@ Object.assign(Story.prototype, {
 			};
 		}
 
+		// any new player move diverges from a rewind's kept future —
+		// the recorded "what happened next" no longer applies
+
+		if (!this._steppingFuture) {
+			this._timelineFuture = [];
+		}
+
 		this.checkpoints.push({
 			state: deepClone(this.state),
 			domCount: this.dom.history.children.length,
@@ -4065,6 +4075,7 @@ Object.assign(Story.prototype, {
 		this.clearUserResponses();
 		this._preShownStamps = null;
 		this.clearBanners();
+		this._timelineFuture = [];
 
 		// everything since the checkpoint is discarded
 
@@ -6324,6 +6335,118 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Applies one timeline entry, instantly — the shared replay engine
+	 behind restore() and the debug resume stepper. prevType is the
+	 preceding entry's t, for the checkpoint rules: a choice entry
+	 carries the undo checkpoint (and re-establishes lastChoice /
+	 timedOut, which only live play sets, so templates re-rendering
+	 mid-replay read the right values); a bubble right after a choice
+	 shares its checkpoint; saves from before choice entries existed
+	 checkpoint at the bubble, as they always did. Re-records the
+	 entry, so the timeline rebuilds as it applies.
+	**/
+
+	replayEntry: function(entry, prevType) {
+		var story = this;
+
+		if (entry.t === 'c') {
+			this.pushCheckpoint();
+			this.state.timedOut = !!entry.to;
+
+			if (entry.l) {
+				this.state.lastChoice = entry.l;
+			}
+
+			this.timeline.push(
+				entry.l
+					? { t: 'c', l: entry.l }
+					: entry.to
+						? { t: 'c', to: 1 }
+						: { t: 'c' }
+			);
+			return;
+		}
+
+		if (
+			entry.t === 'u' ||
+			entry.t === 'i' ||
+			entry.t === 'l' ||
+			entry.t === 'r'
+		) {
+			if (prevType !== 'c') {
+				this.pushCheckpoint();
+			}
+		}
+
+		var receipt = entry.r
+			? { status: entry.r, label: entry.rl }
+			: null;
+
+		if (entry.t === 'u') {
+			this.showUserBubble(entry.text, {
+				instant: true,
+				receipt: receipt
+			});
+		}
+		else if (entry.t === 'i') {
+			this.state.lastPhoto = entry.name;
+			this.state.sentPhotos =
+				(this.state.sentPhotos || []).concat(entry.name);
+			this.showPhotoBubble(entry.name, {
+				instant: true,
+				receipt: receipt
+			});
+		}
+		else if (entry.t === 'l') {
+			this.state.playerLocation = {
+				lat: entry.lat,
+				lon: entry.lon
+			};
+			this.showLocationBubble(entry.lat, entry.lon, entry.label, {
+				instant: true,
+				receipt: receipt
+			});
+		}
+		else if (entry.t === 'r') {
+			this.state.lastReaction = entry.emoji;
+			this.react(entry.emoji, 'in');
+		}
+		else if (entry.t === 'x') {
+			// redactMessage re-records its own timeline entry
+			this.redactMessage(entry.which, entry.l);
+		}
+		else if (entry.t === 'd') {
+			var delivered = story.passage(entry.id);
+
+			if (delivered) {
+				this.renderDelivery(delivered, {
+					instant: true,
+					record: false
+				});
+			}
+
+			this.timeline.push({
+				t: 'd',
+				id: delivered ? delivered.id : entry.id
+			});
+		}
+		else {
+			// debug saves store names; resolve back to the current
+			// numeric id so history and hasVisited() keep working
+
+			var shown = story.passage(entry.id);
+			var pid = shown ? shown.id : entry.id;
+
+			this.show(pid, {
+				record: false,
+				instant: true
+			});
+			this.timeline.push({ t: 'p', id: pid });
+			this.history.push(pid);
+		}
+	},
+
+	/**
 	 Restores progress from a hash created by saveHash(), replaying the
 	 whole conversation instantly. Returns whether the restore succeeded.
 	**/
@@ -6418,118 +6541,10 @@ Object.assign(Story.prototype, {
 				// in flight when the save was made.
 
 				story.cancelTimers();
-
-				// a choice entry: its undo checkpoint, plus the trackers
-				// that templates rendering mid-replay depend on —
-				// lastChoice and timedOut are only ever set by live
-				// play, so the replay re-establishes them here
-
-				if (entry.t === 'c') {
-					story.pushCheckpoint();
-					story.state.timedOut = !!entry.to;
-
-					if (entry.l) {
-						story.state.lastChoice = entry.l;
-					}
-
-					story.timeline.push(
-						entry.l
-							? { t: 'c', l: entry.l }
-							: entry.to
-								? { t: 'c', to: 1 }
-								: { t: 'c' }
-					);
-					return;
-				}
-
-				// every player move gets its checkpoint back, so undo
-				// keeps working across reloads (state is mid-rebuild
-				// here, exactly as it was when the move was made). A
-				// bubble right after a choice entry shares the choice's
-				// checkpoint; saves from before choice entries existed
-				// checkpoint at the bubble, as they always did.
-
-				if (
-					entry.t === 'u' ||
-					entry.t === 'i' ||
-					entry.t === 'l' ||
-					entry.t === 'r'
-				) {
-					if (
-						entryIndex === 0 ||
-						timeline[entryIndex - 1].t !== 'c'
-					) {
-						story.pushCheckpoint();
-					}
-				}
-
-				var receipt = entry.r
-					? { status: entry.r, label: entry.rl }
-					: null;
-
-				if (entry.t === 'u') {
-					story.showUserBubble(entry.text, {
-						instant: true,
-						receipt: receipt
-					});
-				}
-				else if (entry.t === 'i') {
-					story.state.lastPhoto = entry.name;
-					story.state.sentPhotos =
-						(story.state.sentPhotos || []).concat(entry.name);
-					story.showPhotoBubble(entry.name, {
-						instant: true,
-						receipt: receipt
-					});
-				}
-				else if (entry.t === 'l') {
-					story.state.playerLocation = {
-						lat: entry.lat,
-						lon: entry.lon
-					};
-					story.showLocationBubble(entry.lat, entry.lon, entry.label, {
-						instant: true,
-						receipt: receipt
-					});
-				}
-				else if (entry.t === 'r') {
-					story.state.lastReaction = entry.emoji;
-					story.react(entry.emoji, 'in');
-				}
-				else if (entry.t === 'x') {
-					// redactMessage re-records its own timeline entry
-					story.redactMessage(entry.which, entry.l);
-				}
-				else if (entry.t === 'd') {
-					var delivered = story.passage(entry.id);
-
-					if (delivered) {
-						story.renderDelivery(delivered, {
-							instant: true,
-							record: false
-						});
-					}
-
-					story.timeline.push({
-						t: 'd',
-						id: delivered ? delivered.id : entry.id
-					});
-				}
-				else {
-					// debug saves store names; resolve back to the
-					// current numeric id so history and hasVisited()
-					// keep working
-
-					var shown = story.passage(entry.id);
-					var pid = shown ? shown.id : entry.id;
-
-					story.show(pid, {
-						record: false,
-						instant: true
-					});
-					story.timeline.push({ t: 'p', id: pid });
-					story.history.push(pid);
-				}
+				story.replayEntry(
+					entry,
+					entryIndex === 0 ? null : timeline[entryIndex - 1].t
+				);
 			});
 
 			// replaying re-runs template side effects; the explicitly
@@ -6728,6 +6743,7 @@ Object.assign(Story.prototype, {
 		this.checkpoints = [];
 		this._reactionLog = [];
 		this._redactionLog = [];
+		this._timelineFuture = [];
 		this.dom.undo.hidden = true;
 
 		this.show(idOrName);
@@ -6762,13 +6778,63 @@ Object.assign(Story.prototype, {
 			return false; // something is already in flight
 		}
 
+		var story = this;
+
+		// a rewind keeps what it cut off. Resume replays it back in,
+		// one story beat at a time — the choice, its bubbles, and the
+		// next message — exactly as it originally happened, so chains
+		// fired from computed or random template names (either(...))
+		// step forward correctly. Making any NEW move discards the
+		// kept future.
+
+		if (this._timelineFuture.length) {
+			this._steppingFuture = true;
+
+			var prevType =
+				this.timeline.length === 0
+					? null
+					: this.timeline[this.timeline.length - 1].t;
+
+			while (this._timelineFuture.length) {
+				var entry = this._timelineFuture.shift();
+
+				this.replayEntry(entry, prevType);
+				prevType = entry.t;
+
+				if (entry.t === 'p' || entry.t === 'd') {
+					break;
+				}
+			}
+
+			// the replayed passage re-armed its own chain; the kept
+			// future owns what comes next, so drop the echoes
+
+			this.cancelTimers();
+			this.hideTyping();
+			this._steppingFuture = false;
+
+			// follow the story if the step crossed threads (show()
+			// itself re-offers any pills the stepped beat carries)
+
+			if (this.multiThread && this._screen === 'thread') {
+				this.openThread(this._hotThread, { silent: true });
+			}
+
+			this.scrollChatIntoView();
+			return true;
+		}
+
+		// nothing kept (after a jump, say): fall back to re-arming the
+		// written chain edges of the latest content, natural pacing.
+		// Static edges only — a computed name can't be re-derived.
+
 		var last = null;
 
 		for (var i = this.timeline.length - 1; i >= 0; i--) {
-			var entry = this.timeline[i];
+			var tail = this.timeline[i];
 
-			if (entry.t === 'p' || entry.t === 'd') {
-				last = this.passage(entry.id);
+			if (tail.t === 'p' || tail.t === 'd') {
+				last = this.passage(tail.id);
 				break;
 			}
 		}
@@ -6777,7 +6843,6 @@ Object.assign(Story.prototype, {
 			return false;
 		}
 
-		var story = this;
 		var armed = false;
 
 		this.passageEdges(last.source).forEach(function(edge) {
@@ -6815,6 +6880,11 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
+		// keep what the rewind cuts off: resume can then replay the
+		// real future, beat by beat, instead of guessing at it
+
+		var cut = this.timeline.slice(prefix.length);
+
 		this.restore(
 			LZString.compressToBase64(JSON.stringify({ timeline: prefix }))
 		);
@@ -6827,6 +6897,7 @@ Object.assign(Story.prototype, {
 
 		this.cancelTimers();
 		this.hideTyping();
+		this._timelineFuture = cut;
 
 		if (this.multiThread) {
 			this.setThreadTyping(null);
@@ -7646,6 +7717,9 @@ Object.assign(Story.prototype, {
 			'<button type="button" id="debug-restart">restart</button>' +
 			'</div>' +
 			'<details open><summary>Variables</summary>' +
+			'<input type="text" id="debug-watch" ' +
+			'placeholder="watch: name, name… (blank = all)" ' +
+			'aria-label="Watch variables">' +
 			'<table id="debug-vars" class="debug-table"></table>' +
 			'<form id="debug-eval">' +
 			'<input type="text" placeholder="run JS, e.g. s.key = 1" aria-label="Run JavaScript">' +
@@ -7659,7 +7733,7 @@ Object.assign(Story.prototype, {
 			'<button type="button" id="debug-rewind">rewind</button>' +
 			'<button type="button" id="debug-resume">▶ resume</button>' +
 			'</div>' +
-			'<p class="debug-note">pick a moment, rewind to it — paused right there · resume plays a frozen chain onward</p>' +
+			'<p class="debug-note">pick a moment, rewind to it — paused right there · resume steps what you rewound past back in, beat by beat</p>' +
 			'</details>' +
 			'<details open><summary>Jump to passage</summary>' +
 			'<div class="debug-row">' +
@@ -7686,7 +7760,17 @@ Object.assign(Story.prototype, {
 		var memoryTable = panel.querySelector('#debug-memory');
 		var lintBox = panel.querySelector('#debug-lint');
 		var lintSummary = panel.querySelector('#debug-lint-summary');
+		var watchInput = panel.querySelector('#debug-watch');
 		var OPEN_KEY = 'subtext-debug-open-' + this.ifid;
+		var WATCH_KEY = 'subtext-debug-watch-' + this.ifid;
+
+		// the watchlist survives reloads, like the panel's open state
+
+		try {
+			watchInput.value =
+				window.localStorage.getItem(WATCH_KEY) || '';
+		}
+		catch (e) { /* storage unavailable */ }
 
 		// the story check reads source, not state — run it once
 
@@ -7786,10 +7870,25 @@ Object.assign(Story.prototype, {
 					? ' · ' + story.wordCount(window.passage.name) + ' words'
 					: '');
 
-			// state variables
+			// state variables — filtered by the watch box: comma- or
+			// space-separated terms, each matching keys that contain it
 
 			vars.textContent = '';
+
+			var terms = watchInput.value
+				.toLowerCase()
+				.split(/[\s,]+/)
+				.filter(function(term) { return term !== ''; });
 			var keys = Object.keys(story.state);
+			var watched = terms.length
+				? keys.filter(function(key) {
+					var lower = key.toLowerCase();
+
+					return terms.some(function(term) {
+						return lower.indexOf(term) > -1;
+					});
+				})
+				: keys;
 
 			if (keys.length === 0) {
 				var empty = vars.insertRow();
@@ -7797,7 +7896,7 @@ Object.assign(Story.prototype, {
 				empty.insertCell().textContent = '(no variables set)';
 			}
 
-			keys.sort().forEach(function(key) {
+			watched.sort().forEach(function(key) {
 				var row = vars.insertRow();
 
 				row.insertCell().textContent = key;
@@ -7807,6 +7906,13 @@ Object.assign(Story.prototype, {
 				cell.textContent = brief(story.state[key]);
 				cell.title = String(JSON.stringify(story.state[key]));
 			});
+
+			if (keys.length > watched.length) {
+				var hiddenRow = vars.insertRow();
+
+				hiddenRow.insertCell().textContent =
+					'(+' + (keys.length - watched.length) + ' unwatched)';
+			}
 
 			// the timeline dropdown: every moment so far, newest
 			// selected; the rewind button replays up to the pick
@@ -7978,6 +8084,14 @@ Object.assign(Story.prototype, {
 				story.debugRewind(index + 1);
 				refresh();
 			}
+		});
+		watchInput.addEventListener('input', function() {
+			try {
+				window.localStorage.setItem(WATCH_KEY, watchInput.value);
+			}
+			catch (e) { /* storage unavailable */ }
+
+			refresh();
 		});
 		panel.querySelector('#debug-resume').addEventListener('click', function() {
 			story.debugResume();

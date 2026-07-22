@@ -1986,7 +1986,8 @@ button:focus-visible,
 }
 
 #debug-eval input,
-#debug-filter {
+#debug-filter,
+#debug-watch {
 	flex: 1;
 	min-width: 0;
 	padding: 0.3rem 0.5rem;
@@ -1995,6 +1996,12 @@ button:focus-visible,
 	background: #171717;
 	color: #e8eaed;
 	font: inherit;
+}
+
+#debug-watch {
+	display: block;
+	width: 100%;
+	margin-bottom: 0.35rem;
 }
 
 #debug-eval-out {
