@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.16"
+  "format-version": "2.8.17"
 }
 ```
 
@@ -1339,7 +1339,7 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.17
 
 - **Fixed: the typing delay counted the whole passage source.** A passage's "typing…" time paces by message length, but the measure included template code, comments, and the newer directives and pills — so a five-word reply behind a long `<% %>` block made the sender "type" for the maximum. The delay now measures only the readable reply, via the same text extraction the word counter uses (pill labels excluded — they're the player's options, not the sender's message).
 
