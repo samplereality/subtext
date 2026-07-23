@@ -412,7 +412,7 @@ guess who just joined a ukulele band
 [[Eight years, three texts.->Hobby Reflection]]
 ```
 
-With no `in` clause each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length, and a leading `[timestamp …]` chip appears while the dots bounce. An `in` clause sets the pace explicitly, in milliseconds (`in 500ms`) or seconds (`in 2s`; decimals work — `in 1.5s`, `in .5s`) — and **`in 0s` shows the next message instantly, with no typing indicator**, which plays a chain like the one above as a montage of back-to-back messages. Chips stay with their messages either way, and a chain survives saving, undo, and reloading mid-flight. A chain fires only when its passage plays live: a `seed`ed passage never fires its `[then]`.
+With no `in` clause each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message's length — the *readable* reply only, since template code, comments, directives, and reply pills aren't text the sender is typing — and a leading `[timestamp …]` chip appears while the dots bounce. An `in` clause sets the pace explicitly, in milliseconds (`in 500ms`) or seconds (`in 2s`; decimals work — `in 1.5s`, `in .5s`) — and **`in 0s` shows the next message instantly, with no typing indicator**, which plays a chain like the one above as a montage of back-to-back messages. Chips stay with their messages either way, and a chain survives saving, undo, and reloading mid-flight. A chain fires only when its passage plays live: a `seed`ed passage never fires its `[then]`.
 
 If a passage name itself contains ` in `, quote it so the name and the delay clause can't be confused — `[then 'the walk in the park' in 2s]`. Single or double quotes work, `[deliver]` accepts them too, and quoting is always allowed even when there's no ambiguity.
 
@@ -1338,6 +1338,10 @@ Stories authored for Trialogue work unchanged in most cases — speaker tags, li
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **Fixed: the typing delay counted the whole passage source.** A passage's "typing…" time paces by message length, but the measure included template code, comments, and the newer directives and pills — so a five-word reply behind a long `<% %>` block made the sender "type" for the maximum. The delay now measures only the readable reply, via the same text extraction the word counter uses (pill labels excluded — they're the player's options, not the sender's message).
 
 ### Version 2.8.16
 
