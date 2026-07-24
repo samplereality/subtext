@@ -1556,6 +1556,45 @@ async function run() {
 		})
 	);
 
+	// the typing delay paces the READABLE reply only — template code,
+	// directives, and reply pills don't make the sender "type" longer
+	check(
+		'typing delay counts only the readable reply text',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+			const busySource = [
+				"<% if (s.x === 'a') {s.reply = 'a\\n\\nb'} else {s.reply = 'c\\n\\nd'} %>",
+				'btw you should read this',
+				'',
+				'[then some aside 2]',
+				'',
+				'[[lol (send: lol || i would rather not)->next]]',
+				'[[ffs (send: ffs || not a chance)->next]]'
+			].join('\n');
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'delay-busy',
+				['speaker-2'],
+				busySource
+			);
+			window.story.passages[len + 2] = new P(
+				len + 2,
+				'delay-bare',
+				['speaker-2'],
+				'btw you should read this'
+			);
+
+			const busy = window.story.getPassageDelay('delay-busy');
+			const bare = window.story.getPassageDelay('delay-bare');
+
+			window.story.passages.length = len;
+
+			return busy === bare;
+		})
+	);
+
 	// `||` splits passage text into separate bubbles, matching the
 	// (send: a || b) grammar — a mirrored reply renders the way it
 	// was sent

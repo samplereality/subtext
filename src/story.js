@@ -97,21 +97,24 @@ function unquoteName(name) {
 	return name;
 }
 
-/* readable words in passage source: message and narration prose, pill
-   labels, and (send: …) text — with code, comments, directive lines,
-   and markup stripped. An approximation: text a template prints at
-   runtime isn't counted. */
+/* the readable text of passage source — code, comments, directive
+   lines, and markup stripped. Links either contribute their pill label
+   and (send: ...) text (what the player reads — word counts want this)
+   or nothing at all (they're the player's options, not the sender's
+   message — typing delays want that). An approximation: text a
+   template prints at runtime isn't counted. */
 
-function countWords(source) {
-	var text = source
+function readableText(source, keepLinkText) {
+	return source
 		.replace(/\/\*[\s\S]*?\*\//g, ' ')
 		.replace(/^[ \t]*\/\/.*$/gm, ' ')
 		.replace(/<%[\s\S]*?%>/g, ' ')
 
-		// links: keep the pill label and any (send: …) text — the
-		// player reads both
-
 		.replace(/\[\[(.*?)\]\]/g, function(match, inner) {
+			if (!keepLinkText) {
+				return ' ';
+			}
+
 			var arrow = inner.indexOf('->');
 
 			if (arrow > -1) {
@@ -146,10 +149,15 @@ function countWords(source) {
 
 		.replace(/\{[^}]*\}/g, ' ')
 		.replace(/<[^>]+>/g, ' ');
+}
 
+/* readable words in passage source: message and narration prose, pill
+   labels, and (send: ...) text */
+
+function countWords(source) {
 	var count = 0;
 
-	text.split(/\s+/).forEach(function(token) {
+	readableText(source, true).split(/\s+/).forEach(function(token) {
 		if (/[A-Za-z0-9\u00C0-\uFFFF]/.test(token)) {
 			count += 1;
 		}
@@ -6066,13 +6074,15 @@ Object.assign(Story.prototype, {
 			return this.config.minTypingDelay;
 		}
 
+		// the "typing…" time reflects the message the sender is
+		// actually writing: template code, comments, directives, and
+		// reply pills don't count — only the readable reply does
+
 		var probe = document.createElement('div');
 
-		probe.innerHTML = target.source
-			.replace(/\[\[.*?\]\]/g, '')
-			.replace(/\[(voice|location|timestamp|system)[^\]]*\]/gi, '');
+		probe.innerHTML = readableText(target.source, false);
 
-		var length = probe.textContent.trim().length;
+		var length = probe.textContent.replace(/\s+/g, ' ').trim().length;
 
 		return Math.max(
 			this.config.minTypingDelay,
