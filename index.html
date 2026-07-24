@@ -1,0 +1,1867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subtext — a chat story format for Twine</title>
+<meta name="description" content="Subtext turns a branching Twine story into a modern text-message exchange: bubbles, typing indicators, photos, voice memos, locations, reactions, and read receipts.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root {
+	--bg: #f5f5f7; --surface: #ffffff; --text: #111114; --muted: #6e6e73;
+	--accent: #0a84ff; --border: rgba(0, 0, 0, 0.09); --code-bg: rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0a0a0d; --surface: #17171b; --text: #f2f2f4; --muted: #98989f;
+		--accent: #409cff; --border: rgba(255, 255, 255, 0.1); --code-bg: rgba(255, 255, 255, 0.08);
+	}
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0; background: var(--bg); color: var(--text);
+	font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+.hero { text-align: center; padding: 3.5rem 1.25rem 2rem; }
+.hero img { width: 72px; height: 72px; }
+.hero h1 { font-size: 2.4rem; letter-spacing: -0.02em; margin: 0.75rem 0 0.25rem; }
+.hero .tagline { color: var(--muted); font-size: 1.1rem; max-width: 34rem; margin: 0.25rem auto 1.5rem; }
+.actions { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; }
+.btn {
+	display: inline-block; padding: 0.55rem 1.2rem; border-radius: 999px;
+	background: var(--accent); color: #fff !important; text-decoration: none; font-weight: 600;
+}
+.btn--ghost { background: transparent; color: var(--accent) !important; border: 1.5px solid var(--accent); }
+.install { margin: 1.75rem auto 0; max-width: 34rem; }
+.install .label { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+.install code {
+	display: block; padding: 0.7rem 1rem; border-radius: 0.75rem; overflow-x: auto;
+	background: var(--surface); border: 1px solid var(--border); font-size: 0.85rem; white-space: nowrap;
+}
+.try { display: flex; justify-content: center; padding: 1.5rem 1rem 0.5rem; }
+.try iframe {
+	width: 396px; max-width: 100%; height: 720px; border: 1px solid var(--border);
+	border-radius: 1.6rem; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25); background: var(--bg);
+}
+.try-hint { text-align: center; color: var(--muted); font-size: 0.8rem; margin: 0.75rem 0 0; }
+.docs { display: flex; align-items: flex-start; max-width: 72rem; margin: 0 auto; gap: 1rem; }
+.toc {
+	flex: 0 0 16rem; position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
+	padding: 2rem 0.5rem 2rem 1.25rem; font-size: 0.85rem; line-height: 1.45;
+	scrollbar-width: thin;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc ol ol { padding-left: 0.9rem; margin: 0.15rem 0 0.4rem; border-left: 1px solid var(--border); }
+.toc li { margin: 0.15rem 0; }
+.toc a {
+	display: block; color: var(--muted); text-decoration: none;
+	padding: 0.12rem 0.5rem; border-radius: 0.4rem;
+	white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toc a:hover { color: var(--text); background: var(--code-bg); }
+.toc a.current { color: var(--accent); font-weight: 600; }
+@media (max-width: 63.99rem) {
+	.docs { display: block; }
+	.toc { position: static; max-height: none; columns: 2; padding: 1.5rem 1.25rem 0; }
+	.toc li { break-inside: avoid; }
+}
+main { flex: 1; min-width: 0; max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+main h1, main h2 { letter-spacing: -0.01em; margin-top: 2.2em; }
+main h1 { font-size: 1.6rem; } main h2 { font-size: 1.35rem; } main h3 { font-size: 1.1rem; margin-top: 1.8em; }
+main pre {
+	background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem;
+	padding: 0.9rem 1.1rem; overflow-x: auto; font-size: 0.85rem; line-height: 1.5;
+}
+main code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875em; }
+main :not(pre) > code { background: var(--code-bg); padding: 0.12em 0.35em; border-radius: 0.35em; }
+main table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+main th, main td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; }
+main blockquote { border-left: 3px solid var(--accent); margin: 1em 0; padding: 0.1em 1em; color: var(--muted); }
+footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 0 1rem 3rem; }
+</style>
+</head>
+<body>
+<header class="hero">
+	<img src="icon.svg" alt="">
+	<h1>Subtext</h1>
+	<p class="tagline">A story format for Twine 2 that turns a branching narrative into a modern text-message exchange.</p>
+	<div class="actions">
+		<a class="btn" href="demo.html">Play the demo</a>
+		<a class="btn btn--ghost" href="inbox-demo.html">Inbox demo</a>
+		<a class="btn btn--ghost" href="https://github.com/samplereality/subtext">GitHub</a>
+	</div>
+	<div class="install">
+		<div class="label">Add to Twine via Twine → Story Formats → Add a New Format:</div>
+		<code>https://samplereality.github.io/subtext/format.js?v=2.8.17</code>
+	</div>
+</header>
+<section class="try">
+	<iframe src="demo.html" title="Playable Subtext demo" loading="lazy"></iframe>
+</section>
+<p class="try-hint">The demo, running live — tap a reply to play.</p>
+<div class="docs">
+<nav class="toc" aria-label="Contents"><ol><li><a href="#getting-started">Getting started</a><ol><li><a href="#add-subtext-to-twine">Add Subtext to Twine</a></li><li><a href="#your-first-passage">Your first passage</a></li><li><a href="#using-tweego">Using Tweego</a></li><li><a href="#building-from-source">Building from source</a></li></ol></li><li><a href="#special-passages">Special passages</a></li><li><a href="#passage-tags">Passage tags</a></li><li><a href="#the-design-language">The design language</a></li><li><a href="#story-state">Story state</a></li><li><a href="#messages">Messages</a><ol><li><a href="#photo-messages">Photo messages</a></li><li><a href="#voice-memos">Voice memos</a></li><li><a href="#sound-cues">Sound cues</a></li><li><a href="#location-sharing">Location sharing</a></li><li><a href="#timestamps">Timestamps</a></li><li><a href="#system-messages">System messages</a></li><li><a href="#deleted-messages">Deleted messages</a></li><li><a href="#read-receipts">Read receipts</a></li><li><a href="#reactions">Reactions</a></li><li><a href="#message-chains-and-montages">Message chains and montages</a></li></ol></li><li><a href="#narration">Narration</a><ol><li><a href="#asides">Asides</a></li></ol></li><li><a href="#player-input">Player input</a><ol><li><a href="#reply-pills-and-sent-text">Reply pills and sent text</a></li><li><a href="#timed-responses">Timed responses</a></li><li><a href="#free-text-input">Free text input</a></li></ol></li><li><a href="#speakers-and-appearance">Speakers and appearance</a><ol><li><a href="#speaker-profiles">Speaker profiles</a></li><li><a href="#theming">Theming</a></li></ol></li><li><a href="#story-structure">Story structure</a><ol><li><a href="#clearing-the-thread">Clearing the thread</a></li><li><a href="#multiple-conversations">Multiple conversations</a></li><li><a href="#saving">Saving</a></li></ol></li><li><a href="#interface">Interface</a><ol><li><a href="#notifications">Notifications</a></li><li><a href="#page-chrome-and-menus">Page chrome and menus</a></li></ol></li><li><a href="#debug-mode">Debug mode</a></li><li><a href="#editor-support">Editor support</a></li><li><a href="#configuration">Configuration</a></li><li><a href="#utility-functions">Utility functions</a><ol><li><a href="#the-story-and-passage-globals">The story and passage globals</a></li><li><a href="#snowman-helpers">Snowman helpers</a></li><li><a href="#api-index">API index</a></li></ol></li><li><a href="#events">Events</a></li><li><a href="#extending-subtext">Extending Subtext</a><ol><li><a href="#whats-stable">What&#39;s stable</a></li><li><a href="#example-a-custom-directive-no-format-changes">Example: a custom directive, no format changes</a></li><li><a href="#example-behavior-from-events">Example: behavior from events</a></li></ol></li><li><a href="#recipes">Recipes</a><ol><li><a href="#branch-on-how-the-player-arrived">Branch on how the player arrived</a></li><li><a href="#notice-hesitation">Notice hesitation</a></li><li><a href="#fire-sound-or-analytics-on-any-choice">Fire sound or analytics on any choice</a></li><li><a href="#disposable-intro-conversations">Disposable intro conversations</a></li><li><a href="#gate-the-story-on-exploration-not-a-timer">Gate the story on exploration, not a timer</a></li><li><a href="#affinity-and-stat-meters">Affinity and stat meters</a></li><li><a href="#a-hub-whose-choices-disappear-as-you-use-them">A hub whose choices disappear as you use them</a></li><li><a href="#a-delete-thread-reply-pill">A &quot;Delete Thread&quot; reply pill</a></li><li><a href="#remember-across-playthroughs">Remember across playthroughs</a></li></ol></li><li><a href="#accessibility">Accessibility</a></li><li><a href="#migrating-from-trialogue">Migrating from Trialogue</a></li><li><a href="#changelog">Changelog</a></li></ol></nav>
+<main>
+<p>Subtext is a story format for <a href="https://twinery.org/">Twine 2</a> that turns a branching narrative into an interactive chat or text-message story.</p>
+<p><strong>Docs:</strong> <a href="https://samplereality.github.io/subtext/">https://samplereality.github.io/subtext/</a><br><strong>Play the demo:</strong> <a href="https://samplereality.github.io/subtext/demo.html">https://samplereality.github.io/subtext/demo.html</a></p>
+<p>Subtext is a successor to <a href="https://github.com/phivk/trialogue">Trialogue</a> by Philo van Kemenade. The name refers to what chat fiction leaves unsaid — the message left on <em>Delivered</em>, the <em>Read</em> with no reply. The lineage runs Subtext → Trialogue → <a href="http://mcdemarco.net/tools/scree/paloma/">Paloma</a> → <a href="https://github.com/videlais/snowman">Snowman</a>.</p>
+<h2 id="getting-started">Getting started</h2>
+<p>The core model: <strong>every passage is a message.</strong> Tag a passage with who&#39;s speaking, write what they say, and offer the player replies — the format handles the bubbles, the typing indicator, the timing, and the read receipts.</p>
+<h3 id="add-subtext-to-twine">Add Subtext to Twine</h3>
+<p>In Twine 2: <strong>Twine → Story Formats → Add a New Format</strong> and paste:</p>
+<pre><code>https://samplereality.github.io/subtext/format.js
+</code></pre>
+<p>(That URL is the copy of <code>dist/Twine2/Subtext/format.js</code> published by this repository&#39;s GitHub Pages site, redeployed automatically on every push to <code>main</code>.) Then set it as your story&#39;s format under <strong>Story → Details</strong>.</p>
+<h3 id="your-first-passage">Your first passage</h3>
+<p>Tag a passage <code>speaker-&lt;name&gt;</code> to say who sends it:</p>
+<pre><code>:: Start [speaker-detective]
+Something doesn&#39;t add up here.
+
+Meet me at the docks in an hour?
+
+[[on my way]]
+[[why the docks?]]
+</code></pre>
+<ul>
+<li>Each paragraph (blank-line separated) becomes its own bubble, and <code>||</code> inside a paragraph splits it further — the same separator a <code>(send: a || b)</code> label uses, so text stored with it renders the same multi-bubble way it was sent. To keep paragraph breaks <em>inside</em> one long bubble instead, tag the passage <code>one-bubble</code> — or, mid-passage, wrap just those paragraphs in an HTML block (markdown doesn&#39;t render inside raw HTML, so write the <code>&lt;p&gt;</code> tags yourself): <code>&lt;div&gt;&lt;p&gt;first paragraph.&lt;/p&gt;&lt;p&gt;second paragraph.&lt;/p&gt;&lt;/div&gt;</code> renders as a single bubble among normally split ones. (<code>story.config.splitBubbles = false</code> does one-bubble-per-passage story-wide.)</li>
+<li><code>[[links]]</code> become the player&#39;s quick-reply choices. The usual Twine link forms work: <code>[[display|target]]</code>, <code>[[display-&gt;target]]</code>, <code>[[target&lt;-display]]</code>. A pill can also send different text than it shows — see <a href="#reply-pills-and-sent-text">Reply pills and sent text</a>.</li>
+<li>A passage <strong>without</strong> a <code>speaker-</code> tag belongs to the narrator — see <a href="#narration">Narration</a> for the ways it can be presented.</li>
+<li>Speaker names get an avatar automatically (initial + a stable color derived from the name). Multi-word names use dashes: <code>speaker-happy-bot</code> displays as &quot;happy bot&quot;.</li>
+<li>Markdown, inline HTML, and Snowman-style <code>&lt;%= s.variable %&gt;</code> templates are all supported. Story state lives in <code>s</code> (an alias for <code>window.story.state</code>).</li>
+</ul>
+<p>That&#39;s a complete, playable story. Everything below adds to it.</p>
+<h3 id="using-tweego">Using Tweego</h3>
+<p>Prefer writing Twee in a text editor? Subtext works with <a href="https://www.motoslave.net/tweego/">Tweego</a>, the command-line Twine compiler.</p>
+<p><strong>1. Install the format where Tweego can find it.</strong> Tweego looks for story formats in a <code>storyformats</code> directory — next to your project, next to the <code>tweego</code> binary, or anywhere listed in the <code>TWEEGO_PATH</code> environment variable. Each format lives in its own subdirectory containing a <code>format.js</code>:</p>
+<pre><code class="language-bash">mkdir -p storyformats/subtext
+curl -o storyformats/subtext/format.js https://samplereality.github.io/subtext/format.js
+</code></pre>
+<p>(Or copy <code>dist/Twine2/Subtext/</code> from a clone of this repository into <code>storyformats/</code>.) Confirm it&#39;s visible — and note its ID — with:</p>
+<pre><code class="language-bash">tweego --list-formats
+</code></pre>
+<p><strong>2. Declare the format in your StoryData passage</strong> so both Tweego and Twine select it automatically:</p>
+<pre><code>:: StoryData
+{
+  &quot;ifid&quot;: &quot;YOUR-STORY-IFID&quot;,
+  &quot;format&quot;: &quot;Subtext&quot;,
+  &quot;format-version&quot;: &quot;2.8.17&quot;
+}
+</code></pre>
+<p>(Every story needs its own unique IFID — Tweego generates one for you if the field is missing, and prints it so you can paste it in.)</p>
+<p><strong>3. Compile:</strong></p>
+<pre><code class="language-bash">tweego -o story.html story.twee
+</code></pre>
+<p>If you skip the StoryData declaration, pass the format explicitly with <code>-f subtext</code> (the ID from <code>--list-formats</code>). Other handy invocations:</p>
+<pre><code class="language-bash">tweego -w -o story.html story.twee    # watch mode: recompile on every save
+tweego -t -o story.html story.twee    # test build: enables the debug panel
+tweego -d -o story.twee story.html    # decompile a published story back to Twee
+</code></pre>
+<p>Watch mode pairs well with <a href="#debug-mode">debug mode</a>: run <code>tweego -w -t</code>, open the output in a live-preview browser tab, and every save recompiles while the story keeps its place.</p>
+<p>This repository&#39;s demo story, <a href="docs/subtext-demo.twee"><code>docs/subtext-demo.twee</code></a>, is a ready-made example of a Tweego-compatible Subtext project.</p>
+<h3 id="building-from-source">Building from source</h3>
+<pre><code>npm install
+npm run build   # build dist/Twine2/Subtext/format.js
+npm run demo    # build + compile docs/subtext-demo.twee to docs/subtext-demo.html
+npm test        # build + demo + headless-browser smoke test
+</code></pre>
+<p>The demo compiler (<code>scripts/build-demo.js</code>) is a minimal Twee-to-HTML stand-in for Tweego, so you can iterate on the format without external tools. Tweego works too — see <a href="#using-tweego">Using Tweego</a>, pointing <code>storyformats/subtext/</code> at the freshly built <code>dist/Twine2/Subtext/</code>.</p>
+<h2 id="special-passages">Special passages</h2>
+<p>A handful of passage <em>names</em> have special meaning (the Twine convention). Most are optional.</p>
+<table>
+<thead>
+<tr>
+<th>Passage</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>StoryTitle</code></td>
+<td>The story&#39;s name (Twine standard)</td>
+</tr>
+<tr>
+<td><code>StoryData</code></td>
+<td>IFID and format metadata (Twine standard)</td>
+</tr>
+<tr>
+<td><code>StorySubtitle</code></td>
+<td>Subtitle shown with the story title (place via <a href="#page-chrome-and-menus"><code>titlePlacement</code></a>)</td>
+</tr>
+<tr>
+<td><code>StoryAuthor</code></td>
+<td>Author credit shown with the subtitle (same placement)</td>
+</tr>
+<tr>
+<td><code>StoryColophon</code></td>
+<td>Appended as a meta message when a passage tagged <code>End</code> is shown</td>
+</tr>
+<tr>
+<td><code>StorySpeakers</code></td>
+<td>Speaker display names, avatars, and colors — see <a href="#speaker-profiles">Speaker profiles</a></td>
+</tr>
+<tr>
+<td><code>StoryImages</code></td>
+<td>The photo gallery — see <a href="#photo-messages">Photo messages</a></td>
+</tr>
+<tr>
+<td><code>StoryThreads</code></td>
+<td>Conversation list; its presence enables <a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td>tag <code>script</code></td>
+<td>Story JavaScript (Twine&#39;s Edit Story JavaScript also works)</td>
+</tr>
+<tr>
+<td>tag <code>stylesheet</code></td>
+<td>Story CSS (Twine&#39;s Edit Story Stylesheet also works)</td>
+</tr>
+</tbody></table>
+<h2 id="passage-tags">Passage tags</h2>
+<p>And a handful of passage <em>tags</em> change how a passage behaves. Tags combine freely (<code>[speaker-sam thread-mom clear]</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Effect</th>
+<th>Section</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>speaker-&lt;id&gt;</code></td>
+<td>Marks who sends the message</td>
+<td><a href="#your-first-passage">Your first passage</a></td>
+</tr>
+<tr>
+<td><code>thread-&lt;id&gt;</code></td>
+<td>Routes the passage to a conversation</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>seed</code></td>
+<td>Renders the passage into its thread as pre-existing, read history</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>quiet</code> / <code>quiet-read</code></td>
+<td>A <code>[deliver]</code>ed passage lands with no banner, sound, or typing — with an unread badge (<code>quiet</code>) or none (<code>quiet-read</code>)</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>meta-chat</code> / <code>meta-overlay</code> / <code>meta-notification</code></td>
+<td>Overrides the narration mode for one passage</td>
+<td><a href="#narration">Narration</a></td>
+</tr>
+<tr>
+<td><code>aside-left</code> / <code>aside-right</code></td>
+<td>Renders narration as a margin note</td>
+<td><a href="#asides">Asides</a></td>
+</tr>
+<tr>
+<td><code>aside-beats-&lt;n&gt;</code> / <code>aside-hold</code> / <code>aside-up-&lt;n&gt;</code> / <code>aside-down-&lt;n&gt;</code></td>
+<td>Tune an aside&#39;s lifetime and placement</td>
+<td><a href="#asides">Asides</a></td>
+</tr>
+<tr>
+<td><code>instant</code></td>
+<td>The passage arrives with no typing indicator (with an explicit delay: a silent wait)</td>
+<td><a href="#message-chains-and-montages">Message chains and montages</a></td>
+</tr>
+<tr>
+<td><code>one-bubble</code></td>
+<td>The passage renders as a single bubble, paragraph breaks kept inside it</td>
+<td><a href="#your-first-passage">Your first passage</a></td>
+</tr>
+<tr>
+<td><code>clear</code></td>
+<td>Wipes the visible thread before rendering</td>
+<td><a href="#clearing-the-thread">Clearing the thread</a></td>
+</tr>
+<tr>
+<td><code>timestamp</code></td>
+<td>Renders the passage&#39;s text as timestamp chips</td>
+<td><a href="#timestamps">Timestamps</a></td>
+</tr>
+<tr>
+<td><code>read</code> / <code>unread</code></td>
+<td>Forces or suppresses the read receipt</td>
+<td><a href="#read-receipts">Read receipts</a></td>
+</tr>
+<tr>
+<td><code>unlinked</code></td>
+<td>Marks a deliberately unlinked passage so the debug story check stays quiet</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>Marks the player&#39;s last message <em>Not Delivered</em></td>
+<td><a href="#read-receipts">Read receipts</a></td>
+</tr>
+<tr>
+<td><code>End</code> (or <code>end</code>)</td>
+<td>Appends <code>StoryColophon</code> when shown</td>
+<td><a href="#special-passages">Special passages</a></td>
+</tr>
+</tbody></table>
+<h2 id="the-design-language">The design language</h2>
+<p>Everything you write in a passage falls into one of three shapes, each with one job:</p>
+<ol>
+<li><strong><code>[directive …]</code> on its own line</strong> puts something <em>inside</em> a message — <code>[timestamp …]</code>, <code>[system …]</code>, <code>[voice …]</code>, <code>[sound …]</code>, <code>[location …]</code>, <code>[react …]</code>, <code>[deliver …]</code>, <code>[then …]</code>, <code>[tombstone]</code>. Square brackets, lowercase, one line.</li>
+<li><strong><code>prefix:</code> at the start of a link label</strong> makes a special <em>kind</em> of reply — <code>photo:</code>, <code>location:</code>, <code>react:</code>, <code>input:</code>, <code>timeout:</code>. (Bare <code>photo</code>, <code>location</code>, and <code>input</code> work as shorthand for the argument-less form.)</li>
+<li><strong><code>(send: …)</code> at the end of a link label</strong> <em>modifies</em> an ordinary reply — what it sends, or whether it sends anything.</li>
+</ol>
+<p>The first two follow one convention: <strong>incoming is a directive, outgoing is a link prefix.</strong> <code>[react ❤️]</code> is the speaker reacting; <code>react:👍</code> is the player reacting. <code>[location …]</code> is a pin a speaker sends; <code>location:</code> is the player sharing theirs.</p>
+<h2 id="story-state">Story state</h2>
+<p>Everything the format tracks automatically lives in <code>s</code> (alias of <code>story.state</code>), participates in undo and save/restore, and is watchable live in <a href="#debug-mode">debug mode</a>. The <code>s</code> name is in scope only inside <code>&lt;% %&gt;</code> templates — in Story JavaScript, event listeners, or the console, use <code>story.state</code>, and read it fresh each time rather than keeping a reference (the object is replaced wholesale on restore and undo):</p>
+<table>
+<thead>
+<tr>
+<th><code>s</code> value</th>
+<th>Is</th>
+<th>Set by</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>s.lastChoice</code></td>
+<td>Label of the last reply pill tapped</td>
+<td>any choice — <a href="#reply-pills-and-sent-text">details</a></td>
+</tr>
+<tr>
+<td><code>s.previousPassage</code></td>
+<td>Name of the passage shown before this one</td>
+<td>every passage</td>
+</tr>
+<tr>
+<td><code>s.replySeconds</code></td>
+<td>Seconds the player deliberated over the last choice</td>
+<td>any response</td>
+</tr>
+<tr>
+<td><code>s.timedOut</code></td>
+<td>Whether the last transition came from an expired timer</td>
+<td><a href="#timed-responses">timed responses</a></td>
+</tr>
+<tr>
+<td><code>s.lastInput</code> / <code>s.inputs</code></td>
+<td>Last typed text / every entry</td>
+<td><a href="#free-text-input">free text input</a></td>
+</tr>
+<tr>
+<td><code>s.lastPhoto</code> / <code>s.sentPhotos</code></td>
+<td>Last photo sent / every photo</td>
+<td><a href="#photo-messages">photo messages</a></td>
+</tr>
+<tr>
+<td><code>s.playerLocation</code></td>
+<td><code>{ lat, lon, accuracy }</code> or <code>null</code></td>
+<td><a href="#location-sharing">location sharing</a></td>
+</tr>
+<tr>
+<td><code>s.lastReaction</code></td>
+<td>Emoji of the player&#39;s last tapback</td>
+<td><a href="#reactions">reactions</a></td>
+</tr>
+</tbody></table>
+<p>For values that should <em>survive</em> restart, see <a href="#remember-across-playthroughs">remembering across playthroughs</a>.</p>
+<h2 id="messages">Messages</h2>
+<p>A message can carry more than text. Each of these is written as a <code>[directive …]</code> line or a special link, and each is its own bubble.</p>
+<h3 id="photo-messages">Photo messages</h3>
+<p>Let the player reply with a picture instead of words. First, declare the story&#39;s image gallery in a passage named <code>StoryImages</code>, one image per line:</p>
+<pre><code>:: StoryImages
+sunny: https://example.com/sunny.jpg
+rainy: images/rainy.png
+selfie: data:image/svg+xml,%3Csvg …%3E
+</code></pre>
+<p>(Any URL works — hosted files, relative paths, or data URIs for fully self-contained stories. Entries can also be added from story JavaScript via <code>story.gallery</code>.)</p>
+<p>Then offer photos in a passage using <code>photo:</code> links. A camera button appears with the other choices; tapping it opens a picker sheet, and the selected image is sent as an outgoing photo message before the story continues to the link&#39;s target:</p>
+<pre><code>:: pretty good [speaker-1]
+what&#39;s the weather like where you are? send me a photo!
+
+[[photo:*-&gt;photo-reply]]
+[[rather not say-&gt;Start]]
+</code></pre>
+<ul>
+<li><code>[[photo:*-&gt;Target]]</code> (or bare <code>[[photo-&gt;Target]]</code>) offers the whole gallery</li>
+<li><code>[[photo:sunny-&gt;Target]]</code> offers a single image</li>
+<li><code>[[photo:sunny,rainy-&gt;Target]]</code> offers a subset</li>
+<li>Several <code>photo:</code> links with different targets can branch per image</li>
+</ul>
+<p><strong>Tracking what was sent:</strong> the choice is recorded in story state, so passages can react to it:</p>
+<pre><code>:: photo-reply [speaker-1]
+&lt;% if (s.lastPhoto === &#39;sunny&#39;) { %&gt;enjoy the sunshine!&lt;% } else { %&gt;stay dry!&lt;% } %&gt;
+
+you&#39;ve sent &lt;%= s.sentPhotos.length %&gt; photo(s)
+</code></pre>
+<p><code>s.lastPhoto</code> is the most recently sent image name; <code>s.sentPhotos</code> is an array of every image sent. Both participate in undo and save/restore like any other state, and a <code>photosent</code> event fires on every send (see <a href="#events">Events</a>). Related config: <code>story.config.photoButtonLabel</code>, <code>story.config.photoPickerTitle</code>, and <code>story.config.preloadImages</code> (warms the browser cache for gallery images at startup, on by default).</p>
+<p><strong>Viewing photos.</strong> Every image in the chat — sent, received, or seeded — opens fullscreen in a lightbox on tap (dimmed backdrop; tap anywhere or press <kbd>Esc</kbd> to close). Images are keyboard-focusable, and an image&#39;s <code>alt</code> text labels it for screen readers. Opt an image out with <code>data-lightbox=&quot;off&quot;</code> in its markup.</p>
+<h3 id="voice-memos">Voice memos</h3>
+<p>Put a <code>[voice …]</code> line in any passage to send an audio message with a proper voice-note player — play/pause button, waveform, and duration read from the file:</p>
+<pre><code>:: reply [speaker-sam]
+I can explain everything
+
+[voice audio/explanation.mp3]
+
+[[go on]]
+</code></pre>
+<p>Any audio URL works, including data URIs for self-contained stories. Each memo is its own bubble; only one plays at a time. (A raw <code>&lt;audio&gt;</code> tag still works too — this just looks like a text exchange instead of a browser control.)</p>
+<h3 id="sound-cues">Sound cues</h3>
+<p>Where <code>[voice …]</code> renders a playable message, <code>[sound …]</code> renders nothing — the audio simply plays when the passage shows. For diegetic sound effects: a phone buzzing with a call the player doesn&#39;t answer, a notification chime from another room:</p>
+<pre><code>:: the-call [speaker-sam]
+[sound audio/buzz.mp3]
+
+don&#39;t answer that
+
+[system Missed call from Unknown]
+
+[[who was it?-&gt;evasion]]
+</code></pre>
+<p>Cues play once, on live shows and deliveries only — never during a save replay, in seeds, or on <code>quiet</code>/<code>quiet-read</code> deliveries. Also callable as <code>story.playAudioFile(&#39;buzz.mp3&#39;)</code>. Two caveats: browsers allow sound only after the player&#39;s first interaction, so a cue in the very first passage may be silent; and a cue is invisible to players who can&#39;t hear it — pair it with something visible, like the <code>[system …]</code> chip above.</p>
+<h3 id="location-sharing">Location sharing</h3>
+<p>Send a place as a map card with a <code>[location lat,lon Label]</code> line — it renders with a pin and opens OpenStreetMap when tapped:</p>
+<pre><code>:: meet [speaker-sam]
+meet me here at midnight
+
+[location 52.3676,4.9041 Amsterdam Centraal]
+
+[[i&#39;ll be there]]
+</code></pre>
+<p>The player can share their <strong>real</strong> location. A <code>location:</code> link renders a pin button with the other choices; tapping it asks the browser for the player&#39;s coordinates (with the standard permission prompt):</p>
+<pre><code>:: where [speaker-sam]
+where are you right now?
+
+[[location:share my location-&gt;got-it]]
+[[none of your business-&gt;got-it]]
+
+:: got-it [speaker-sam]
+&lt;% if (s.playerLocation) { %&gt;huh, &lt;%= s.playerLocation.lat.toFixed(3) %&gt;, &lt;%= s.playerLocation.lon.toFixed(3) %&gt;… that explains a lot&lt;% } else { %&gt;fine, keep your secrets&lt;% } %&gt;
+</code></pre>
+<p>If the player consents, their position is sent as an outgoing map card and stored in <code>s.playerLocation</code> (<code>{ lat, lon, accuracy }</code>); if they decline — or geolocation is unavailable — <code>s.playerLocation</code> is <code>null</code> and the story continues to the same target, so always write both branches. A <code>locationshared</code> event fires on success (see <a href="#events">Events</a>). Real coordinates support distance-gated scenes or characters who react to where the reader is. (Browsers require HTTPS for geolocation; label defaults live in <code>story.config.locationButtonLabel</code> / <code>locationBubbleLabel</code>.)</p>
+<h3 id="timestamps">Timestamps</h3>
+<p>Add centered timestamp chips, like a conversation that unfolds over time:</p>
+<pre><code>:: morning [speaker-detective]
+[timestamp Tuesday 9:41 AM]
+any progress on the case?
+
+[[some-&gt;progress]]
+</code></pre>
+<p>A <code>[timestamp …]</code> line at the start of any passage renders as a chip above the message (it also resets message grouping, as a time gap should). Alternatively, tag a whole passage <code>timestamp</code> to render its text as chips. Timestamps are purely presentational — write whatever fits your story&#39;s clock. When a chip leads a speaker&#39;s reply, it appears the moment the reply starts &quot;typing,&quot; the way it would on a real phone.</p>
+<h3 id="system-messages">System messages</h3>
+<p>Messaging-app events — departures, joins, missed calls, group renames — get their own centered chip:</p>
+<pre><code>:: sam-goes-dark [speaker-sam]
+I&#39;ve said too much already
+
+[system Sam has left the conversation]
+
+[[wait—-&gt;gone]]
+</code></pre>
+<p><code>[system …]</code> renders as a centered, italic event chip (style it via <code>.chat-system</code>). It differs from a timestamp in two ways: a chip written <em>after</em> the message renders below it, and it is never shown early while the reply is still typing. Works in <a href="#multiple-conversations">seeds</a> too, for history like <em>&quot;Missed call&quot;</em>.</p>
+<h3 id="deleted-messages">Deleted messages</h3>
+<p>Following the convention of real chat apps, a deleted message is not erased — it is replaced with a tombstone: <em>&quot;This message was deleted.&quot;</em> This works in both directions:</p>
+<p><strong>Deleting live.</strong> <code>story.redactMessage()</code> replaces the newest message&#39;s content with the tombstone, in place. <code>redactMessage(&#39;out&#39;)</code> (the default) targets the player&#39;s newest message in the current thread, <code>redactMessage(&#39;in&#39;)</code> the other side&#39;s; calling it again deletes the one before, and so on. Wired to a reply pill, it becomes a player action:</p>
+<pre><code>:: regret [speaker-you]
+[[Delete message (send:)-&gt;they noticed]]
+[[leave it-&gt;brazen it out]]
+
+:: they noticed [speaker-sam]
+&lt;% story.redactMessage(&#39;out&#39;) %&gt;um. I saw that before you deleted it
+
+[[you saw nothing-&gt;denial]]
+</code></pre>
+<p>Tapping <strong>Delete message</strong> posts nothing, the player&#39;s last text becomes the tombstone, and the story continues to the target. A <code>redact</code> event fires, and deletions participate in undo and save/restore. The wording comes from <code>story.config.redactedLabel</code>; pass a one-off override as the second argument — <code>story.redactMessage(&#39;out&#39;, &#39;You deleted this message&#39;)</code>.</p>
+<p><strong>Seeding old deletions.</strong> In pre-existing history (or anywhere else), the <code>[tombstone]</code> directive renders a message that was already deleted before the story began:</p>
+<pre><code>:: family-history [thread-family speaker-matt seed]
+[tombstone]
+</code></pre>
+<p>Bare <code>[tombstone]</code> uses the configured wording; <code>[tombstone You deleted this message]</code> overrides it.</p>
+<p>(Why redaction instead of removal: the conversation is a screen-reader live region, and removing nodes from it makes assistive tech re-announce the log. The tombstone keeps the DOM stable.)</p>
+<h3 id="read-receipts">Read receipts</h3>
+<p>Player messages show a <strong>Delivered</strong> status that flips to <strong>Read</strong> the moment a speaker&#39;s reply is <em>queued</em> — before the typing indicator starts, matching the order on a real phone: the message is read, then the reply is typed. (Only the most recent message displays its receipt.) The receipt participates in undo and save/restore.</p>
+<p>The receipt can be controlled directly:</p>
+<ul>
+<li>Tag a passage <code>unread</code> and showing it will <em>not</em> mark the player&#39;s message as read (a meta passage narrating &quot;hours pass…&quot; while the message sits on Delivered).</li>
+<li>Tag a passage <code>read</code> to force the flip — even from a meta passage that sends no reply.</li>
+<li>From JavaScript or inside a passage template: <code>&lt;% story.markRead() %&gt;</code>, <code>&lt;% story.markUnread() %&gt;</code>, or with a custom label, <code>&lt;% story.markRead(&#39;Read 11:58 PM&#39;) %&gt;</code>.</li>
+<li>Set <code>story.config.autoRead = false</code> to take full manual control, or <code>story.config.readReceipts = false</code> to turn receipts off entirely. Labels are configurable via <code>story.config.receiptLabels</code>.</li>
+</ul>
+<p><strong>Failed to send.</strong> Tag a passage <code>failed</code> (or call <code>story.markFailed()</code>) and the player&#39;s last message shows <strong>Not Delivered</strong> in red. Unlike other receipts, it stays visible on that message permanently, and automatic read receipts never override it. Useful for dead numbers, lost signal, or blocked contacts.</p>
+<h3 id="reactions">Reactions</h3>
+<p>Tapback badges, in both directions:</p>
+<ul>
+<li><strong>A speaker reacts to the player.</strong> Put <code>[react ❤️]</code> on its own line in a passage and the emoji pops onto the corner of the player&#39;s last message when that passage shows. (From code: <code>story.react(&#39;❤️&#39;)</code>, or <code>story.react(&#39;😂&#39;, &#39;in&#39;)</code> to react to the speaker&#39;s own last message.)</li>
+<li><strong>The player reacts as a choice.</strong> A <code>[[react:👍-&gt;Target]]</code> link renders as an emoji chip with the other responses. Choosing it sends <em>no bubble</em> — the tapback lands on the speaker&#39;s message, <code>s.lastReaction</code> records the emoji for branching, a <code>reaction</code> event fires, and the story continues to the target:</li>
+</ul>
+<pre><code>:: sam-reacts [speaker-sam]
+[react ❤️]
+
+right back at you
+
+[[react:👍-&gt;reply]]
+[[see you around-&gt;reply]]
+
+:: reply [speaker-sam]
+&lt;% if (s.lastReaction === &#39;👍&#39;) { %&gt;a 👍 from you is all I need&lt;% } else { %&gt;see you around 👋&lt;% } %&gt;
+</code></pre>
+<p>One reaction per message; a newer one replaces it. Reactions participate in undo and save/restore.</p>
+<h3 id="message-chains-and-montages">Message chains and montages</h3>
+<p>A passage can send the next one itself — no reply pill in between — with the <code>[then …]</code> directive:</p>
+<pre><code>:: Hobby 1 [speaker-jo]
+[timestamp Mar 14, 2011]
+picked up a ukulele at a yard sale. how hard can it be
+
+[then Hobby 2]
+
+:: Hobby 2 [speaker-jo]
+[timestamp Aug 2, 2014]
+update: the ukulele is now decorative
+
+[then Hobby 3 in 500ms]
+
+:: Hobby 3 [speaker-jo]
+[timestamp Jan 9, 2019]
+guess who just joined a ukulele band
+
+[[Eight years, three texts.-&gt;Hobby Reflection]]
+</code></pre>
+<p>With no <code>in</code> clause each link in the chain paces itself like any reply: the typing indicator runs for a duration based on the message&#39;s length — the <em>readable</em> reply only, since template code, comments, directives, and reply pills aren&#39;t text the sender is typing — and a leading <code>[timestamp …]</code> chip appears while the dots bounce. An <code>in</code> clause sets the pace explicitly, in milliseconds (<code>in 500ms</code>) or seconds (<code>in 2s</code>; decimals work — <code>in 1.5s</code>, <code>in .5s</code>) — and <strong><code>in 0s</code> shows the next message instantly, with no typing indicator</strong>, which plays a chain like the one above as a montage of back-to-back messages. Chips stay with their messages either way, and a chain survives saving, undo, and reloading mid-flight. A chain fires only when its passage plays live: a <code>seed</code>ed passage never fires its <code>[then]</code>.</p>
+<p>If a passage name itself contains <code>in</code>, quote it so the name and the delay clause can&#39;t be confused — <code>[then &#39;the walk in the park&#39; in 2s]</code>. Single or double quotes work, <code>[deliver]</code> accepts them too, and quoting is always allowed even when there&#39;s no ambiguity.</p>
+<p>The directive is shorthand for <code>story.showDelayed(name, delay)</code>, which works anywhere story JavaScript runs — from a template when the target&#39;s name is computed at runtime (<code>&lt;% story.showDelayed(s.nextScene) %&gt;</code>), or from an event listener, where <code>story.showDelayed(&#39;Jo&#39;, 2000)</code> replaces Trialogue&#39;s old <code>_.delay(...)</code> idiom.</p>
+<p><strong>Use <code>showDelayed()</code>, not a raw <code>setTimeout()</code>, to advance the story.</strong> The runtime keeps track of the timers <code>showDelayed()</code> arms, so time travel — <a href="#debug-mode">debug mode</a>&#39;s rewind and jump, plus undo and save/restore — can cancel them. A bare <code>window.setTimeout()</code> inside a passage template is invisible to the runtime: nothing can stop it, so a timer that shows or delivers a passage will fire into whatever the player has since rewound or jumped to. This surfaces two ways during debugging — an out-of-place message appearing from nowhere, and <em>missing reply pills</em> (the stray <code>show()</code> clears the pills the rewind just offered, and re-offers nothing when it lands in a thread the player isn&#39;t viewing). For timed side effects that <em>aren&#39;t</em> a story move — animating an aside&#39;s text, say — use <code>story.after(ms, fn)</code>, a tracked <code>setTimeout</code> that time travel sweeps the same way (the <a href="#debug-mode">story check</a> flags raw timers with a note). This makes the pattern of a <code>Radio silence.</code> aside that mutates to <code>Three weeks pass.</code> and then chains onward safe to rewind through:</p>
+<pre><code>:: three weeks [aside-right aside-beats-1]
+&lt;span id=&quot;gap&quot;&gt;Radio silence.&lt;/span&gt;
+
+&lt;%
+story.after(2000, function () {
+  var el = document.getElementById(&#39;gap&#39;);
+  if (el) { el.textContent = &#39;Three weeks pass.&#39;; }
+});
+story.showDelayed(&#39;back to it&#39;, 5000);
+%&gt;
+</code></pre>
+<p>To let the <em>player</em> pace the montage instead — a beat between texts so each one can be read — put a silent pill between passages and tag each incoming passage <code>instant</code>, so tapping the pill lands the next message immediately, with no typing indicator:</p>
+<pre><code>:: Hobby 1 [speaker-jo]
+[timestamp Mar 14, 2011]
+picked up a ukulele at a yard sale. how hard can it be
+
+[[and then?(send:)-&gt;Hobby 2]]
+
+:: Hobby 2 [speaker-jo instant]
+[timestamp Aug 2, 2014]
+update: the ukulele is now decorative
+
+[[and then?(send:)-&gt;Hobby 3]]
+</code></pre>
+<p>The <code>instant</code> tag means the passage never shows typing dots, however it is reached — a pill, a chain, a <code>story.show()</code>, a <code>story.deliver()</code>. The tag and an explicit delay compose: the delay says <em>when</em> the message arrives, the tag says <em>how</em>. <code>&lt;% story.showDelayed(&#39;later&#39;, 10000) %&gt;</code> targeting an <code>instant</code>-tagged passage is a <strong>silent wait</strong> — the delay passes with no typing indicator, then the message appears. Without the tag, the same call shows the speaker typing for the whole delay. <code>story.deliver()</code> follows the same rules: it paces by message length (with a &quot;typing…&quot; state in the inbox), an <code>instant</code>-tagged target lands at once, and a numeric second argument — <code>story.deliver(&#39;name&#39;, 2000)</code> — sets an explicit delay.</p>
+<h2 id="narration">Narration</h2>
+<p>Speakerless passages are the narrator&#39;s voice, and you choose where that voice lives relative to the fiction of the text exchange:</p>
+<pre><code class="language-js">story.config.metaStyle = &#39;chat&#39;;         // default
+story.config.metaStyle = &#39;overlay&#39;;
+story.config.metaStyle = &#39;notification&#39;;
+story.config.metaStyle = &#39;aside&#39;;
+</code></pre>
+<ul>
+<li><strong><code>chat</code></strong> — centered system-style text inside the conversation (the original Trialogue behavior).</li>
+<li><strong><code>overlay</code></strong> — the narration floats over the blurred, dimmed chat. The player&#39;s choices stay visible and tappable below it, and the veil lifts as soon as they choose or the next message arrives. Suited to scene breaks and narration that stands outside the phone.</li>
+<li><strong><code>notification</code></strong> — the narration appears as a phone-style notification banner (labeled with the story name by default; change it with <code>story.config.metaNotificationLabel</code>). Tapping the banner dismisses it.</li>
+<li><strong><code>aside</code></strong> — the narration appears as a note in the margin <em>beside</em> the phone, level with the latest message, and moves with it as the chat scrolls. See <a href="#asides">Asides</a> below.</li>
+</ul>
+<p><strong>Side narration never steals the choices.</strong> Narration with no links of its own — an aside floated beside a message, a <code>(hours pass)</code> interstitial chained in with <code>showDelayed()</code> — displays without becoming the story&#39;s current passage: the pending reply pills, the cursor, and <code>s.previousPassage</code> all stay put, so the player can keep deciding while the narrator talks over them. Narration <em>with</em> links (a &quot;Continue&quot; overlay) moves the story to itself as usual, and <code>End</code>-tagged finales always do.</p>
+<p>Mix modes within one story by tagging individual passages <code>meta-chat</code>, <code>meta-overlay</code>, <code>meta-notification</code>, or <code>meta-aside</code> — a tag overrides the global setting. Overlay and notification narration is ephemeral (it leaves no trace in the transcript), but it still participates in undo and save/restore, and the <code>read</code>/<code>unread</code> receipt tags work from any mode — for example, narration saying <em>&quot;hours pass&quot;</em> over a message that stays on Delivered.</p>
+<h3 id="asides">Asides</h3>
+<p>An aside is narration placed outside the phone: a serif note in the page margin that comments on the exchange without appearing in it. Tag a speakerless passage with a side and it becomes an aside:</p>
+<pre><code>:: the-observer [aside-right]
+She has no idea who she&#39;s really texting.
+
+[[keep reading-&gt;next-message]]
+</code></pre>
+<p>The note appears level with the most recent message, tracks it as new messages push the chat upward, and fades away after a few beats (a beat = any new message in that conversation). Fine-tune with additional tags:</p>
+<table>
+<thead>
+<tr>
+<th>tag</th>
+<th>effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>aside-left</code> / <code>aside-right</code></td>
+<td>which margin the note appears in</td>
+</tr>
+<tr>
+<td><code>aside-beats-5</code></td>
+<td>how many messages it survives (default <code>3</code>, or <code>story.config.asideBeats</code>)</td>
+</tr>
+<tr>
+<td><code>aside-hold</code></td>
+<td>never expires on its own — stays until it scrolls off or the thread is cleared</td>
+</tr>
+<tr>
+<td><code>aside-up-2</code> / <code>aside-down-2</code></td>
+<td>nudge the note up or down by N rem for fine placement</td>
+</tr>
+</tbody></table>
+<p>Asides on the same side stack: a newcomer sits below any note still on screen rather than replacing it, and each fades on its own clock. In multi-conversation stories an aside belongs to the thread it fired in and hides while the player is elsewhere. Asides are ephemeral commentary: they vanish on undo and are not replayed from saves (the passage still records in history, so <code>hasVisited()</code> works).</p>
+<p><strong>On phones there is no margin</strong>, so the note floats over the chat&#39;s edge instead — translucent and slightly tilted. To have it degrade to a centered in-chat chip on small screens instead, set <code>story.config.asideMobile = &#39;chip&#39;</code>.</p>
+<p>For screen readers the aside layer is a polite live region and each note is announced as it appears.</p>
+<h2 id="player-input">Player input</h2>
+<p>Beyond tapping a reply pill, player input can be timed, typed, or decoupled from the pill&#39;s label.</p>
+<h3 id="reply-pills-and-sent-text">Reply pills and sent text</h3>
+<p>By default a pill&#39;s label is also what gets sent as the player&#39;s message. Add a <code>(send: …)</code> suffix to the label to send something different — a short pill label with a longer sent message, or a &quot;start&quot; button that sends nothing:</p>
+<pre><code>[[sure (send: sure, that works — see you at midnight)-&gt;meet]]
+[[start (send:)-&gt;intro]]      // pill says &quot;start&quot;, sends nothing
+</code></pre>
+<p>An empty <code>(send:)</code> sends no bubble at all — the story just advances. (From code, <code>story.choose(target, text)</code> does the same; pass an empty string to advance silently.) The suffix works in every link form, including the shorthand where the label is the target: <code>[[what? (send: what? || tell me)]]</code> targets the passage named <code>what?</code>.</p>
+<p><code>||</code> inside the sent text breaks it into separate bubbles, sent in quick succession:</p>
+<pre><code>[[what happened (send: ok || here&#39;s the thing || promise you won&#39;t be mad)-&gt;confession]]
+</code></pre>
+<p>The separator means the same thing in passage text: a paragraph containing <code>||</code> renders as separate bubbles, so a sent string stored in a variable — <code>&lt;%= s.reply %&gt;</code> in a <a href="#disposable-intro-conversations">seeded echo</a>, say — reads back exactly the way it was sent. (<code>one-bubble</code> and <code>splitBubbles = false</code> suppress the split along with the paragraph one.)</p>
+<p><strong>Tracking which pill was tapped.</strong> Every choice records its pill label in <code>s.lastChoice</code>, so several pills can share a target and the passage can still tell them apart:</p>
+<pre><code>:: Start [speaker-you]
+[[hey (send:)-&gt;roomie replies]]
+[[did you eat my leftovers (send:)-&gt;roomie replies]]
+
+:: roomie replies [speaker-jesse]
+&lt;% if (s.lastChoice === &#39;did you eat my leftovers&#39;) { %&gt;...i can explain&lt;% } else { %&gt;oh hey what&#39;s up&lt;% } %&gt;
+</code></pre>
+<p>The <em>label</em> is what&#39;s recorded (not the <code>(send:)</code> text), even when nothing is sent at all. Matching is exact, so mind capitalization — or compare with <code>s.lastChoice.toLowerCase()</code>. Like all state it participates in undo and save/restore. Timed-out forced replies don&#39;t overwrite it; check <code>s.timedOut</code> for those. (Photos, locations, reactions, and typed input have their own trackers: <code>s.lastPhoto</code>, <code>s.playerLocation</code>, <code>s.lastReaction</code>, <code>s.lastInput</code>.)</p>
+<h3 id="timed-responses">Timed responses</h3>
+<p>A <code>timeout:</code> link arms a timer while the choices are showing. The thin rule above the reply panel becomes a meter, filling left to right and reddening as time runs out:</p>
+<pre><code>:: interrogation [speaker-detective]
+well?? who were you with last night?
+
+[[someone you don&#39;t know-&gt;alibi]]
+[[no one-&gt;alone]]
+[[timeout:8 …I need a lawyer-&gt;lawyer]]
+</code></pre>
+<p>Two forms, depending on what expiry should do:</p>
+<ul>
+<li><code>[[timeout:8 some text-&gt;Target]]</code> — after 8 seconds, the text is sent as the player&#39;s message, then the story continues to the target.</li>
+<li><code>[[timeout:8-&gt;Target]]</code> — after 8 seconds, no player message is sent; the story moves to the target (&quot;you still there??&quot;).</li>
+</ul>
+<p>Any manual choice cancels the timer. <code>s.timedOut</code> is <code>true</code> when the last transition came from an expired timer (and <code>false</code> after any deliberate choice), so passages can branch on it. A <code>timeout</code> event fires on expiry. Undo returns to the moment before, with the clock running again.</p>
+<p>Accessibility: the time limit is announced to screen readers when the timer starts, and <code>story.config.timers = false</code> disables all timers for players for whom time pressure is a barrier (the timeout link is ignored, leaving the ordinary choices).</p>
+<h3 id="free-text-input">Free text input</h3>
+<p>For input that can&#39;t come from a list — passwords, names — an <code>input:</code> link renders a message composer (text field + send button) in the reply panel:</p>
+<pre><code>:: gatekeeper [speaker-sam]
+what&#39;s the password? hint: it&#39;s where my servers live
+
+[[input:type the password…-&gt;password-check]]
+
+:: password-check [speaker-sam]
+&lt;% if ((s.lastInput || &#39;&#39;).trim().toLowerCase() === &#39;amsterdam&#39;) { %&gt;✅ you&#39;re in&lt;% } else { %&gt;❌ nope. think geography&lt;% } %&gt;
+
+&lt;% if ((s.lastInput || &#39;&#39;).trim().toLowerCase() === &#39;amsterdam&#39;) { %&gt;[[continue]]&lt;% } else { %&gt;[[input:try again…-&gt;password-check]]&lt;% } %&gt;
+</code></pre>
+<p>The text after <code>input:</code> is the field&#39;s placeholder. Whatever the player types is sent as their message and stored in <code>s.lastInput</code> (with every entry kept in <code>s.inputs</code>), so the target passage does the checking with ordinary template logic — exact match, <code>.includes()</code>, regular expressions, whatever the puzzle calls for. Conditional links (as above) let wrong guesses loop back for another try. A <code>textinput</code> event fires on every send. One composer per passage; it can sit alongside regular choice chips (&quot;type the answer, or [[give up]]&quot;).</p>
+<h2 id="speakers-and-appearance">Speakers and appearance</h2>
+<h3 id="speaker-profiles">Speaker profiles</h3>
+<p>Give speakers display names, avatar images, and bubble colors in one place with a <code>StorySpeakers</code> passage — one speaker per line, using the speaker id from the tag (the part after <code>speaker-</code>):</p>
+<pre><code>:: StorySpeakers
+detective: Detective Marlowe; avatar: images/marlowe.png; color: #8e44ad
+happy-bot: Chip; color: #148f77
+you: color: #34c759
+</code></pre>
+<ul>
+<li>The first segment (or <code>name:</code>) sets the display name shown above the speaker&#39;s messages and used for the avatar initial.</li>
+<li><code>avatar:</code> sets an avatar image (any URL or data URI); without one, the speaker gets an initial on a stable auto-generated color.</li>
+<li><code>color:</code> tints that speaker&#39;s bubbles (and avatar); text automatically switches between dark and light for contrast. A <code>you</code> entry recolors the player&#39;s outgoing bubbles.</li>
+</ul>
+<p>Profiles are also scriptable: <code>story.speakers[&#39;detective&#39;] = { name: &#39;Marlowe&#39;, … }</code> in your story JavaScript. Anything not covered by a profile can still be styled with CSS via <code>data-speaker</code> attributes.</p>
+<h3 id="theming">Theming</h3>
+<p>Override CSS variables from your story stylesheet:</p>
+<pre><code class="language-css">:root {
+  --t-accent: #34c759;            /* player bubbles &amp; buttons */
+  --t-bg: #ffffff;                /* chat background */
+  --t-bubble-in: #e9e9eb;         /* incoming bubble background */
+  --t-bubble-in-text: #111114;    /* incoming bubble text */
+  --t-chat-width: 44rem;          /* max chat column width */
+}
+</code></pre>
+<p>Dark mode follows the player&#39;s system preference until they pick a side with the header&#39;s sun/moon toggle — their choice is remembered per story (hide the toggle with <code>story.config.themeToggle = false</code>). Authors can force a scheme with <code>&lt;html data-theme=&quot;dark&quot;&gt;</code> (or <code>light</code>). The Trialogue 1.x variable names (<code>--bg-color</code>, <code>--user-color</code>, <code>--passage-bg-color</code>, <code>--passage-text-color</code>, <code>--navbar-bg-color</code>, <code>--speaker-color</code>) are still honored, and <code>--t-page-bg</code> themes the page behind the phone frame.</p>
+<p>Style an individual speaker by targeting its <code>data-speaker</code> attribute:</p>
+<pre><code class="language-css">.chat-avatar[data-speaker=&quot;detective&quot;] {
+  background-image: url(&#39;detective.png&#39;);
+  color: transparent;
+}
+.chat-passage[data-speaker=&quot;detective&quot;] {
+  background: #ffe8cc;
+}
+</code></pre>
+<h2 id="story-structure">Story structure</h2>
+<h3 id="clearing-the-thread">Clearing the thread</h3>
+<p>For flashbacks, scene changes, or switching who the player is texting, tag a passage <code>clear</code> and the visible conversation wipes before it renders. Pair it with a timestamp for a clean cut:</p>
+<pre><code>:: flashback [speaker-sam clear]
+[timestamp Three years earlier]
+
+hey. you don&#39;t know me yet
+
+[[who is this?-&gt;no-answer]]
+
+:: back-to-now [speaker-sam clear]
+[timestamp Today]
+
+see? we go way back
+</code></pre>
+<p><code>story.clearThread()</code> does the same from code. Story state and the save timeline are untouched (saves replay the whole route, clears included) — but undo deliberately cannot reach back across a cleared thread, so each scene&#39;s history is self-contained.</p>
+<h3 id="multiple-conversations">Multiple conversations</h3>
+<p>A story can run several conversations at once: a contacts inbox with unread badges, and messages that arrive while the player is talking to someone else. <strong>This is opt-in:</strong> a story with no <code>StoryThreads</code> passage behaves exactly as everything above describes — one conversation, no inbox. Adding a <code>StoryThreads</code> passage enables multi-conversation mode.</p>
+<p>Declare your conversations like speakers (same <code>name</code>/<code>avatar</code>/<code>color</code> fields):</p>
+<pre><code>:: StoryThreads
+sam: Sam
+mom: Mom
+unknown: Unknown Number; color: #52525e
+</code></pre>
+<p>Assign passages to a thread by tagging them <code>thread-&lt;id&gt;</code>. Untagged passages stay in whatever thread the story is currently in, so you only tag the <em>switches</em>:</p>
+<pre><code>:: Start [thread-sam speaker-sam]
+you up? something happened at the lab
+
+[[what happened??-&gt;reply]]
+
+:: reply [speaker-sam]
+not over text. I&#39;m checking something
+</code></pre>
+<p>Three things move the story between threads:</p>
+<ul>
+<li><p><strong>A link to a passage in another thread</strong> pulls the whole conversation there — the view switches the moment the pill is tapped, the typing indicator runs in the new thread, and the header shows the new contact. Any text the pill sent stays as a bubble in the conversation it was sent from. This is the normal way to advance, and it applies to every reply kind: text pills, reactions, photos, locations, free-text input, and timed responses.</p>
+</li>
+<li><p><strong><code>[deliver passage-name]</code></strong> drops a passage into <em>its</em> thread <strong>without</strong> moving the story. The conversation the player is in keeps its choices; the other thread gains a new message and an unread badge. While the player is texting Sam, Mom&#39;s thread can fill up in the background:</p>
+<pre><code>:: reply [speaker-sam]
+stay put. and whatever you do, don&#39;t answer unknown numbers
+
+[deliver unknown-1]
+
+[[why?-&gt;reply-2]]
+
+:: unknown-1 [thread-unknown speaker-unknown]
+I know you&#39;re awake.
+</code></pre>
+<p>If the delivered passage offers reply pills of its own, the story&#39;s pending choices travel with it: they appear when the player opens that thread, and the reply lands there. This makes <code>[deliver]</code> a way to hand the story off to another conversation — end a beat with no pills, deliver a message that has them, and the player follows the notification to answer it. (If several pending passages offer pills, the last to arrive wins.)</p>
+<p>Deliveries pace themselves by message length, with a &quot;typing…&quot; state on the thread&#39;s inbox row. The target&#39;s <code>instant</code> tag skips both, and <code>story.deliver(&#39;name&#39;, 2000)</code> sets an explicit delay — the same <a href="#message-chains-and-montages">pacing rules</a> as <code>showDelayed()</code>. A delivered message keeps its own sender; any speaker can text into any thread (see <strong>Group chats</strong> below).</p>
+</li>
+<li><p><strong>The player</strong>, by opening the inbox (the ‹ chevron on the header&#39;s left) or tapping a notification banner, can read any thread at any time. The chevron can be staged: <code>story.config.inboxButton = false</code> starts the story as a single conversation, and <code>&lt;% story.showInboxButton() %&gt;</code> in a later passage reveals the inbox (<code>hideInboxButton()</code> reverses it). Only the thread holding the story&#39;s pending choices shows reply chips; a parked thread shows a grayed-out composer instead — <em>&quot;Nothing to say right now&quot;</em> (wording via <code>story.config.threadIdleHint</code>; set <code>&#39;&#39;</code> for none).</p>
+</li>
+</ul>
+<p>The <strong>inbox</strong> lists every thread with its avatar, a preview of the last message, a live &quot;typing…&quot; indicator, and an unread count, sorted by most recent activity. The header reads <code>config.inboxTitle</code> (default <code>Messages</code>) while the inbox is up — a thread screen shows its contact&#39;s name, and the Trash shows <code>config.trashLabel</code>. The conversation holding the story&#39;s pending choices is marked with a slim accent edge (gently pulsing; static under reduced motion) over a faint tint — distinct from the unread badge, which indicates new messages rather than a pending turn. Disable it with <code>config.replyIndicator = false</code>, reword its screen-reader label via <code>config.replyIndicatorLabel</code>, or restyle it through <code>.inbox-row--turn</code>. Unread badges accumulate on conversations the player isn&#39;t looking at and clear when they open them. Notification banners cut long messages off with an ellipsis; media-only messages read as their kind (<code>📷 Photo</code>, <code>🎤 Voice message</code>, <code>📍 Location</code> — wording via <code>config.previewLabels</code>); several arrivals stack like a notification shade, each on its own <code>config.bannerSeconds</code> timer, up to <code>config.bannerStack</code> (default 3) at once — further ones wait for a free slot; inbox previews follow the same rules.</p>
+<p><strong>Group chats.</strong> Give a thread <code>members:</code> — a comma-separated list of speaker ids — and it becomes a group conversation:</p>
+<pre><code>:: StoryThreads
+family: The Fam; members: mom, matt
+</code></pre>
+<p>The members appear under the thread&#39;s name in the header, the inbox row shows a cluster of the first two members&#39; avatars, and every notification banner and inbox preview names its sender (&quot;Matt: …&quot;). Inside the thread nothing special is required — any <code>speaker-*</code> can text into any thread, and each message carries its own name and color.</p>
+<p><strong>Renaming a conversation.</strong> <code>story.renameThread(id, name)</code> changes a thread&#39;s display name mid-story — the inbox row, the thread header, and notification banners all use the new name from then on. It pairs with a <code>[system …]</code> chip announcing the change:</p>
+<pre><code>:: the-rename [thread-family speaker-matt]
+[system Matt renamed this conversation &quot;Mom and Dad&quot;]
+
+&lt;% story.renameThread(&#39;family&#39;, &#39;Mom and Dad&#39;) %&gt;there. now it&#39;s official
+</code></pre>
+<p>A <code>threadrenamed</code> event fires. Called from a passage template (as above), the rename replays with the passage on save/restore; undo does not revert it.</p>
+<p><strong>Hidden threads.</strong> Declare a thread <code>hidden: true</code> and it stays out of the inbox until its first message arrives — for contacts that should not appear before they first text:</p>
+<pre><code>:: StoryThreads
+sam: Sam
+unknown: Unknown Number; color: #52525e; hidden: true
+</code></pre>
+<p>The thread appears the moment anything lands in it (a <code>[deliver]</code>, the story moving there, a seed) — or reveal it manually with <code>story.revealThread(&#39;unknown&#39;)</code>. Reveal state is derived from thread activity, so undo and save/restore handle it automatically.</p>
+<p><strong><code>story.concealThread(id)</code> is the inverse:</strong> it removes a conversation from the inbox entirely — not into the Trash, just gone, as if it had never spoken. The transcript is kept, so anything landing in the thread later (a <code>[deliver]</code>, <code>revealThread</code>) brings it back with its history intact, and undoing past the conceal brings it back too. Three rules for calling it:</p>
+<ul>
+<li><strong>Call it from a passage template</strong> — <code>&lt;% story.concealThread(&#39;errand&#39;) %&gt;</code> — so it replays on save and restore, like <code>renameThread</code>. (Declaring the thread <code>hidden: true</code> in <code>StoryThreads</code> as well makes the concealment doubly durable.)</li>
+<li><strong>Call it from a passage <em>outside</em> the thread being concealed.</strong> A message landing in a concealed conversation reveals it again, so a passage cannot conceal its own thread — the conceal would be undone the moment its own message arrives.</li>
+<li><strong>Never conceal the conversation holding the story&#39;s pending choices</strong> — the player would have no way to reach them.</li>
+</ul>
+<p>A <code>threadconcealed</code> event fires. See the <a href="#disposable-intro-conversations">disposable intro conversations</a> recipe for the pattern this was built for.</p>
+<p><strong>Seeding old messages.</strong> Tag passages <code>seed</code> and they render into their threads at story start: instant, already read, no badges or banners — pre-existing history. Seeds alternate speakers freely, so a whole past exchange works:</p>
+<pre><code>:: mom-old-1 [thread-mom speaker-mom seed]
+Did you eat today? You never answer me.
+
+:: mom-old-2 [thread-mom speaker-you seed]
+yes mom. going to bed, talk tomorrow ❤️
+</code></pre>
+<p>A seeded player message honors the receipt tags — <code>unread</code> leaves it sitting on <strong>Delivered</strong>, <code>failed</code> on <strong>Not Delivered</strong>, <code>read</code> on <strong>Read</strong> — so a story can open with an old message still showing Delivered:</p>
+<pre><code>:: mom-old-2 [thread-mom speaker-you seed unread]
+yes mom. going to bed, talk tomorrow ❤️
+</code></pre>
+<p>(Use the tags rather than <code>&lt;% story.markUnread() %&gt;</code> in a seed — during seeding there&#39;s no &quot;last sent message&quot; for the JavaScript form to target.)</p>
+<p>Old tapbacks work too: a <code>[react …]</code> inside a seed lands on the previous seeded message from the other side. A seed can even be <em>only</em> a reaction — no bubble, just the player&#39;s old 👍 on an old text:</p>
+<pre><code>:: mom-old-1 [thread-mom speaker-mom seed]
+Did you eat today? You never answer me.
+
+:: mom-old-1-react [thread-mom speaker-you seed]
+[react 👍]
+</code></pre>
+<p>Seeds follow passage order, survive save/restore, and stay put under undo (they&#39;re history, not moves). Note that seeding a hidden thread reveals it — old messages mean the contact isn&#39;t a surprise.</p>
+<p><strong>Quiet deliveries.</strong> Tag a passage <code>quiet</code> and <code>[deliver]</code>ing it lands the message with no banner, no sound, no typing state, and no arrival animation — just an unread badge on the thread. Where a seed is history from before the story began, a quiet delivery is the mid-story equivalent: messages that arrived off-screen, in story time. After a time skip, deliver the catch-up quietly and the player finds it waiting:</p>
+<pre><code>:: six-months-later [speaker-sam clear]
+[timestamp Six months later]
+
+you&#39;re back
+
+[deliver mom-missed-1]
+[deliver mom-missed-2]
+
+[[I&#39;m back-&gt;reply]]
+
+:: mom-missed-1 [thread-mom speaker-mom quiet]
+Are you getting my messages?
+
+:: mom-missed-2 [thread-mom speaker-mom quiet]
+Call when you can. No rush. But call.
+</code></pre>
+<p><code>quiet-read</code> goes one step further: no unread badge either. The message (or <code>[system …]</code> chip) is simply part of the thread&#39;s history the next time the player looks, as if the exchange happened and was read entirely off-camera — useful for events like an off-screen thread rename:</p>
+<pre><code>:: family-renamed [thread-family speaker-matt quiet-read]
+[system Matt renamed this conversation &quot;Mom and Dad&quot;]
+
+&lt;% story.renameThread(&#39;family&#39;, &#39;Mom and Dad&#39;) %&gt;
+</code></pre>
+<p><strong>The Trash.</strong> Conversations can be archived — out of the main inbox, never deleted. A <strong>Trash</strong> row appears at the bottom of the inbox; tapping it opens the Trash as its own screen, where the player can read everything inside. The header chevron leads back to the inbox, and a conversation opened from the Trash returns to the Trash (<code>story.openTrash()</code> opens the screen from code). Recovering the Trash&#39;s last conversation returns the player to the inbox. Declare a thread <code>archived: true</code> to start it there (old spam, defunct group chats), or move one mid-story:</p>
+<pre><code>:: unknown-leaves [thread-unknown speaker-unknown]
+you know everything you need to know
+
+[system Unknown Number has left the conversation]
+
+&lt;% $(function() { story.archiveThread(&#39;unknown&#39;); }) %&gt;
+</code></pre>
+<p>(Archive your <em>own</em> thread inside the <code>$(…)</code> ready-helper, as above — a plain <code>&lt;% story.archiveThread(…) %&gt;</code> runs before the passage&#39;s own message lands, which would immediately recover it.)</p>
+<p><strong>Any message landing in an archived conversation pulls it out of the Trash</strong> — or call <code>story.restoreThread(id)</code>. <code>threadarchived</code> / <code>threadrestored</code> events fire for scripting; undo and save/restore carry Trash state; the label localizes via <code>story.config.trashLabel</code>.</p>
+<p>State for branching: nothing is required, but the runtime tracks it all — <code>story.unread</code> (per-thread counts), <code>story.threads</code>, and the active thread are saved and restored, and undo rewinds thread-by-thread. Config: <code>story.config.threadNotifications = false</code> silences the cross-thread banners (the inbox badges still update).</p>
+<p>A complete example is <a href="docs/subtext-inbox-demo.twee"><code>docs/subtext-inbox-demo.twee</code></a> — a three-thread thriller — playable at <a href="https://samplereality.github.io/subtext/inbox-demo.html">the inbox demo</a>.</p>
+<h3 id="saving">Saving</h3>
+<ul>
+<li><code>story.save()</code> writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.</li>
+<li><code>story.config.autosave = true</code> additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.</li>
+</ul>
+<h2 id="interface">Interface</h2>
+<h3 id="notifications">Notifications</h3>
+<ul>
+<li><code>story.config.sounds = true</code> enables subtle synthesized send/receive sounds (no audio files needed). An incoming speaker&#39;s message plays the receive sound; the send sound plays when the player taps a reply <strong>and</strong> when a <code>speaker-you</code> passage shows or delivers — the player-character texting sounds like sending, which keeps a montage that mixes speakers audible on every beat. Replays, seeds, and <code>quiet</code> deliveries stay silent. Browsers allow sound only after the player&#39;s first interaction, so the very first messages are always silent.</li>
+<li>While the tab is hidden, incoming messages update the title to <code>(2) Your Story Name</code> and it resets when the player returns (<code>story.config.titleNotifications</code>, on by default).</li>
+</ul>
+<h3 id="page-chrome-and-menus">Page chrome and menus</h3>
+<p>The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via <code>--t-chat-width</code>). Supplementary content lives in a Menu modal; fill it from your story JavaScript:</p>
+<pre><code class="language-js">story.setMenu(&#39;&lt;h3&gt;About&lt;/h3&gt;&lt;p&gt;…&lt;/p&gt;&#39;);          // content of the Menu modal
+story.setMenu(&#39;&lt;p&gt;…&lt;/p&gt;&#39;, &#39;About&#39;);               // …and retitle the dialog while you&#39;re at it
+story.setRestartDialog(&#39;Leave?&#39;, &#39;&lt;p&gt;Progress will be lost.&lt;/p&gt;&#39;);
+story.config.hint = &#39;Choose an option to continue&#39;;  // text above the choices
+</code></pre>
+<p>The menu dialog&#39;s heading defaults to &quot;Menu&quot;; set it with <code>story.config.menuTitle</code> or <code>setMenu</code>&#39;s second argument. Two hint refinements: <code>story.config.inputHint</code> shows different text while a free-text composer is up (e.g. <em>&quot;Type your reply to continue&quot;</em>), and <code>story.config.hintFadeAfter = 4</code> stops showing helper text once the player has made that many moves (<code>null</code> keeps hints forever; <code>0</code> never shows them).</p>
+<p>The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with <code>story.config.undoButton = false</code> for stories where choices are final) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.</p>
+<blockquote>
+<p><strong>Legacy helpers.</strong> The Trialogue-era globals still work as aliases: <code>inject_menu(html, title)</code> → <code>setMenu</code>, <code>inject_modal(title, body, footer)</code> → <code>setRestartDialog</code>, <code>inject_hint(text)</code> → <code>config.hint</code>, plus <code>inject_nav_menu(label)</code> (custom label for the ☰ button) and <code>inject_nav_back(html)</code> (a back link in the header). <code>inject_left_sidebar</code> / <code>inject_right_sidebar</code> / <code>fade_in_content_containers</code> are gone — they served a page layout that no longer exists.</p>
+</blockquote>
+<p><strong>Where the story&#39;s identity lives.</strong> By default <code>StoryTitle</code>, <code>StorySubtitle</code>, and <code>StoryAuthor</code> render in the chat header. <code>story.config.titlePlacement</code> moves them:</p>
+<pre><code class="language-js">story.config.titlePlacement = &#39;header&#39;;  // default
+story.config.titlePlacement = &#39;menu&#39;;    // tucked at the top of the menu dialog
+story.config.titlePlacement = &#39;none&#39;;    // handled by you
+</code></pre>
+<p><strong>Repurposing the header.</strong> <code>story.setHeader()</code> changes the header mid-story — chapter titles, in-fiction app names:</p>
+<pre><code>:: chapter-two [speaker-sam clear]
+&lt;% story.setHeader(&#39;Part Two&#39;, &#39;three weeks later&#39;) %&gt;
+[timestamp Three weeks later]
+
+you didn&#39;t call
+</code></pre>
+<p><code>setHeader(title, subtitle)</code> overrides either field (pass <code>null</code> to leave one alone, <code>&#39;&#39;</code> to blank it; a custom subtitle replaces the author credit on that line). It&#39;s stored in story state, so undo and save/restore keep the header in step with the story. In multi-conversation stories the thread screens still show the contact&#39;s name — the custom title appears on the inbox screen instead.</p>
+<h2 id="debug-mode">Debug mode</h2>
+<p>While writing, Subtext can run with a debug panel — a devtools-style drawer separate from the story&#39;s own UI. Enable it any of four ways:</p>
+<ul>
+<li><strong>Twine&#39;s Test button</strong> (it publishes with <code>options=&quot;debug&quot;</code>)</li>
+<li><strong><code>tweego -t</code></strong> (Tweego&#39;s test mode, same mechanism)</li>
+<li><strong><code>?debug</code></strong> appended to any story&#39;s URL</li>
+<li><strong><code>story.config.debug = true</code></strong> in story JavaScript</li>
+</ul>
+<p>A <code>🐛 debug</code> button appears in the corner; it opens a panel that stays open until closed — across reloads too — with:</p>
+<ul>
+<li><strong>Where you are</strong> — current passage, thread, turn count, and the current passage&#39;s word count, always in view.</li>
+<li><strong>Variables</strong> — a live table of everything in <code>s</code>, refreshed as passages show, plus a console line that runs any JavaScript (<code>s.suspicion = 9</code>, <code>story.markRead()</code>, …). As a story&#39;s state grows, the <strong>watch</strong> box above the table filters it: comma-separated terms, each matching any variable name that contains it (blank shows all). Unmatched variables fold into an <code>(+N unwatched)</code> count, and the watchlist survives reloads.</li>
+<li><strong>Timeline</strong> — a dropdown of every moment so far; pick one and <strong>rewind</strong> to it. The conversation rebuilds up to that point by replaying it — then <em>pauses right there</em>, even mid-<code>showDelayed</code>-chain (pending chain timers are dropped, so the future doesn&#39;t immediately play itself back in). Rewinding to a player move (&quot;you: …&quot;) lands just <em>before</em> the reply is sent — pills up, move un-made — so continuing from there, by tap or by play-to, never sends the same reply twice. A rewind into the middle of a chain lands with no pills and nothing in flight — that&#39;s the pause, not a bug — and the <strong>▶ resume</strong> button beside rewind is its play button. A rewind keeps everything it cut off, and each press of resume steps the next beat of it back in — the choice, its bubbles, the next message — exactly as it originally played, so chains fired from computed or random template names (<code>either(…)</code>) step forward correctly instead of stranding the story. Tap any pill instead and the kept future is discarded: you&#39;ve diverged, and the story continues live. After a jump (which keeps nothing), resume falls back to re-arming the latest message&#39;s written chain edges. Also callable as <code>story.debugResume()</code>.</li>
+<li><strong>Jump to passage</strong> — a dropdown of every passage (alphabetical, current one selected; type while it&#39;s open to seek by name), with two ways to get there. <strong>Play to</strong> fast-forwards: it finds a route through the story&#39;s written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). <strong>Jump</strong> teleports instead: a clean transcript at the target with <code>s</code> kept. In multi-conversation stories both land you in the target&#39;s own thread — a thread tag is honored directly, and an untagged passage&#39;s thread is inferred from the nearest tagged passage that links to it. Play-to&#39;s route follows links as written — template conditions aren&#39;t evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. A route that crosses a <code>[deliver]</code> renders the delivered message once, by the passage that sends it, and both jump and play-to land the view in the target&#39;s own conversation — even when the target is a delivery or side narration that never takes the story cursor. Also callable as <code>story.debugFastForward(name)</code>.</li>
+<li><strong>Story check</strong> — a static lint of the whole story: pill links to passages that don&#39;t exist, <code>[deliver]</code>/<code>[then]</code> and <code>showDelayed()</code>/<code>show()</code> names that don&#39;t resolve, <code>speaker-*</code> tags with no <code>StorySpeakers</code> profile, <code>thread-*</code> tags never declared in <code>StoryThreads</code>, passages nothing points to, and <strong>dead ends</strong> — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a <code>showDelayed</code> chain is reported once, at the passage where the chain stops. Tag an intentional ending <code>End</code> and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. It also notes any passage that arms a raw <code>setTimeout</code>/<code>setInterval</code> — time travel can&#39;t cancel those, so prefer <code>story.showDelayed()</code> or <code>story.after()</code>. Each finding links to the offending passage. The check reads source without running it, so dynamic names (<code>&lt;% %&gt;</code>) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the <code>unlinked</code> tag. Also callable as <code>story.lint()</code> — it returns the findings as an array. The section opens with the piece&#39;s size: total words across all content passages. Counts cover what a player reads — message and narration prose, pill labels, <code>(send: …)</code> text — and skip code, comments, directive lines, and markup; text printed by templates at runtime can&#39;t be counted from source, so treat totals as close rather than exact. Also callable as <code>story.wordCount()</code> (the whole piece, as <code>{ words, passages }</code>) or <code>story.wordCount(&#39;passage name&#39;)</code> (one passage&#39;s count).</li>
+<li><strong>Transcript</strong> — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as <code>story.exportTranscript()</code>, which returns the Markdown string.</li>
+<li><strong>Memory</strong> — what the story has <code>remember()</code>ed across playthroughs, with a forget-all button.</li>
+</ul>
+<p><strong>Position survives rebuilds.</strong> Debug mode turns on autosave and saves the position by passage <em>name</em> rather than id. With <code>tweego -w</code> watching the Twee files and a live-preview browser tab reloading on every rebuild, the story resumes where it was, even after the rebuild renumbers every passage: save the file, the tab reloads, the story is still at the scene being edited. (Restart, in the menu or the debug panel, clears the autosave for a clean run.)</p>
+<p>Players never see any of this: without one of the four switches above, the debug code adds no UI.</p>
+<h2 id="editor-support">Editor support</h2>
+<p>The repository ships a VS Code extension with syntax highlighting for Subtext twee source, in <a href="editor/vscode-subtext"><code>editor/vscode-subtext</code></a>. It colors passage headers (with <code>speaker-*</code> and <code>thread-*</code> tags distinguished), every directive — including quoted passage names and the <code>in 2s</code> delay clause on <code>[then …]</code> — reply pills with their <code>photo:</code>/<code>react:</code>/<code>input:</code>/<code>timeout:</code> kinds and <code>(send: …)</code> text, and comments; <code>&lt;% %&gt;</code> templates highlight as embedded JavaScript, and <code>Story JavaScript</code>, <code>[stylesheet]</code>, and <code>StoryData</code> passages as JavaScript, CSS, and JSON.</p>
+<p>It also auto-closes as you type — <code>&lt;%</code> inserts the closing <code>%&gt;</code>, <code>[[</code> nests to <code>[[]]</code>, a lone <code>[</code> closes for directives — and ships snippets for the whole design language: <code>then</code>, <code>deliver</code>, <code>timestamp</code>, <code>link</code>, <code>send</code>, <code>template</code>, and the rest, each with tab-through blanks. The extension&#39;s README lists them all.</p>
+<p>To install, copy the folder into VS Code&#39;s extensions directory and reload:</p>
+<pre><code class="language-sh">cp -r editor/vscode-subtext ~/.vscode/extensions/subtext-syntax
+</code></pre>
+<p><code>.twee</code> and <code>.tw</code> files then open as &quot;Subtext (Twee)&quot;. The folder&#39;s own README covers packaging a VSIX instead, and how to coexist with the Twee 3 Language Tools extension if it&#39;s installed.</p>
+<h2 id="configuration">Configuration</h2>
+<p>Adjust behavior from your story&#39;s JavaScript, any time before or during play:</p>
+<pre><code class="language-js">story.config.msPerChar = 30;
+story.config.metaStyle = &#39;overlay&#39;;
+story.config.autosave = true;
+</code></pre>
+<p><strong>Timing and bubbles</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>typing</code></td>
+<td><code>true</code></td>
+<td>Show the typing indicator before a speaker&#39;s messages</td>
+</tr>
+<tr>
+<td><code>msPerChar</code></td>
+<td><code>20</code></td>
+<td>Simulated typing speed, milliseconds per character</td>
+</tr>
+<tr>
+<td><code>minTypingDelay</code></td>
+<td><code>500</code></td>
+<td>Floor for the typing delay (ms)</td>
+</tr>
+<tr>
+<td><code>maxTypingDelay</code></td>
+<td><code>4000</code></td>
+<td>Ceiling for the typing delay (ms)</td>
+</tr>
+<tr>
+<td><code>metaDelay</code></td>
+<td><code>800</code></td>
+<td>Delay before a narration passage appears (ms). Skipped when the player taps directly into narration with a silent <code>(send:)</code> pill</td>
+</tr>
+<tr>
+<td><code>splitBubbles</code></td>
+<td><code>true</code></td>
+<td>Render each paragraph as its own bubble (per passage: the <code>one-bubble</code> tag)</td>
+</tr>
+<tr>
+<td><code>bubbleStagger</code></td>
+<td><code>140</code></td>
+<td>Gap between bubbles of one passage (ms)</td>
+</tr>
+</tbody></table>
+<p><strong>Receipts and reactions</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>readReceipts</code></td>
+<td><code>true</code></td>
+<td>Show Delivered/Read under the player&#39;s last message</td>
+</tr>
+<tr>
+<td><code>autoRead</code></td>
+<td><code>true</code></td>
+<td>A speaker&#39;s reply marks the last message read</td>
+</tr>
+<tr>
+<td><code>receiptLabels</code></td>
+<td><code>{ delivered, read, failed }</code></td>
+<td>Receipt wording — localize or restyle</td>
+</tr>
+<tr>
+<td><code>redactedLabel</code></td>
+<td><code>&#39;This message was deleted&#39;</code></td>
+<td>What a deleted message&#39;s tombstone says</td>
+</tr>
+</tbody></table>
+<p><strong>Narration</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>metaStyle</code></td>
+<td><code>&#39;chat&#39;</code></td>
+<td>Narration mode: <code>chat</code>, <code>overlay</code>, <code>notification</code>, or <code>aside</code></td>
+</tr>
+<tr>
+<td><code>metaNotificationLabel</code></td>
+<td><code>&#39;&#39;</code></td>
+<td>App-name label on notification narration (defaults to the story name)</td>
+</tr>
+<tr>
+<td><code>asideBeats</code></td>
+<td><code>3</code></td>
+<td>How many messages an aside survives by default</td>
+</tr>
+<tr>
+<td><code>asideMobile</code></td>
+<td><code>&#39;float&#39;</code></td>
+<td>Aside fallback with no margin: <code>float</code> or <code>chip</code></td>
+</tr>
+</tbody></table>
+<p><strong>Media and location</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>preloadImages</code></td>
+<td><code>true</code></td>
+<td>Warm the browser cache for <code>StoryImages</code> at startup</td>
+</tr>
+<tr>
+<td><code>photoButtonLabel</code></td>
+<td><code>&#39;Send a photo&#39;</code></td>
+<td>Accessible label on the camera button</td>
+</tr>
+<tr>
+<td><code>photoPickerTitle</code></td>
+<td><code>&#39;Send a photo&#39;</code></td>
+<td>Heading of the photo picker</td>
+</tr>
+<tr>
+<td><code>locationButtonLabel</code></td>
+<td><code>&#39;Share my location&#39;</code></td>
+<td>Label on the location-share button</td>
+</tr>
+<tr>
+<td><code>locationBubbleLabel</code></td>
+<td><code>&#39;My location&#39;</code></td>
+<td>Label under a shared-location map card</td>
+</tr>
+</tbody></table>
+<p><strong>Input and hints</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>timers</code></td>
+<td><code>true</code></td>
+<td>Honor <code>timeout:</code> links (set <code>false</code> for unlimited time)</td>
+</tr>
+<tr>
+<td><code>timerLabel</code></td>
+<td><code>&#39;You have %s seconds to reply&#39;</code></td>
+<td>Screen-reader announcement when a timer starts</td>
+</tr>
+<tr>
+<td><code>inputSendLabel</code></td>
+<td><code>&#39;Send&#39;</code></td>
+<td>Accessible label on the free-text send button</td>
+</tr>
+<tr>
+<td><code>hint</code></td>
+<td><code>&#39;&#39;</code></td>
+<td>Helper text above the choice chips</td>
+</tr>
+<tr>
+<td><code>inputHint</code></td>
+<td><code>&#39;&#39;</code></td>
+<td>Helper text above the free-text composer</td>
+</tr>
+<tr>
+<td><code>hintFadeAfter</code></td>
+<td><code>null</code></td>
+<td>Retire hints after N moves (<code>null</code> never; <code>0</code> never shows)</td>
+</tr>
+</tbody></table>
+<p><strong>Sound, notifications, threads, theme, language</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sounds</code></td>
+<td><code>false</code></td>
+<td>Subtle synthesized send/receive sounds (needs a user gesture)</td>
+</tr>
+<tr>
+<td><code>titleNotifications</code></td>
+<td><code>true</code></td>
+<td>Show <code>(2) Story Name</code> in the tab title while hidden</td>
+</tr>
+<tr>
+<td><code>threadNotifications</code></td>
+<td><code>true</code></td>
+<td>Announce cross-thread messages with a banner</td>
+</tr>
+<tr>
+<td><code>bannerSeconds</code></td>
+<td><code>5</code></td>
+<td>How long each notification banner stays up</td>
+</tr>
+<tr>
+<td><code>bannerStack</code></td>
+<td><code>3</code></td>
+<td>How many banners can be on screen at once; further ones wait for a free slot</td>
+</tr>
+<tr>
+<td><code>previewLabels</code></td>
+<td><code>{ photo, voice, location }</code></td>
+<td>What banners and inbox previews say for media-only messages (<code>📷 Photo</code>, …)</td>
+</tr>
+<tr>
+<td><code>threadIdleHint</code></td>
+<td><code>&#39;Nothing to say right now&#39;</code></td>
+<td>Placeholder in the disabled composer on parked threads (<code>&#39;&#39;</code> for none)</td>
+</tr>
+<tr>
+<td><code>trashLabel</code></td>
+<td><code>&#39;Trash&#39;</code></td>
+<td>Label on the inbox&#39;s archived-conversations section, and the header title while viewing the Trash</td>
+</tr>
+<tr>
+<td><code>inboxTitle</code></td>
+<td><code>&#39;Messages&#39;</code></td>
+<td>The header title while the inbox screen is up</td>
+</tr>
+<tr>
+<td><code>replyIndicator</code></td>
+<td><code>true</code></td>
+<td>Mark the inbox row of the conversation awaiting a reply (accent edge + tint)</td>
+</tr>
+<tr>
+<td><code>replyIndicatorLabel</code></td>
+<td><code>&#39;awaiting your reply&#39;</code></td>
+<td>Its screen-reader label</td>
+</tr>
+<tr>
+<td><code>themeToggle</code></td>
+<td><code>true</code></td>
+<td>Show the light/dark toggle in the header</td>
+</tr>
+<tr>
+<td><code>undoButton</code></td>
+<td><code>true</code></td>
+<td>Show the header undo button (set <code>false</code> to make choices final)</td>
+</tr>
+<tr>
+<td><code>inboxButton</code></td>
+<td><code>true</code></td>
+<td>Show the inbox chevron; reveal later with <code>story.showInboxButton()</code></td>
+</tr>
+<tr>
+<td><code>titlePlacement</code></td>
+<td><code>&#39;header&#39;</code></td>
+<td>Where StoryTitle/Subtitle/Author render: <code>header</code>, <code>menu</code>, or <code>none</code></td>
+</tr>
+<tr>
+<td><code>menuTitle</code></td>
+<td><code>&#39;Menu&#39;</code></td>
+<td>Heading of the menu dialog</td>
+</tr>
+<tr>
+<td><code>lang</code></td>
+<td><code>&#39;&#39;</code></td>
+<td>Interface language, applied to <code>&lt;html lang&gt;</code> (empty = <code>en</code>)</td>
+</tr>
+<tr>
+<td><code>typingLabel</code></td>
+<td><code>&#39;%s is typing&#39;</code></td>
+<td>Screen-reader announcement while a speaker types</td>
+</tr>
+<tr>
+<td><code>autosave</code></td>
+<td><code>false</code></td>
+<td>Persist progress to <code>localStorage</code> after every message</td>
+</tr>
+<tr>
+<td><code>debug</code></td>
+<td><code>false</code></td>
+<td>Force <a href="#debug-mode">debug mode</a> on (Twine Test, <code>tweego -t</code>, and <code>?debug</code> also enable it)</td>
+</tr>
+</tbody></table>
+<h2 id="utility-functions">Utility functions</h2>
+<h3 id="the-story-and-passage-globals">The story and passage globals</h3>
+<p>Two globals from the Snowman lineage are always available — bare, no <code>window.</code> needed — inside <code>&lt;% %&gt;</code> templates and story JavaScript:</p>
+<ul>
+<li><strong><code>story</code></strong> — the running story: <code>story.name</code> (the StoryTitle), <code>story.ifid</code>, <code>story.history</code>, <code>story.passages</code>, <code>story.state</code> (aliased as <code>s</code>), plus every <code>story.*</code> method in these docs. <code>story.passage(&#39;name&#39;)</code> fetches any passage object.</li>
+<li><strong><code>passage</code></strong> — the passage currently showing: <code>passage.name</code>, <code>passage.tags</code>, <code>passage.source</code>, <code>passage.id</code>.</li>
+</ul>
+<p>For example, <code>&lt;%= story.name %&gt;</code> renders the story&#39;s title inside a bubble, and <code>&lt;% if (passage.tags.indexOf(&#39;finale&#39;) &gt; -1) { %&gt;…&lt;% } %&gt;</code> branches on the current passage&#39;s tags.</p>
+<h3 id="snowman-helpers">Snowman helpers</h3>
+<p>Several Snowman utility functions are built in (reimplemented without jQuery/Underscore), so snippets from Snowman documentation work in Subtext:</p>
+<pre><code class="language-js">either(&#39;hey!&#39;, &#39;yo!&#39;, [&#39;hiya!&#39;, &#39;hello hello&#39;])  // random pick; arrays are flattened
+hasVisited(&#39;some passage&#39;)                       // true once shown (array/multiple args = all of them)
+visited(&#39;some passage&#39;)                          // number of times shown
+renderToSelector(&#39;#somewhere&#39;, &#39;passage name&#39;)   // render a passage into any element
+getStyles(&#39;extra.css&#39;)                           // load stylesheet(s); returns a Promise
+</code></pre>
+<p><code>either()</code> adds variety to responses:</p>
+<pre><code>:: ok [speaker-sam]
+&lt;%= either(&#39;how are you doing?&#39;, &#39;how are things?&#39;, &quot;how&#39;s life?&quot;) %&gt;
+</code></pre>
+<p><code>hasVisited()</code>/<code>visited()</code> pair with thread clearing — history persists across a <code>clear</code>, so characters can reference scenes the player saw in a flashback.</p>
+<h3 id="api-index">API index</h3>
+<p>Every public <code>story.*</code> method, alphabetically — each links to the section that documents it:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>What it does</th>
+<th>Section</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>archiveThread(id)</code> / <code>restoreThread(id)</code></td>
+<td>Move a conversation into or out of the Trash</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>choose(target, sent, label)</code></td>
+<td>Make a reply from code, exactly as if a pill were tapped</td>
+<td><a href="#a-delete-thread-reply-pill">Recipes</a></td>
+</tr>
+<tr>
+<td><code>clearThread(id)</code></td>
+<td>Wipe a conversation&#39;s visible messages (history survives)</td>
+<td><a href="#clearing-the-thread">Clearing the thread</a></td>
+</tr>
+<tr>
+<td><code>debugFastForward(name)</code></td>
+<td>Play through the link graph to a passage, auto-choosing en route</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>debugResume()</code></td>
+<td>Step the future a rewind kept back in, one beat at a time</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>debugJump(name)</code></td>
+<td>Teleport to a passage on a clean transcript</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>debugRewind(count)</code></td>
+<td>Replay the timeline up to an entry</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>deliver(name)</code></td>
+<td>Drop a passage into its thread without moving the story</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>enableDebug()</code></td>
+<td>Turn on the debug panel from code</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>exportTranscript()</code></td>
+<td>The visible conversation, flattened to Markdown</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>lint()</code></td>
+<td>The story check&#39;s findings, as an array</td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>wordCount(name?)</code></td>
+<td>One passage&#39;s word count, or story totals as <code>{ words, passages }</code></td>
+<td><a href="#debug-mode">Debug mode</a></td>
+</tr>
+<tr>
+<td><code>markRead()</code> / <code>markUnread()</code> / <code>markFailed()</code></td>
+<td>Set the receipt on the player&#39;s last message</td>
+<td><a href="#read-receipts">Read receipts</a></td>
+</tr>
+<tr>
+<td><code>openInbox()</code> / <code>openThread(id)</code> / <code>openTrash()</code></td>
+<td>Switch between the inbox, a conversation, and the Trash</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>passage(idOrName)</code></td>
+<td>Fetch a passage object</td>
+<td><a href="#the-story-and-passage-globals">The story and passage globals</a></td>
+</tr>
+<tr>
+<td><code>playAudioFile(src)</code></td>
+<td>Play an audio file once (the <code>[sound …]</code> engine)</td>
+<td><a href="#sound-cues">Sound cues</a></td>
+</tr>
+<tr>
+<td><code>react(emoji, direction)</code></td>
+<td>Land a tapback on the last message</td>
+<td><a href="#reactions">Reactions</a></td>
+</tr>
+<tr>
+<td><code>redactMessage(direction, label)</code></td>
+<td>Delete a message: the bubble stays, a tombstone replaces it</td>
+<td><a href="#deleted-messages">Deleted messages</a></td>
+</tr>
+<tr>
+<td><code>remember(key, value)</code> / <code>recall(key, fallback)</code> / <code>forget(key)</code></td>
+<td>Cross-playthrough memory (survives restart)</td>
+<td><a href="#remember-across-playthroughs">Recipes</a></td>
+</tr>
+<tr>
+<td><code>renameThread(id, name)</code></td>
+<td>Change a conversation&#39;s display name mid-story</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>revealThread(id)</code></td>
+<td>Bring a hidden thread into the inbox</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>concealThread(id)</code></td>
+<td>Remove a conversation from the inbox entirely (not the Trash)</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+<tr>
+<td><code>reseedThread(id)</code></td>
+<td>Re-render a thread&#39;s seeded history with current state</td>
+<td><a href="#disposable-intro-conversations">Disposable intro conversations</a></td>
+</tr>
+<tr>
+<td><code>save()</code> / <code>restore(hash)</code></td>
+<td>Write progress to the URL / replay a save</td>
+<td><a href="#saving">Saving</a></td>
+</tr>
+<tr>
+<td><code>setHeader(title, subtitle)</code></td>
+<td>Repurpose the header mid-story</td>
+<td><a href="#page-chrome-and-menus">Page chrome and menus</a></td>
+</tr>
+<tr>
+<td><code>setMenu(html, title)</code></td>
+<td>Fill (and retitle) the menu dialog</td>
+<td><a href="#page-chrome-and-menus">Page chrome and menus</a></td>
+</tr>
+<tr>
+<td><code>setRestartDialog(html)</code></td>
+<td>Reword the restart confirmation</td>
+<td><a href="#page-chrome-and-menus">Page chrome and menus</a></td>
+</tr>
+<tr>
+<td><code>show(name)</code></td>
+<td>Show a passage immediately</td>
+<td><a href="#message-chains-and-montages">Message chains and montages</a></td>
+</tr>
+<tr>
+<td><code>showDelayed(name, delay)</code></td>
+<td>Show a passage after a delay (0 = instantly, no dots)</td>
+<td><a href="#message-chains-and-montages">Message chains and montages</a></td>
+</tr>
+<tr>
+<td><code>after(ms, fn)</code></td>
+<td>A tracked <code>setTimeout</code> — time travel can cancel it</td>
+<td><a href="#message-chains-and-montages">Message chains and montages</a></td>
+</tr>
+<tr>
+<td><code>showInboxButton()</code> / <code>hideInboxButton()</code></td>
+<td>Stage the inbox chevron&#39;s reveal</td>
+<td><a href="#multiple-conversations">Multiple conversations</a></td>
+</tr>
+</tbody></table>
+<h2 id="events">Events</h2>
+<p>Every story event is a plain DOM <code>CustomEvent</code> dispatched on <code>window</code>; read its payload from <code>event.detail</code>.</p>
+<pre><code class="language-js">window.addEventListener(&#39;photosent&#39;, function (e) {
+  console.log(e.detail.name, &#39;sent to&#39;, e.detail.target);
+});
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Fires when…</th>
+<th><code>detail</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>startstory</code></td>
+<td>the story is about to show its first passage</td>
+<td><code>{ story }</code></td>
+</tr>
+<tr>
+<td><code>showpassage</code></td>
+<td>a passage is about to render</td>
+<td><code>{ passage }</code></td>
+</tr>
+<tr>
+<td><code>showpassage:after</code></td>
+<td>a passage has rendered and is on screen</td>
+<td><code>{ passage }</code></td>
+</tr>
+<tr>
+<td><code>hidepassage</code></td>
+<td>the current passage is leaving</td>
+<td><code>{ passage }</code></td>
+</tr>
+<tr>
+<td><code>choice</code></td>
+<td>the player picks a reply pill (or code calls <code>story.choose</code>)</td>
+<td><code>{ label, sent, target, story }</code></td>
+</tr>
+<tr>
+<td><code>threadopened</code></td>
+<td>the player opens a conversation (navigation, not a choice)</td>
+<td><code>{ thread, story }</code></td>
+</tr>
+<tr>
+<td><code>photosent</code></td>
+<td>the player sends a photo</td>
+<td><code>{ name, target, story }</code></td>
+</tr>
+<tr>
+<td><code>locationshared</code></td>
+<td>the player shares real coordinates</td>
+<td><code>{ lat, lon, story }</code></td>
+</tr>
+<tr>
+<td><code>reaction</code></td>
+<td>the player reacts with a tapback</td>
+<td><code>{ emoji, story }</code></td>
+</tr>
+<tr>
+<td><code>redact</code></td>
+<td>a message is deleted via <code>redactMessage</code></td>
+<td><code>{ direction, story }</code></td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>a response timer expires</td>
+<td><code>{ target, text, story }</code></td>
+</tr>
+<tr>
+<td><code>textinput</code></td>
+<td>the player sends free-text input</td>
+<td><code>{ text, target, story }</code></td>
+</tr>
+<tr>
+<td><code>threadarchived</code></td>
+<td>a conversation moves to the Trash</td>
+<td><code>{ thread, story }</code></td>
+</tr>
+<tr>
+<td><code>threadconcealed</code></td>
+<td>a conversation is removed from the inbox</td>
+<td><code>{ thread, story }</code></td>
+</tr>
+<tr>
+<td><code>threadrenamed</code></td>
+<td>a conversation&#39;s display name changes</td>
+<td><code>{ thread, name, story }</code></td>
+</tr>
+<tr>
+<td><code>threadrestored</code></td>
+<td>a conversation leaves the Trash</td>
+<td><code>{ thread, story }</code></td>
+</tr>
+<tr>
+<td><code>save</code></td>
+<td>progress is written to a save</td>
+<td><code>{ story }</code></td>
+</tr>
+<tr>
+<td><code>restore</code></td>
+<td>a save begins replaying</td>
+<td><code>{ story }</code></td>
+</tr>
+<tr>
+<td><code>restore:after</code></td>
+<td>a save finishes replaying</td>
+<td><code>{ story }</code></td>
+</tr>
+<tr>
+<td><code>restorefailed</code></td>
+<td>a save can&#39;t be parsed</td>
+<td><code>{ error }</code></td>
+</tr>
+</tbody></table>
+<p>The Snowman 2 names (<code>sm.story.started</code>, <code>sm.passage.showing</code>, <code>sm.passage.shown</code>, <code>sm.passage.hidden</code>, <code>sm.story.saved</code>, <code>sm.restore.success</code>, <code>sm.restore.failed</code>, <code>sm.story.error</code>) are dispatched as aliases, so snippets written against Snowman 2 documentation work too.</p>
+<h2 id="extending-subtext">Extending Subtext</h2>
+<p>Not every idea needs to live in the format. Subtext is extendable from story JavaScript the same way SugarCube is — through three surfaces, in escalating order of power:</p>
+<ol>
+<li><strong><a href="#events">Events</a></strong> — observe everything that happens (<code>choice</code>, <code>photosent</code>, <code>threadarchived</code>, <code>showpassage:after</code>, …) and react from a listener.</li>
+<li><strong>The <code>story.*</code> API</strong> — every documented method is callable from your code: <code>deliver</code>, <code>archiveThread</code>, <code>setHeader</code>, <code>remember</code>, <code>debugJump</code>, all of it. Features like the Trash are deliberately <em>API-first</em>: the format supplies the UI, your story drives it with the same verbs an extension would use.</li>
+<li><strong>Prototype wrapping</strong> — <code>window.Story.prototype</code> and <code>window.Passage.prototype</code> are exposed, so story JavaScript can wrap any method and change how the format itself behaves.</li>
+</ol>
+<h3 id="whats-stable">What&#39;s stable</h3>
+<p>Everything <em>documented</em> is contract: the events table, the <code>story.*</code> methods and <code>config</code> keys in these docs, the <code>s.*</code> trackers, the passage tags and directives, and the styling hooks (<code>--t-*</code> variables, <code>data-speaker</code> / <code>data-thread</code> attributes, and the class names shown throughout: <code>.chat-passage</code>, <code>.chat-timestamp</code>, <code>.chat-system</code>, <code>.user-response</code>, <code>.inbox-row</code>, <code>.thread-log</code>, …). Properties and methods with a leading underscore (<code>_threadActivity</code>, <code>_hotThread</code>) are internals and can change in any release.</p>
+<h3 id="example-a-custom-directive-no-format-changes">Example: a custom directive, no format changes</h3>
+<p>Wrap the passage renderer to invent your own <code>[shrug]</code> markup:</p>
+<pre><code class="language-js">var render = Passage.prototype.render;
+
+Passage.prototype.render = function () {
+    return render.call(this).replace(/\[shrug\]/g, &#39;¯\\_(ツ)_/¯&#39;);
+};
+</code></pre>
+<p>Every passage now understands <code>[shrug]</code> — in live messages, seeds, and deliveries alike, because they all flow through the same renderer.</p>
+<h3 id="example-behavior-from-events">Example: behavior from events</h3>
+<p>Invent a <code>cleanup</code> passage tag that sweeps every <em>other</em> conversation into the Trash, using only public API:</p>
+<pre><code class="language-js">window.addEventListener(&#39;showpassage:after&#39;, function (e) {
+    if (e.detail.passage.tags.indexOf(&#39;cleanup&#39;) === -1) { return; }
+
+    var here = story.getPassageThread(e.detail.passage);
+
+    story.threadOrder.forEach(function (id) {
+        if (id !== here) { story.archiveThread(id); }
+    });
+});
+</code></pre>
+<p>A rule of thumb for what belongs where: <strong>if it changes what the story does, write it in story JavaScript; if it changes what the phone <em>is</em>, it belongs in the format</strong> — <a href="https://github.com/samplereality/subtext/issues">open an issue</a>. UI that touches the transcript needs care: messages are never removed from the <code>role=&quot;log&quot;</code> live region (removal makes screen readers re-announce the whole conversation), so build on <code>story.*</code> verbs rather than editing the chat DOM directly.</p>
+<h2 id="recipes">Recipes</h2>
+<p>Common patterns, built from the pieces documented above. Most rely on the automatic trackers in <a href="#story-state">Story state</a>.</p>
+<h3 id="branch-on-how-the-player-arrived">Branch on how the player arrived</h3>
+<p><code>s.previousPassage</code> holds the name of the passage shown before this one, so a hub that several routes lead into can branch on where the player came from without per-route bookkeeping:</p>
+<pre><code>:: back at the office [speaker-boss clear]
+&lt;% if (s.previousPassage === &#39;the confrontation&#39;) { %&gt;that was quite a scene you made
+&lt;% } else { %&gt;you&#39;re late&lt;% } %&gt;
+</code></pre>
+<h3 id="notice-hesitation">Notice hesitation</h3>
+<p><code>s.replySeconds</code> records how long the player sat on the choices before answering — measured silently, with no visible <a href="#timed-responses">response timer</a>:</p>
+<pre><code>:: alibi [speaker-detective]
+&lt;% if (s.replySeconds &gt; 4) { %&gt;…why&#39;d you have to think about that one?&lt;% } else { %&gt;uh huh. go on&lt;% } %&gt;
+</code></pre>
+<h3 id="fire-sound-or-analytics-on-any-choice">Fire sound or analytics on any choice</h3>
+<p>The <a href="#events"><code>choice</code> event</a> fires on every pill tap (and every <code>story.choose</code> call) with <code>{ label, sent, target }</code>:</p>
+<pre><code class="language-js">window.addEventListener(&#39;choice&#39;, function (e) {
+  gtag(&#39;event&#39;, &#39;reply&#39;, { label: e.detail.label });
+});
+</code></pre>
+<h3 id="disposable-intro-conversations">Disposable intro conversations</h3>
+<p>A story that opens by introducing its cast one conversation at a time faces a spoiler problem: if the introductions play in each contact&#39;s real thread, the player is sitting on top of all that thread&#39;s <a href="#multiple-conversations">seeded history</a> — history that should be a discovery for later, when they get to explore the inbox. The pattern: play each introduction in a stand-in thread, then dispose of it.</p>
+<p>In <code>StoryThreads</code>, declare each real thread alongside an intro twin with the <em>same display name</em> (declaring the twin <code>hidden: true</code> also makes its later concealment doubly durable):</p>
+<pre><code>:: StoryThreads
+ren: Ren
+ren_intro: Ren; hidden: true
+</code></pre>
+<p>Keep the inbox unreachable during the introductions (<code>story.config.inboxButton = false</code> in Story JavaScript), and play each one in its intro thread — the header says &quot;Ren&quot; either way, so the player can&#39;t tell:</p>
+<pre><code>:: ren says hi [thread-ren_intro speaker-ren]
+it&#39;s ren. the ONLY person in this family who answers texts
+
+[[noted (send:)-&gt;the pivot]]
+</code></pre>
+<p>Seed the real thread with its deep history <strong>plus</strong> <code>seed</code>-tagged copies of the intro texts, so the exchange the player just had is part of the record they&#39;ll find. Then the pivot passage — in another thread, or as narration — disposes of the intro threads, baits the real ones, and opens the inbox:</p>
+<pre><code>:: the pivot [meta-overlay]
+Three conversations. One family. The phone remembers more than you do.
+
+&lt;% story.concealThread(&#39;ren_intro&#39;) %&gt;
+[deliver ren catchup]
+&lt;% story.showInboxButton() %&gt;
+
+[[Look at the phone (send:)-&gt;exploring]]
+</code></pre>
+<p>The <code>[deliver]</code> target is tagged <code>quiet</code>, so it lands silently with just an unread badge — each real thread now sits in the inbox wearing a badge, its seeds waiting underneath. The intro threads are gone (see the <a href="#multiple-conversations">three rules</a> for <code>concealThread</code>), and the <a href="#gate-the-story-on-exploration-not-a-timer">exploration gate</a> below pairs naturally with what happens next.</p>
+<p><strong>Echoing the player&#39;s replies.</strong> Seeds render once, at boot — before the player has chosen anything — so a seed that interpolates a variable assigned later (<code>&lt;%= s.renReply %&gt;</code>) renders empty at first. Write the echo as an ordinary seed anyway, at its natural place in the thread&#39;s history (an empty seed renders nothing, so there&#39;s no gap):</p>
+<pre><code>:: echo ren reply [thread-ren speaker-you seed]
+&lt;%= s.renReply %&gt;
+</code></pre>
+<p>Capture the reply during the intro (<code>&lt;% s.renReply = s.lastChoice %&gt;</code>), then have the pivot re-render the thread&#39;s seeded history with current state:</p>
+<pre><code>&lt;% story.concealThread(&#39;ren_intro&#39;); story.reseedThread(&#39;ren&#39;); %&gt;
+[deliver ren catchup]
+</code></pre>
+<p><code>story.reseedThread(id)</code> rebuilds the conversation from its seed passages alone — original order, values filled in — so the echoed exchange can sit <em>anywhere</em> in the history, not just at the end. Two rules: call it before anything else lands in the thread (above: before the badge-bait delivery — anything non-seed already in the log is discarded), and call it from a passage template so it replays on save/restore. The replay interpolates correctly because choices are timeline moments: <code>s.lastChoice</code> is restored before the templates that captured it re-run.</p>
+<p>(If the echoed exchange is the <em>newest</em> thing in the thread rather than mid-history, <code>quiet-read</code> deliveries from the pivot work too — deliveries render with live state and append in order.)</p>
+<h3 id="gate-the-story-on-exploration-not-a-timer">Gate the story on exploration, not a timer</h3>
+<p>After an opening sequence you might drop the player at the inbox and want them to browse the conversations and their <a href="#multiple-conversations">seeds</a> before the story resumes — without a &quot;go read your messages&quot; prompt, and without a fixed timer that fires whether they&#39;ve looked or not. The <a href="#events"><code>threadopened</code> event</a> is the hook: it fires when the player opens a conversation (navigation, not a choice), so you can track <em>which</em> threads they&#39;ve pressed into and resume once they&#39;ve explored enough. Because you record the exploration in story state, it saves and restores for free; because you key it by thread id, re-opening the same one doesn&#39;t double-count. (Note <code>story.state</code> here, not <code>s</code> — the <code>s</code> shorthand exists only inside <code>&lt;% %&gt;</code> templates. And grab <code>story.state</code> fresh inside each listener call, as below, rather than once at the top of your Story JavaScript: the state object is replaced wholesale on restore and undo, so a reference captured at load time goes stale.)</p>
+<pre><code class="language-js">window.addEventListener(&#39;threadopened&#39;, function (e) {
+  var state = story.state;
+
+  state.seen = state.seen || {};
+  state.seen[e.detail.thread] = true;
+
+  var toExplore = [&#39;dad&#39;, &#39;mom&#39;, &#39;matt&#39;];
+  var browsed = toExplore.filter(function (id) { return state.seen[id]; });
+
+  // resume once they&#39;ve opened all three — but only the first time
+  if (browsed.length === toExplore.length &amp;&amp; !state.resumed) {
+    state.resumed = true;
+    story.deliver(&#39;the-story-picks-up&#39;);   // lights a your-turn indicator
+  }
+});
+</code></pre>
+<p>Resuming with a <code>deliver</code> (rather than moving the story outright) means a player still mid-browse isn&#39;t yanked away — a your-turn indicator lights up and waits for them to surface. Lower the threshold (<code>browsed.length &gt;= 1</code>) for a gentler gate that only asks the player to look at <em>something</em> before the story continues. The event does not fire while a save is being rebuilt, so a reload never re-trips the gate — and state a listener records is persisted on every thread open, so exploration between passages survives a reload too. (The debug panel&#39;s Variables table refreshes on <code>threadopened</code> as well, so <code>seen</code> fills in live as you tap through the inbox.)</p>
+<h3 id="affinity-and-stat-meters">Affinity and stat meters</h3>
+<p>Plain arithmetic in a template is all a relationship or suspicion meter needs; branch on it anywhere:</p>
+<pre><code>:: help them [speaker-you]
+&lt;% s.trust = (s.trust || 0) + 1 %&gt;okay, I&#39;ve got your back
+
+:: later [speaker-sam]
+&lt;% if ((s.trust || 0) &gt;= 3) { %&gt;I know I can count on you&lt;% } else { %&gt;I&#39;m still not sure about you&lt;% } %&gt;
+</code></pre>
+<h3 id="a-hub-whose-choices-disappear-as-you-use-them">A hub whose choices disappear as you use them</h3>
+<p><code>hasVisited()</code> reports whether a passage has been shown, so a menu can drop options the player has already exhausted — wrap each pill in a conditional and send the player back to the hub:</p>
+<pre><code>:: interrogation [speaker-detective]
+ask me anything.
+
+&lt;% if (!hasVisited(&#39;the-knife&#39;)) { %&gt;[[the knife-&gt;the-knife]]&lt;% } %&gt;
+&lt;% if (!hasVisited(&#39;the-alibi&#39;)) { %&gt;[[the alibi-&gt;the-alibi]]&lt;% } %&gt;
+[[that&#39;s all I need-&gt;done]]
+</code></pre>
+<p>(The same <code>&lt;% if (…) { %&gt;[[…]]&lt;% } %&gt;</code> shape gates any pill — behind a password, a stat, a <code>recall()</code>, whatever.)</p>
+<h3 id="a-delete-thread-reply-pill">A &quot;Delete Thread&quot; reply pill</h3>
+<p>The Trash verbs compose with reply pills into a player-facing delete. Three pieces: an empty <code>(send:)</code> so tapping posts no bubble, a target passage in <em>another</em> thread (the pill&#39;s consequence is someone else reacting), and the deferred archive-and-exit:</p>
+<pre><code>:: unknown-final [thread-unknown speaker-unknown]
+I know what you did.
+
+[[Delete Thread (send:)-&gt;deleted-it]]
+[[who is this?-&gt;unknown-2]]
+
+:: deleted-it [thread-sam speaker-sam]
+&lt;% $(function() {
+    story.archiveThread(&#39;unknown&#39;);
+    story.openInbox();
+}) %&gt;did you seriously just delete that whole thread??
+
+[[it felt right-&gt;sam-2]]
+</code></pre>
+<p>Tapping <strong>Delete Thread</strong> sends nothing, Sam&#39;s reaction moves the story to Sam&#39;s conversation, and once it lands the Unknown thread is archived and the player is looking at the inbox — the deleted thread in the Trash below, Sam&#39;s new message above. The player can still open the &quot;deleted&quot; conversation from the Trash and reread it. (The <code>$()</code> wrapper matters: it defers the archive until after the passage&#39;s own message lands, which would otherwise recover the thread immediately.)</p>
+<h3 id="remember-across-playthroughs">Remember across playthroughs</h3>
+<p><code>story.remember(key, value)</code> / <code>story.recall(key, fallback)</code> persist per-story in <code>localStorage</code> and survive <strong>restart</strong> — unlike <code>s</code>, which resets. This is how a story counts endings the player has found, unlocks New Game+ content, or has a character remember the last run:</p>
+<pre><code>:: the good ending [speaker-sam clear]
+&lt;% var seen = story.recall(&#39;endings&#39;, []); if (seen.indexOf(&#39;good&#39;) === -1) { story.remember(&#39;endings&#39;, seen.concat(&#39;good&#39;)); } %&gt;
+you made it. maybe we both did.
+
+&lt;% if (story.recall(&#39;endings&#39;, []).length &gt; 1) { %&gt;[timestamp You&#39;ve found &lt;%= story.recall(&#39;endings&#39;, []).length %&gt; of 3 endings]&lt;% } %&gt;
+</code></pre>
+<pre><code>:: Start [speaker-unknown]
+&lt;% if (story.recall(&#39;endings&#39;, []).indexOf(&#39;bad&#39;) &gt; -1) { %&gt;back again? you didn&#39;t learn last time.
+&lt;% } else { %&gt;who is this?&lt;% } %&gt;
+</code></pre>
+<p><code>story.forget(key)</code> drops one value; <code>story.forget()</code> wipes the story&#39;s whole memory. (Restart clears the ordinary save but deliberately leaves memory intact — call <code>forget()</code> yourself if you want a true reset.)</p>
+<p>The natural home for the running tally is <code>StoryColophon</code> — it renders (templates included) at the bottom of every <code>End</code>-tagged passage, so one snippet covers every ending:</p>
+<pre><code>:: StoryColophon
+&lt;% var seen = story.recall(&#39;endings&#39;, []); %&gt;
+You&#39;ve found &lt;%= seen.length %&gt; of 3 endings.&lt;% if (seen.length &lt; 3) { %&gt; Restart to look for the others.&lt;% } %&gt;
+</code></pre>
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li><strong>Screen readers:</strong> the conversation is a <code>role=&quot;log&quot;</code> live region, and messages are never moved or re-inserted in the DOM, so each one is announced exactly once. The typing indicator announces <em>&quot;Sam is typing&quot;</em> (localize via <code>story.config.typingLabel</code>), narration overlays and notifications are polite status regions, restoring a save replays silently instead of flooding the reader, and reactions, receipts, voice memos, and location cards all carry proper labels.</li>
+<li><strong>Keyboard:</strong> every control is a real button or link with a visible focus indicator; after choosing a reply, focus stays anchored on the reply panel; dialogs are native <code>&lt;dialog&gt;</code> elements (focus trapping and Escape included).</li>
+<li><strong>Contrast &amp; motion:</strong> default palettes meet AA contrast in both themes, <code>prefers-contrast: more</code> adds stronger bubble boundaries, and <code>prefers-reduced-motion</code> disables animations.</li>
+<li><strong>Language:</strong> the page declares <code>lang=&quot;en&quot;</code> by default — set <code>story.config.lang = &#39;fr&#39;</code> (etc.) for stories in other languages.</li>
+</ul>
+<p>What authors should still do: write alt text in image HTML (<code>&lt;img src=&quot;…&quot; alt=&quot;…&quot;&gt;</code>), give gallery images meaningful names (the photo picker uses them as labels), keep meaningful information out of color alone, and remember voice memos have no captions — pair important audio with text.</p>
+<h2 id="migrating-from-trialogue">Migrating from Trialogue</h2>
+<p>Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, <code>inject_*</code> helpers, and the old CSS variable names are all still supported. Differences to be aware of:</p>
+<ul>
+<li>jQuery and Underscore are no longer bundled. Story JavaScript that used <code>$(…)</code> or <code>_.…</code> directly needs to be rewritten in plain JavaScript. (The <code>$</code> helper <em>inside passages</em> — <code>&lt;% $(function() { … }) %&gt;</code> — still works, and the Snowman utility functions <code>either()</code>, <code>hasVisited()</code>, <code>visited()</code>, <code>renderToSelector()</code>, and <code>getStyles()</code> are built in.)</li>
+<li><code>inject_left_sidebar()</code> / <code>inject_right_sidebar()</code> / <code>fade_in_content_containers()</code> were removed — they served a desktop page layout that no longer exists. Move sidebar content into the menu with <code>story.setMenu()</code>. The other <code>inject_*</code> helpers still work as aliases for the <code>story.*</code> methods (see <a href="#page-chrome-and-menus">Page chrome and menus</a>).</li>
+<li>Story events are now plain DOM <code>CustomEvent</code>s on <code>window</code> — see <a href="#events">Events</a>. The Snowman 2 event-name aliases are dispatched too.</li>
+<li>Passages are one bubble per paragraph by default; set <code>story.config.splitBubbles = false</code> for the old one-bubble-per-passage behavior.</li>
+<li>Twine 1 documents are no longer supported.</li>
+</ul>
+<h2 id="changelog">Changelog</h2>
+<h3 id="version-2817">Version 2.8.17</h3>
+<ul>
+<li><strong>Fixed: the typing delay counted the whole passage source.</strong> A passage&#39;s &quot;typing…&quot; time paces by message length, but the measure included template code, comments, and the newer directives and pills — so a five-word reply behind a long <code>&lt;% %&gt;</code> block made the sender &quot;type&quot; for the maximum. The delay now measures only the readable reply, via the same text extraction the word counter uses (pill labels excluded — they&#39;re the player&#39;s options, not the sender&#39;s message).</li>
+</ul>
+<h3 id="version-2816">Version 2.8.16</h3>
+<ul>
+<li><strong>Resume replays the rewind&#39;s kept future.</strong> Rewinding kept nothing, so resume had to guess the way forward from written chain edges — and a chain fired from a computed or random template name (<code>either(…)</code>, <code>s.route</code>) couldn&#39;t be followed at all, leaving the story frozen with no pills and nothing to do but restart. A rewind now keeps everything it cuts off, and each press of resume steps the next beat back in — choices included — exactly as it originally played. Tapping any pill diverges and discards the rest; after a jump, resume falls back to re-arming written chain edges as before. See <a href="#debug-mode">Debug mode</a>.</li>
+<li><strong>The debug Variables table gains a watchlist.</strong> A watch box filters the table to matching variable names (comma-separated terms, substring match; blank shows all), folds the rest into an <code>(+N unwatched)</code> count, and persists across reloads — for stories whose state has outgrown one screen. See <a href="#debug-mode">Debug mode</a>.</li>
+<li><strong><code>||</code> splits passage text into separate bubbles.</strong> The multi-bubble separator from <code>(send: a || b)</code> labels now works inside message text too: a paragraph containing <code>||</code> renders as separate bubbles. Built for mirrored replies — a multi-text send stored in a variable (<code>s.reply = &#39;ok || on my way&#39;</code>) now reads back from a seed or delivery exactly the way it was sent, instead of rendering the pipes literally. <code>one-bubble</code> and <code>splitBubbles = false</code> suppress it along with the paragraph split. See <a href="#reply-pills-and-sent-text">Reply pills and sent text</a>.</li>
+</ul>
+<h3 id="version-2815">Version 2.8.15</h3>
+<ul>
+<li><strong><code>story.reseedThread(id)</code></strong> re-renders a conversation&#39;s seeded history with <em>current</em> story state, in the seeds&#39; original order. Built for echoing the player&#39;s replies into a fuller thread: write the echo as a normal seed (<code>&lt;%= s.renReply %&gt;</code> — it renders empty at boot, invisibly), and reseed the thread from the pivot once the value exists. The echo lands at its authored position in the history, not appended. Call it before anything non-seed lands in the thread, and from a passage template so it replays. See the <a href="#disposable-intro-conversations">disposable intro conversations</a> recipe.</li>
+<li><strong>Fixed: templates that captured a choice re-rendered wrong on restore.</strong> <code>s.lastChoice</code> and <code>s.timedOut</code> were only ever set by live play, so a template that read them (<code>&lt;% s.renReply = s.lastChoice %&gt;</code>) re-ran with stale values while a save replayed — anything rendered from the captured value came back empty or wrong. Choices are now first-class timeline moments: the replay restores both trackers before re-running dependent templates, empty <code>(send:)</code> choices keep their undo checkpoint across reloads, and the debug timeline lists them (&quot;chose: …&quot;). This is what makes the <a href="#disposable-intro-conversations">reply-echo pattern</a> — re-printing the player&#39;s intro replies in a fuller thread via <code>quiet-read</code> deliveries — survive save/restore.</li>
+<li><strong><code>speaker-you</code> passages play the send sound.</strong> Authored player-character messages used to show silently — the send sound only accompanied an actual tapped reply. A <code>speaker-you</code> passage (shown or delivered) now sounds like sending, the symmetric counterpart of an incoming speaker&#39;s receive sound, so a montage that mixes speakers is audible on every beat. Replays, seeds, and <code>quiet</code> deliveries stay silent as before. See <a href="#notifications">Notifications</a>.</li>
+</ul>
+<h3 id="version-2814">Version 2.8.14</h3>
+<ul>
+<li><strong>The debug timeline gains ▶ resume.</strong> A rewind lands <em>paused right there</em> — deliberately, so a replayed chain doesn&#39;t overshoot the picked moment — which left mid-chain rewinds with no pills and nothing in flight, reading as &quot;my pills are gone.&quot; Resume is that pause&#39;s play button: it re-arms the frozen chain from the latest message and the story continues from the paused moment. Also <code>story.debugResume()</code>. See <a href="#debug-mode">Debug mode</a>.</li>
+<li><strong><code>threadopened</code> state is live and durable.</strong> State a <code>threadopened</code> listener records (an exploration tracker&#39;s <code>story.state.seen</code>, say) is now persisted on every thread open — previously only a passage show saved it, so exploration between passages was lost on reload and the debug panel&#39;s Variables table looked stale until the next choice. The panel now refreshes on <code>threadopened</code> too.</li>
+<li><strong>The inbox screen has its own title.</strong> The header now reads <code>config.inboxTitle</code> (default <code>Messages</code>) while the inbox is up, instead of the story&#39;s name — matching how a thread screen shows its contact and the Trash shows <code>config.trashLabel</code>.</li>
+</ul>
+<h3 id="version-2813">Version 2.8.13</h3>
+<ul>
+<li><strong>Fixed: a raw <code>setTimeout()</code> in a passage template survived time travel.</strong> The runtime can only cancel the timers it arms itself (<code>showDelayed</code>, and now <code>after</code>); a bare <code>window.setTimeout()</code> in a template was invisible to it, so a timer that showed or delivered a passage kept firing into whatever the player had rewound or jumped to. This surfaced as two debugging symptoms with one cause: an out-of-place message appearing from nowhere, and reply pills going missing after a rewind or jump (the stray <code>show()</code> wiped the pills the time-travel had just offered). New <code>story.after(ms, fn)</code> is a tracked <code>setTimeout</code> that rewind, jump, undo, and restore all sweep, and the story check now notes raw timers. Use <code>showDelayed()</code> to advance the story and <code>after()</code> for timed side effects. See <a href="#message-chains-and-montages">Message chains and montages</a>.</li>
+</ul>
+<h3 id="version-2812">Version 2.8.12</h3>
+<ul>
+<li><strong><code>story.concealThread(id)</code></strong> removes a conversation from the inbox entirely — not the Trash, just gone, as if it had never spoken. The inverse of <code>revealThread</code>: the transcript is kept, and any later message (or <code>revealThread</code>) brings it back with history intact. Built for disposable intro conversations — introduce a contact in a stand-in thread, conceal it, and let the real, seeded thread be a discovery. Fires <code>threadconcealed</code>. See <a href="#multiple-conversations">Multiple conversations</a> and the <a href="#disposable-intro-conversations">disposable intro conversations</a> recipe.</li>
+<li><strong>Docs fix: the exploration-gate recipe used <code>s</code> outside a template.</strong> The <code>s</code> state alias exists only inside <code>&lt;% %&gt;</code> templates; in Story JavaScript and event listeners the object is <code>story.state</code>, read fresh each time (it is replaced wholesale on restore and undo). The recipe is corrected and the <a href="#story-state">Story state</a> section now states the scoping rule.</li>
+</ul>
+<h3 id="version-2811">Version 2.8.11</h3>
+<ul>
+<li><strong>Fixed: play-to duplicated delivered messages and could land in the wrong thread.</strong> A fast-forward route that crossed a <code>[deliver]</code> edge rendered the delivered message twice — once by the sending passage&#39;s directive and again as a bogus cursor move — and repeated fast-forward/rewind cycles stacked further copies. The deliver step now only walks the graph, and a fast-forward lands the view in the target&#39;s own conversation even when the target is a delivery or side narration (which never takes the story cursor, however it&#39;s tagged).</li>
+<li><strong>Fixed: rewinding to a player move could re-send it.</strong> Rewinding the timeline to a &quot;you: …&quot; entry left the story mid-move — the reply already in the transcript, but the same pills re-offered — so continuing (a tap, or play-to choosing for you) sent the same reply again, doubling bubbles with each cycle. A rewind now lands just <em>before</em> the move, pills up and the move un-made.</li>
+<li><strong>The <code>threadopened</code> event.</strong> Fires when the player opens a conversation — the navigational counterpart to <code>choice</code>, with <code>{ thread, story }</code>. It lets a story track which threads the player has browsed (for example, to gate the story&#39;s resumption on inbox exploration rather than a timer) without polling. It stays silent while a save or checkpoint is rebuilt, so a reload never re-fires it. See <a href="#events">Events</a> and the <a href="#gate-the-story-on-exploration-not-a-timer">exploration-gate recipe</a>.</li>
+<li><strong>A VS Code extension.</strong> Syntax highlighting for Subtext twee source — passage headers, directives (with the <code>[then …]</code> delay clause and quoted names), reply pills and their kinds, <code>(send: …)</code> text, comments, and embedded JavaScript/CSS/JSON in the special passages — plus auto-closing pairs (<code>&lt;%</code> → <code>%&gt;</code>, <code>[[</code> → <code>]]</code>) and snippets for the design language. See <a href="#editor-support">Editor support</a>.</li>
+</ul>
+<h3 id="version-281">Version 2.8.1</h3>
+<ul>
+<li><strong>Fixed: a cross-thread link didn&#39;t move the view.</strong> The docs promised that a link to a passage in another conversation pulls the player there; in practice the passage landed off-screen and announced itself with a notification banner. A player-chosen advance — a text pill, reaction, photo, location, free-text reply, or timed response — now switches the view to the target&#39;s thread at the moment of the tap, so the typing indicator and arrival play out where the player is watching. Autonomous arrivals (<code>[deliver]</code>, chains into another thread) still notify instead. See <a href="#multiple-conversations">Multiple conversations</a>.</li>
+<li><strong>Word counts.</strong> The debug panel&#39;s header shows the current passage&#39;s word count, and the story check opens with the piece&#39;s total words across all content passages. Counts cover readable text — prose, pill labels, <code>(send: …)</code> text — and exclude code, comments, directives, and markup. Also <code>story.wordCount()</code> / <code>story.wordCount(&#39;passage name&#39;)</code>. See <a href="#debug-mode">Debug mode</a>.</li>
+</ul>
+<h3 id="version-28">Version 2.8</h3>
+<ul>
+<li><strong>The <code>[then …]</code> directive.</strong> The twee form of <code>story.showDelayed()</code>: <code>[then next passage]</code> chains to a passage with natural pacing, and an <code>in</code> clause sets the delay — <code>[then next passage in 4s]</code>, <code>in 500ms</code>, or <code>in 0s</code> for an instant landing. Names may be quoted (<code>[then &#39;the walk in the park&#39; in 2s]</code>) to keep an <code>in</code> inside a name literal; <code>[deliver]</code> accepts quotes too. The story check follows <code>[then]</code> links like any other edge. See <a href="#message-chains-and-montages">Message chains and montages</a>.</li>
+<li><strong>Banners stack.</strong> Messages arriving in a row each get their own notification banner, stacked in arrival order like a notification shade — a newer one no longer replaces (same thread) or delays (other thread) the one on screen. Each banner dismisses on its own <code>config.bannerSeconds</code> timer; up to <code>config.bannerStack</code> (default 3) show at once and further ones wait for a free slot.</li>
+<li><strong>The <code>[sound …]</code> directive.</strong> An audio cue that plays when its passage shows, rendering nothing — a phone buzzing, a chime from another room. Skipped on save replays, seeds, and quiet deliveries; also <code>story.playAudioFile(src)</code>. See <a href="#sound-cues">Sound cues</a>.</li>
+<li><strong>Fixed: a new aside evicted a held one.</strong> Only one aside per side could be live, so a newcomer replaced the previous note even when it was tagged <code>aside-hold</code>. Asides on the same side now stack — the newcomer sits below any note still on screen, and each fades on its own clock. See <a href="#asides">Asides</a>.</li>
+<li><strong>Threads always open at the newest messages.</strong> Reopening a conversation previously restored the player&#39;s last scroll position, which could hide messages (quiet deliveries especially) that arrived below it.</li>
+<li><strong>Fixed: debug time travel ignored threads.</strong> Rewinding or restoring replayed the conversation into whatever thread was on screen (the replay inherited the current hot thread instead of re-deriving it from the start passage), and a debug jump rendered an untagged passage into the current thread. Restores now rebuild thread context from the top; jump and play-to land the passage in its own conversation — tagged directly or inferred from the graph — and move the view there.</li>
+<li><strong>The <code>quiet</code> and <code>quiet-read</code> passage tags.</strong> A <code>[deliver]</code>ed passage tagged <code>quiet</code> lands with no banner, sound, typing state, or arrival animation — just an unread badge; <code>quiet-read</code> drops the badge too, delivering already-read history. The mid-story counterpart of <code>seed</code>, for messages (or thread renames) that happened off-screen during a time skip.</li>
+<li><strong><code>story.renameThread(id, name)</code></strong> changes a conversation&#39;s display name mid-story — inbox row, thread header, and banners follow. Pairs with a <code>[system …]</code> chip announcing the rename; fires <code>threadrenamed</code>.</li>
+<li><strong>The story check finds dead ends.</strong> A passage that takes the story cursor but offers no way forward — no reply pills, and no chain or delivery that eventually reaches choices — is flagged as a warning. <code>End</code>-tagged finales, seeds, and side content are exempt.</li>
+<li><strong>Documentation overhaul.</strong> The docs site gains a persistent sidebar: a sticky table of contents along the left, generated from the section outline, with the current section highlighted while scrolling (a static contents block on narrow screens). The prose throughout was revised toward plain, objective description.</li>
+</ul>
+<h3 id="version-271">Version 2.7.1</h3>
+<ul>
+<li><strong>A &quot;your turn&quot; treatment in the inbox.</strong> The row of the conversation holding the story&#39;s pending choices gets a slim, gently breathing accent edge over a faint tint — icon-free wayfinding so the player always knows where the story is waiting, distinct from the unread badge. Static under reduced motion; <code>config.replyIndicator</code> / <code>replyIndicatorLabel</code>, restyle via <code>.inbox-row--turn</code>.</li>
+<li><strong>The Trash is its own screen.</strong> Instead of expanding at the bottom of the inbox, the Trash row now opens a separate screen (header shows the Trash label, chevron returns to the inbox). A conversation opened from the Trash returns to the Trash; recovering the last archived thread bounces back to the inbox. <code>story.openTrash()</code> opens it from code, and saves/undo remember when the player was there.</li>
+<li><strong>Play to: fast-forward as a real playthrough.</strong> The debug panel&#39;s jump section gains a second gear — <em>play to</em> routes through the story&#39;s written link graph and plays it instantly, auto-tapping the pill that leads toward the target at each fork. History, bubbles, state trackers, events, and checkpoints all fill in (undo steps back through the auto-made choices); no route falls back to a teleport. Also <code>story.debugFastForward(name)</code>.</li>
+<li><strong>Fixed: linkless narration wiped the pending reply pills.</strong> Chaining an aside or interstitial in with <code>showDelayed()</code> while choices were on screen replaced them with the narration&#39;s (empty) links. Side narration — speakerless, no links — now displays without touching the pills, the cursor, or <code>s.previousPassage</code>. See <a href="#narration">Narration</a>.</li>
+<li><strong>The <code>one-bubble</code> passage tag</strong> keeps a long message in a single bubble, paragraph breaks and all — the per-message counterpart to <code>story.config.splitBubbles</code>. (An inline HTML block does the same for a few paragraphs mid-passage; see <a href="#your-first-passage">Your first passage</a>.)</li>
+<li><strong>Fixed: undo went dead after every reload.</strong> Restoring a save (including the debug autosave that fires on each <code>tweego -w</code> rebuild) wiped the checkpoint stack; the replay now rebuilds a checkpoint per player move, so undo works immediately after a reload, a restore, or a timeline rewind.</li>
+<li><strong>Fixed: rewinding the timeline into a <code>showDelayed</code> chain overshot.</strong> The replayed chain re-armed its next message, which immediately streamed the rest of the chain back in; a rewind now pauses exactly at the picked moment. (A normal reload still carries an in-flight chain forward.)</li>
+<li><strong>The debug panel got compact.</strong> Timeline and Jump-to-passage are one-line dropdowns with <code>rewind</code>/<code>jump</code> buttons instead of tall scrolling lists.</li>
+<li><strong>Fixed: <code>story.deliver()</code> ignored the target&#39;s <code>instant</code> tag</strong> — a tagged passage still waited out the typing delay. Deliveries now follow the same pacing grammar as <code>showDelayed()</code>: pace by message length (with the inbox &quot;typing…&quot; state), land at once when the target is tagged <code>instant</code>, or take an explicit delay — <code>story.deliver(&#39;name&#39;, 2000)</code>.</li>
+</ul>
+<h3 id="version-27">Version 2.7</h3>
+<ul>
+<li><strong>Group chats.</strong> Declare <code>members:</code> on a thread and it becomes a group conversation: the member list under the header title, a clustered inbox avatar, and sender-named previews throughout. See <a href="#multiple-conversations">Multiple conversations</a>.</li>
+<li><strong>Photos open in a lightbox.</strong> Tap any chat image to view it fullscreen; tap again or press Esc to close. Keyboard- and screen-reader-accessible; opt out per image with <code>data-lightbox=&quot;off&quot;</code>.</li>
+<li><strong>Media previews.</strong> Banners and inbox previews for media-only messages now read as their kind — <code>📷 Photo</code>, <code>🎤 Voice message</code>, <code>📍 Location</code> (wording via <code>config.previewLabels</code>) — instead of arriving blank.</li>
+<li><strong>Banners queue.</strong> Several messages arriving at once announce themselves one banner at a time (<code>config.bannerSeconds</code> each) instead of overwriting each other; a newer message from the same thread updates its banner in place.</li>
+<li><strong>Deleted messages.</strong> <code>story.redactMessage()</code> deletes a message the way real chat apps do — the bubble stays, its content becomes a <em>&quot;This message was deleted&quot;</em> tombstone (wording via <code>config.redactedLabel</code>; <code>&#39;out&#39;</code>/<code>&#39;in&#39;</code> picks whose message). The <code>[tombstone]</code> directive seeds a message that was already deleted before the story began. Deletions fire a <code>redact</code> event and participate in undo and save/restore. See <a href="#deleted-messages">Deleted messages</a>.</li>
+<li><strong>The story check.</strong> Debug mode now lints the whole story on load: broken pill targets, unresolved <code>[deliver]</code>/<code>showDelayed()</code> names, speakers without profiles, undeclared threads, and orphaned passages (opt out per passage with the <code>unlinked</code> tag). Each finding links to the passage. Also callable as <code>story.lint()</code>.</li>
+<li><strong>Transcript export.</strong> One debug-panel click flattens the visible conversation — every thread, chips and narration included — to a downloadable Markdown file; also <code>story.exportTranscript()</code>. Read your chat story as prose to proofread it.</li>
+<li><strong>An <a href="#api-index">API index</a></strong>: every public <code>story.*</code> method in one alphabetical table, each linked to its docs.</li>
+</ul>
+<h3 id="version-262">Version 2.6.2</h3>
+<ul>
+<li><strong>The <code>instant</code> passage tag</strong> — a tagged passage never shows typing dots, however it&#39;s reached: on its own it arrives immediately (a silent &quot;and then?&quot; pill paging through a montage), and combined with an explicit <code>showDelayed()</code> delay it becomes a silent wait — the pause happens, then the message just lands. See <a href="#message-chains-and-montages">Message chains and montages</a>.</li>
+<li><strong>Delivered messages carry their reply pills.</strong> A <code>[deliver]</code>ed passage with links used to discard them; now the story&#39;s pending choices travel with the message and appear when the player opens its thread — <code>[deliver]</code> can hand the story off to another conversation.</li>
+<li><strong>Fixed: group messages are attributed to their sender.</strong> A cross-speaker delivery (<code>speaker-matt</code> into <code>thread-family</code>) used to look like it came from the whole thread; the notification banner and inbox preview now read &quot;Matt: …&quot; under the thread&#39;s name, like a real phone.</li>
+</ul>
+<h3 id="version-261">Version 2.6.1</h3>
+<ul>
+<li><strong>Fixed:</strong> a <code>[timestamp]</code> leading a delivered message no longer leaks into its notification banner — the banner shows the message body only.</li>
+<li><strong>Fixed (game-breaking):</strong> opening the inbox while a narration overlay was up stranded the player under the veil with nothing clickable. The inbox chevron now hides while an overlay is showing.</li>
+<li><strong><code>story.showInboxButton()</code> / <code>hideInboxButton()</code></strong> (and <code>config.inboxButton</code>) stage the inbox reveal — start the story as one conversation, disclose the wider inbox when the moment lands.</li>
+<li>The &quot;Delete Thread&quot; reply-pill recipe (missed the 2.6 merge).</li>
+<li><strong>Fixed:</strong> a silent <code>[[Continue (send:)-&gt;…]]</code> pill into narration now shows the narration immediately instead of waiting out <code>metaDelay</code> — tapping straight into an overlay feels responsive. (<code>metaDelay</code> still paces narration that follows a sent message or a speaker&#39;s reply.)</li>
+<li><strong>Fixed:</strong> the docs described the inbox button with a ☰ glyph; it&#39;s a ‹ chevron.</li>
+<li><strong><code>story.showDelayed()</code> takes a delay</strong> — <code>story.showDelayed(&#39;next&#39;, 0)</code> shows the next message instantly (no typing indicator), any other number paces it in milliseconds. See <a href="#message-chains-and-montages">Message chains and montages</a>.</li>
+<li><strong>Fixed:</strong> chaining passages with <code>&lt;% story.showDelayed(…) %&gt;</code> doubled and shuffled the chain&#39;s <code>[timestamp]</code> chips — the next passage&#39;s early chip could land above the current message <em>and</em> knock out the bookkeeping that stops the current chip from rendering twice. Chips now stay glued to their messages, once each.</li>
+<li><strong>Fixed:</strong> reloading mid-chain duplicated messages — the save replay re-ran each passage&#39;s <code>showDelayed</code> call on top of the messages already in the timeline. Echoes are now dropped; a chain that was still in flight when the save was made picks up where it left off.</li>
+</ul>
+<h3 id="version-26">Version 2.6</h3>
+<ul>
+<li><strong>The Trash.</strong> Conversations can be archived — <code>archived: true</code> in <code>StoryThreads</code>, or <code>story.archiveThread(id)</code> mid-story — into a Trash section at the bottom of the inbox where the player can still read them. Any message landing in an archived thread recovers it (or <code>story.restoreThread(id)</code>); <code>threadarchived</code>/<code>threadrestored</code> events fire. See <a href="#multiple-conversations">Multiple conversations</a>.</li>
+<li><strong>An <a href="#extending-subtext">Extending Subtext</a> chapter</strong>: the stable API contract, and worked examples of adding features from story JavaScript — custom directives via prototype wrapping, behavior via events.</li>
+<li><strong>Inbox previews fixed</strong> for conversations whose last message carries a receipt or is followed by a <code>[system]</code> chip.</li>
+</ul>
+<h3 id="version-25">Version 2.5</h3>
+<ul>
+<li><strong>Hidden threads.</strong> <code>hidden: true</code> in a <code>StoryThreads</code> declaration keeps a conversation out of the inbox until its first message arrives (or <code>story.revealThread(id)</code>) — the Unknown Number stays a surprise.</li>
+<li><strong>Seeded history.</strong> Passages tagged <code>seed</code> render into their threads at story start as old, already-read messages — a conversation that visibly existed before the story began. Seeded player messages honor the <code>read</code>/<code>unread</code>/<code>failed</code> receipt tags (an old text can open the story still sitting on Delivered), and <code>[react …]</code> in a seed lands an old tapback on the previous seeded message.</li>
+<li><strong>Diegetic read-only threads.</strong> Viewing a conversation the story isn&#39;t in shows a grayed-out composer — <em>&quot;Nothing to say right now&quot;</em> (<code>story.config.threadIdleHint</code>) — instead of an empty reply area.</li>
+<li><strong>Cross-thread banners truncate</strong> long messages with an ellipsis, like real notifications.</li>
+<li><strong><code>[system …]</code> event chips</strong> — <em>&quot;Sam has left the conversation&quot;</em>, missed calls, group renames. Like a timestamp chip but never shown early while a reply is typing, and a trailing one lands below its message. See <a href="#system-messages">System messages</a>.</li>
+</ul>
+<h3 id="version-242">Version 2.4.2</h3>
+<ul>
+<li><strong><code>(send:)</code> now works in shorthand links.</strong> <code>[[what? (send: what? || tell me)]]</code> correctly targets the passage named <code>what?</code> — previously the suffix stayed glued to the target and broke the link.</li>
+<li><strong><code>story.config.undoButton = false</code></strong> hides the header undo button, for stories where choices should be final.</li>
+<li><strong>Documented the <code>story</code> and <code>passage</code> globals</strong> — <code>&lt;%= story.name %&gt;</code> and friends, straight down the Snowman lineage.</li>
+</ul>
+<h3 id="version-24">Version 2.4</h3>
+<ul>
+<li><strong>The story keeps score.</strong> <code>s.lastChoice</code> (which pill was tapped), <code>s.previousPassage</code> (how the player arrived), <code>s.replySeconds</code> (how long they deliberated), and a <code>choice</code> event on every reply — the automatic trackers that let several pills share a target and still branch. See <a href="#reply-pills-and-sent-text">Reply pills and sent text</a> and <a href="#recipes">Recipes</a>.</li>
+<li><strong>Cross-playthrough memory.</strong> <code>story.remember()</code> / <code>story.recall()</code> / <code>story.forget()</code> persist values per story across restarts — endings-seen counters, New Game+ unlocks, characters who remember your last run.</li>
+<li><strong>A <a href="#recipes">Recipes</a> section</strong> collecting common patterns: arrival-based branching, hesitation, affinity meters, disappearing hub choices, and playthrough memory.</li>
+<li><strong>A sturdier debug panel.</strong> The timeline now sits front and center with every passage tappable to <em>rewind</em> to that moment; jumping to a passage is a clean teleport (transcript resets, <code>s</code> is kept) instead of piling passages into the log; the panel stays open across reloads; and a Memory section shows what the story has <code>remember()</code>ed.</li>
+<li><strong>Read receipts flip like a real phone&#39;s.</strong> <em>Delivered</em> becomes <em>Read</em> the moment the reply is queued — before the typing dots — not when the message lands. <code>read</code>/<code>unread</code>/<code>failed</code> tags still override.</li>
+<li><strong>The header is a stage.</strong> <code>story.setHeader(&#39;Part Two&#39;, &#39;three weeks later&#39;)</code> repurposes the title line mid-story (undo- and save-aware); <code>story.config.titlePlacement</code> moves the StoryTitle/Subtitle/Author identity into the menu (or nowhere); <code>story.config.menuTitle</code> / <code>inject_menu(content, &#39;About&#39;)</code> retitle the menu dialog.</li>
+<li><strong>Trialogue&#39;s <code>inject_left_sidebar()</code> / <code>inject_right_sidebar()</code> / <code>fade_in_content_containers()</code> are gone</strong> — there are no side columns on a phone. Use the menu.</li>
+<li><strong>A coherence pass over the whole authoring surface.</strong> Canonical camelCase APIs (<code>story.setMenu</code>, <code>story.setRestartDialog</code>) with the <code>inject_*</code> names kept as legacy aliases; a stated <a href="#the-design-language">design language</a> (directives = in-message content, <code>prefix:</code> links = reply kinds, <code>(send:)</code> = reply modifier); a complete <a href="#story-state">Story state</a> reference; bare <code>[[photo-&gt;x]]</code> shorthand; <code>end</code> accepted alongside <code>End</code>; <code>meta-aside</code> completes the narration-tag family.</li>
+</ul>
+<h3 id="version-23">Version 2.3</h3>
+<ul>
+<li><strong>Debug mode.</strong> Twine&#39;s Test button, <code>tweego -t</code>, or <code>?debug</code> opens a devtools-style panel: watch variables live, run JavaScript, jump to any passage (fast-forward), rewind, and inspect the timeline. Debug autosaves keep your place across <code>tweego -w</code> rebuilds — the live-preview tab reloads and you&#39;re still in the scene you&#39;re editing, even when the rebuild renumbers every passage. See <a href="#debug-mode">Debug mode</a>.</li>
+<li><strong>Multi-bubble sends.</strong> <code>||</code> in a <code>(send: …)</code> label breaks the sent text into separate bubbles fired in quick succession — one tap, a flurry of texts. See <a href="#reply-pills-and-sent-text">Reply pills and sent text</a>.</li>
+</ul>
+<h3 id="version-22">Version 2.2</h3>
+<ul>
+<li><strong>Asides — narration in the margins.</strong> A fourth narration style: tag a speakerless passage <code>aside-left</code> or <code>aside-right</code> and it appears as a note <em>outside</em> the phone, level with the latest message, riding along as the chat scrolls and fading after a few beats. On phones it floats over the chat&#39;s edge like a sticky note on the glass. See <a href="#asides">Asides</a>.</li>
+<li><strong>Reply pills can send different text than they show.</strong> <code>[[sure (send: sure, that works — see you at midnight)-&gt;meet]]</code> shows a terse pill but sends the full line; an empty <code>(send:)</code> advances the story without posting a message at all (perfect for a &quot;start&quot; button). See <a href="#reply-pills-and-sent-text">Reply pills and sent text</a>.</li>
+<li><strong>New conversations fill from the top</strong> of the screen, like a real messaging app, and only pin to the bottom once the chat overflows; the typing indicator now sits directly beneath the last message.</li>
+<li><strong>Timestamps appear while typing.</strong> A timestamp chip leading a speaker&#39;s reply now shows as soon as the typing indicator starts, the way it would on a real phone.</li>
+</ul>
+<h3 id="version-21">Version 2.1</h3>
+<ul>
+<li><strong>Multiple conversations.</strong> An opt-in contacts inbox lets one story weave several chats at once — unread badges, per-conversation threads, live &quot;typing…&quot; states, and messages that arrive in the background while the player is talking to someone else. Perfect for mystery and epistolary structures. Single-conversation stories are completely unaffected: no <code>StoryThreads</code> passage, no inbox, no overhead. See <a href="#multiple-conversations">Multiple conversations</a>.</li>
+<li><strong>A tidier header.</strong> Controls are now split by register: in-story navigation (the inbox chevron, back link) sits on the left, app controls (undo, menu) on the right. The light/dark toggle and Restart moved into the menu.</li>
+</ul>
+<h3 id="version-20">Version 2.0</h3>
+<p><strong>A modern messaging look</strong></p>
+<ul>
+<li>Message bubbles are grouped by speaker with iMessage-style corner shaping, a speaker name above each group, and an auto-colored avatar beside it.</li>
+<li>Each paragraph of a passage becomes its own bubble, so longer passages read like a real text exchange.</li>
+<li>Outgoing (player) messages render as accent-colored bubbles on the right; choices appear as quick-reply pill buttons.</li>
+<li>Passages containing only an image render frameless, like a photo message.</li>
+<li>Players can send photos from a picker; stories can branch on which image was sent.</li>
+<li>Voice-memo bubbles with a real player (waveform, play/pause, duration) via <code>[voice file.mp3]</code>.</li>
+<li>Location map cards via <code>[location lat,lon Label]</code>, and players can share their <em>real</em> coordinates for the story to react to.</li>
+<li>Read receipts (Delivered/Read) under the player&#39;s last message, with author control for dramatic effect, including a permanent, red &quot;Not Delivered&quot; failed state.</li>
+<li>Message reactions: speakers can tapback the player&#39;s messages, and players can react as a choice.</li>
+<li>Optional timed responses (a subtle meter runs as time runs out—hesitate and the story moves without you) and free-text input for password/puzzle beats, with the typed answer available to template logic.</li>
+<li>Thread clearing for flashbacks and scene changes (<code>clear</code> tag + timestamp chips).</li>
+<li>Optional multi-conversation mode: a contacts inbox with unread badges and background message delivery, for weaving several chats at once (single-conversation stories are unaffected).</li>
+<li>Timestamp chips, speaker profiles (display names, avatar images, bubble colors), optional message sounds, and a tab-title unread badge.</li>
+<li>Refined typing indicator, message entrance animations (disabled for players who prefer reduced motion), and automatic dark mode with a player-facing theme toggle.</li>
+<li>The story renders as a phone: full-bleed on mobile, a centered phone-width frame on larger screens.</li>
+</ul>
+<p><strong>A more robust format</strong></p>
+<ul>
+<li>The runtime was rewritten in dependency-free vanilla JavaScript. jQuery, Underscore, and the Bootstrap/jQuery CDN links are not necessary. Published stories are fully self-contained and work offline.</li>
+<li>Save/restore now replays the entire conversation, not just the last passage, and an optional autosave keeps progress across reloads.</li>
+<li>Undo restores story state correctly (state snapshots are deep-copied per choice).</li>
+<li>Broken links, render errors, and script errors surface as readable messages in the chat instead of failing silently.</li>
+<li>The Grunt/Browserify toolchain was replaced with a single esbuild-based build script, plus a built-in Twee compiler and headless-browser smoke test.</li>
+</ul>
+<h1 id="credits">Credits</h1>
+<p>Subtext is developed by <a href="https://www.samplereality.com">Mark Sample</a> and builds on <a href="https://github.com/phivk/trialogue">Trialogue</a> by <a href="https://github.com/phivk">Philo van Kemenade</a>, which in turn is based on <a href="http://mcdemarco.net/tools/scree/paloma/">Paloma</a> by M. C. DeMarco, a Jonah-style story format based on <a href="https://github.com/videlais/snowman">Snowman</a> by <a href="https://github.com/klembot">Chris Klimas</a> and <a href="https://videlais.com/">Dan Cox</a>.</p>
+
+</main>
+</div>
+<footer>Subtext 2.8.17 · MIT License</footer>
+<script>
+(function () {
+	var links = document.querySelectorAll('.toc a');
+	var byId = {};
+
+	links.forEach(function (a) {
+		byId[a.getAttribute('href').slice(1)] = a;
+	});
+
+	var current = null;
+	var observer = new IntersectionObserver(function (entries) {
+		entries.forEach(function (entry) {
+			if (!entry.isIntersecting) { return; }
+
+			var link = byId[entry.target.id];
+
+			if (link && link !== current) {
+				if (current) { current.classList.remove('current'); }
+				current = link;
+				link.classList.add('current');
+			}
+		});
+	}, { rootMargin: '0px 0px -70% 0px' });
+
+	document.querySelectorAll('main h2[id], main h3[id]').forEach(function (h) {
+		if (byId[h.id]) { observer.observe(h); }
+	});
+})();
+</script>
+</body>
+</html>
