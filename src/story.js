@@ -164,6 +164,13 @@ function readableText(source, keepLinkText) {
 			return ' ' + inner.replace(/\(send:([^)]*)\)/gi, ' $1 ') + ' ';
 		})
 
+		// markdown links and images: the player reads the link text
+		// (or alt text) — the URL is markup, however long it runs.
+		// Applied twice for an image nested inside a link.
+
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, ' $1 ')
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, ' $1 ')
+
 		// directive lines are chrome, not prose
 
 		.replace(
@@ -1039,6 +1046,12 @@ Object.assign(Story.prototype, {
 		this.clearUserResponses();
 		this.focusResponses();
 
+		// the state as it stands at the moment of the move — including
+		// anything event listeners (threadopened, say) recorded, which
+		// replaying passages alone can never rebuild
+
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = false;
 
 		var chosen =
@@ -1051,11 +1064,16 @@ Object.assign(Story.prototype, {
 		}
 
 		// the choice itself is a timeline moment: replaying it restores
-		// lastChoice and timedOut mid-replay (templates that captured
-		// them re-run with the right values), and an empty (send:)
-		// choice keeps its undo checkpoint across reloads
+		// lastChoice, timedOut, and the snapshot state mid-replay
+		// (templates that captured them re-run with the right values),
+		// and an empty (send:) choice keeps its undo checkpoint across
+		// reloads
 
-		this.timeline.push(chosen !== '' ? { t: 'c', l: chosen } : { t: 'c' });
+		this.timeline.push(
+			chosen !== ''
+				? { t: 'c', l: chosen, s: moveState }
+				: { t: 'c', s: moveState }
+		);
 
 		/**
 		 Triggered whenever the player picks a reply pill (or code calls
@@ -2398,8 +2416,10 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearUserResponses();
 
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = true;
-		this.timeline.push({ t: 'c', to: 1 });
+		this.timeline.push({ t: 'c', to: 1, s: moveState });
 
 		if (offer.text) {
 			this.showUserBubble(offer.text);
@@ -6561,6 +6581,17 @@ Object.assign(Story.prototype, {
 		var story = this;
 
 		if (entry.t === 'c') {
+			// a choice recorded the state as it stood when the move was
+			// made — including anything event listeners (threadopened,
+			// say) wrote there, which replaying passages alone can never
+			// rebuild. Truing the state up here means everything that
+			// renders after this point re-runs against what the player
+			// actually had, and the rebuilt undo checkpoint matches too.
+
+			if (entry.s) {
+				this.state = deepClone(entry.s);
+			}
+
 			this.pushCheckpoint();
 			this.state.timedOut = !!entry.to;
 
@@ -6568,13 +6599,17 @@ Object.assign(Story.prototype, {
 				this.state.lastChoice = entry.l;
 			}
 
-			this.timeline.push(
-				entry.l
-					? { t: 'c', l: entry.l }
-					: entry.to
-						? { t: 'c', to: 1 }
-						: { t: 'c' }
-			);
+			var replayed = entry.l
+				? { t: 'c', l: entry.l }
+				: entry.to
+					? { t: 'c', to: 1 }
+					: { t: 'c' };
+
+			if (entry.s) {
+				replayed.s = entry.s;
+			}
+
+			this.timeline.push(replayed);
 			return;
 		}
 
@@ -7391,6 +7426,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = edge.kind === 'timeout';
 
 		var story = this;
@@ -7456,10 +7494,10 @@ Object.assign(Story.prototype, {
 
 		this.timeline.push(
 			edge.kind === 'timeout'
-				? { t: 'c', to: 1 }
+				? { t: 'c', to: 1, s: moveState }
 				: edge.display.trim() !== ''
-					? { t: 'c', l: edge.display.trim() }
-					: { t: 'c' }
+					? { t: 'c', l: edge.display.trim(), s: moveState }
+					: { t: 'c', s: moveState }
 		);
 
 		if (edge.kind === 'timeout') {

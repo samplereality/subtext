@@ -1685,6 +1685,60 @@ async function run() {
 		})
 	);
 
+	// markdown links and images pace by their display text — the URL
+	// (or a data URI) is markup, however long it runs
+	check(
+		'typing delay ignores markdown URLs and image sources',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+			const url =
+				'https://example.com/a/very/long/path?utm_source=x' +
+				'&utm_campaign=y&fbclid=' + 'z'.repeat(120);
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'delay-linked',
+				['speaker-2'],
+				'read [this piece](' + url + ')\n\n![a snapshot](data:image/gif;base64,' +
+					'R0lGODlhAQABAIAAAP'.repeat(30) + ')'
+			);
+			window.story.passages[len + 2] = new P(
+				len + 2,
+				'delay-plain',
+				['speaker-2'],
+				'read this piece\n\na snapshot'
+			);
+
+			const linked = window.story.getPassageDelay('delay-linked');
+			const plain = window.story.getPassageDelay('delay-plain');
+
+			window.story.passages.length = len;
+
+			return linked === plain;
+		})
+	);
+	check(
+		'word count reads markdown links as their display text',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'wc-linked',
+				['speaker-2'],
+				'read [this piece](https://example.com/' + 'x'.repeat(200) + ')'
+			);
+
+			const words = window.story.wordCount('wc-linked');
+
+			window.story.passages.length = len;
+
+			return words === 3;
+		})
+	);
+
 	// `||` splits passage text into separate bubbles, matching the
 	// (send: a || b) grammar — a mirrored reply renders the way it
 	// was sent
@@ -2135,6 +2189,100 @@ async function run() {
 							);
 						}, 100);
 					}, 400);
+				})
+		)
+	);
+
+	// a choice records the state as it stood when the move was made —
+	// including what event listeners wrote there, which replaying
+	// passages can never rebuild. Rewinding to a passage whose pills
+	// are gated on that state must re-render the gate open.
+	check(
+		'rewind restores listener-written state from the choice snapshot',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 90;
+					const P = window.Passage;
+					const log = () =>
+						document.querySelector('#phistory').textContent;
+					const pills = () =>
+						Array.from(
+							document.querySelectorAll('.user-response')
+						).map((b) => b.textContent.trim());
+
+					window.story.passages[base] = new P(
+						base,
+						'snap-pre',
+						['speaker-2'],
+						'peek around\n\n[[done looking->snap-gate]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'snap-gate',
+						['speaker-2'],
+						'<% if (s.snapSeen) { %>\nyou saw it\n\n' +
+							'[[i did->snap-after]]\n<% } else { %>\n' +
+							'nothing yet\n<% } %>'
+					);
+					window.story.passages[base + 2] = new P(
+						base + 2,
+						'snap-after',
+						['speaker-2', 'End'],
+						'fin-snap'
+					);
+
+					window.story.show('snap-pre');
+
+					// what a threadopened (or any event) listener does:
+					// write state OUTSIDE any passage template
+					window.story.state.snapSeen = true;
+
+					window.story.choose(
+						'snap-gate', 'done looking', 'done looking'
+					);
+
+					const pollGate = window.setInterval(() => {
+						if (log().indexOf('you saw it') === -1) {
+							return;
+						}
+
+						window.clearInterval(pollGate);
+						window.story.choose('snap-after', 'i did', 'i did');
+
+						const pollEnd = window.setInterval(() => {
+							if (log().indexOf('fin-snap') === -1) {
+								return;
+							}
+
+							window.clearInterval(pollEnd);
+
+							const idx = window.story.timeline.findIndex(
+								(e) =>
+									e.t === 'p' &&
+									(window.story.passage(e.id) || {}).name ===
+										'snap-gate'
+							);
+
+							window.story.debugRewind(idx + 1);
+
+							const gateOpen =
+								log().indexOf('you saw it') > -1 &&
+								log().indexOf('nothing yet') === -1;
+							const pillBack = pills().some(
+								(t) => t.indexOf('i did') > -1
+							);
+							const stateBack =
+								window.story.state.snapSeen === true;
+
+							window.story.restore(preHash);
+							window.story.passages.length = preLen;
+
+							resolve(gateOpen && pillBack && stateBack);
+						}, 100);
+					}, 100);
 				})
 		)
 	);
