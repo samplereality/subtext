@@ -1460,7 +1460,9 @@ a {
 	margin: 0;
 }
 
-.photo-picker-close {
+/* the × in a dialog header (menu, photo picker) */
+
+.dialog-close {
 	appearance: none;
 	border: 0;
 	background: transparent;
@@ -1472,7 +1474,7 @@ a {
 	border-radius: 0.5rem;
 }
 
-.photo-picker-close:hover {
+.dialog-close:hover {
 	background: color-mix(in srgb, var(--t-muted) 15%, transparent);
 }
 
@@ -1694,6 +1696,7 @@ img[role="button"] {
 
 .menu-actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 0.5rem;
 	margin-top: 0.85rem;
 	padding-top: 0.85rem;
@@ -1701,7 +1704,8 @@ img[role="button"] {
 }
 
 .menu-action {
-	flex: 1;
+	flex: 1 1 auto;
+	min-width: calc(50% - 0.5rem);
 	display: flex;
 	align-items: center;
 	justify-content: center;

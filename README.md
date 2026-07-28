@@ -607,7 +607,7 @@ Override CSS variables from your story stylesheet:
 }
 ```
 
-Dark mode follows the player's system preference until they pick a side with the header's sun/moon toggle — their choice is remembered per story (hide the toggle with `story.config.themeToggle = false`). Authors can force a scheme with `<html data-theme="dark">` (or `light`). The Trialogue 1.x variable names (`--bg-color`, `--user-color`, `--passage-bg-color`, `--passage-text-color`, `--navbar-bg-color`, `--speaker-color`) are still honored, and `--t-page-bg` themes the page behind the phone frame.
+Dark mode follows the player's system preference until they pick a side with the menu's sun/moon toggle — their choice is remembered per story (hide the toggle with `story.config.themeToggle = false`). Authors can force a scheme with `<html data-theme="dark">` (or `light`). The Trialogue 1.x variable names (`--bg-color`, `--user-color`, `--passage-bg-color`, `--passage-text-color`, `--navbar-bg-color`, `--speaker-color`) are still honored, and `--t-page-bg` themes the page behind the phone frame.
 
 Style an individual speaker by targeting its `data-speaker` attribute:
 
@@ -812,14 +812,14 @@ A complete example is [`docs/subtext-inbox-demo.twee`](docs/subtext-inbox-demo.t
 
 ### Saving
 
-- `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.
+- `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation. The menu's **Copy link** control puts this in the player's hands: one tap saves and copies the link (`story.config.saveLink = false` removes it).
 - `story.config.autosave = true` additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.
 
 ## Interface
 
 ### Notifications
 
-- `story.config.sounds = true` enables subtle synthesized send/receive sounds (no audio files needed). An incoming speaker's message plays the receive sound; the send sound plays when the player taps a reply **and** when a `speaker-you` passage shows or delivers — the player-character texting sounds like sending, which keeps a montage that mixes speakers audible on every beat. Replays, seeds, and `quiet` deliveries stay silent. Browsers allow sound only after the player's first interaction, so the very first messages are always silent.
+- `story.config.sounds = true` enables subtle synthesized send/receive sounds (no audio files needed). An incoming speaker's message plays the receive sound; the send sound plays when the player taps a reply **and** when a `speaker-you` passage shows or delivers — the player-character texting sounds like sending, which keeps a montage that mixes speakers audible on every beat. Replays, seeds, and `quiet` deliveries stay silent. Browsers allow sound only after the player's first interaction, so the very first messages are always silent. Turning sounds on also puts a mute toggle in the menu's [control panel](#page-chrome-and-menus), so the choice ultimately belongs to the player.
 - While the tab is hidden, incoming messages update the title to `(2) Your Story Name` and it resets when the player returns (`story.config.titleNotifications`, on by default).
 
 ### Page chrome and menus
@@ -844,7 +844,12 @@ story.config.hint = 'Choose an option to continue';  // text above the choices
 
 `setMenu` called from your Story JavaScript wins over a `StoryMenu` passage. The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. Two hint refinements: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` stops showing helper text once the player has made that many moves (`null` keeps hints forever; `0` never shows them).
 
-The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final). At the bottom of the menu sits a compact control panel — one row with the light/dark theme toggle and a Restart button that asks for confirmation.
+The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final). At the bottom of the menu sits a compact control panel — rows of small chips holding the story's controls:
+
+- **Theme** — the light/dark toggle (hide with `story.config.themeToggle = false`).
+- **Sound** — a mute toggle, shown only when `story.config.sounds` is on. The player's choice is remembered per story; muting silences the send/receive sounds and `[sound …]` cues, but not voice memos (the player starts those by hand).
+- **Copy link** — saves progress into the URL (the same mechanism as `story.save()`) and copies that link to the clipboard, so players can bookmark or share their spot. Hide it with `story.config.saveLink = false` — for instance in stories where a shareable mid-story link would spoil.
+- **Restart** — asks for confirmation before clearing the conversation.
 
 **Where the story's identity lives.** By default `StoryTitle`, `StorySubtitle`, and `StoryAuthor` render in the chat header. `story.config.titlePlacement` moves them:
 
@@ -979,7 +984,8 @@ story.config.autosave = true;
 | `inboxTitle` | `'Messages'` | The header title while the inbox screen is up |
 | `replyIndicator` | `true` | Mark the inbox row of the conversation awaiting a reply (accent edge + tint) |
 | `replyIndicatorLabel` | `'awaiting your reply'` | Its screen-reader label |
-| `themeToggle` | `true` | Show the light/dark toggle in the header |
+| `themeToggle` | `true` | Show the light/dark toggle in the menu's control panel |
+| `saveLink` | `true` | Show the menu's Copy link control (saves progress into the URL and copies it) |
 | `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
 | `inboxButton` | `true` | Show the inbox chevron; reveal later with `story.showInboxButton()` |
 | `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
@@ -1350,7 +1356,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 ### Unreleased
 
 - **A `StoryMenu` special passage fills the Menu modal** — the same content `story.setMenu(html)` takes, declared as a passage instead of JavaScript. `setMenu` called from Story JavaScript still wins, and can retitle or replace the menu mid-story. See [Page chrome and menus](#page-chrome-and-menus).
-- **The menu's theme and restart controls are now a control panel** — one compact row of buttons at the foot of the menu dialog instead of stacked full-width lines.
+- **The menu's theme and restart controls are now a control panel** — compact rows of buttons at the foot of the menu dialog instead of stacked full-width lines.
+- **A mute toggle joins the control panel** when `config.sounds` is on. The player's choice persists per story and silences the synthesized sounds and `[sound …]` cues (voice memos, being player-started, still play). See [Notifications](#notifications).
+- **A Copy link control joins the control panel** — one tap saves progress into the URL (`story.save()`) and copies the link, making bookmarkable progress a player feature instead of an author API. `story.config.saveLink = false` hides it. See [Saving](#saving).
+- **Breaking (CSS only): the dialog close button class is now `.dialog-close`.** The menu and photo-picker close buttons shared the class `.photo-picker-close`; restyle against `.dialog-close` instead.
 - **Removed: the legacy Trialogue `inject_*` helpers.** `inject_menu`, `inject_modal`, `inject_hint`, `inject_nav_menu`, and `inject_nav_back` (and the header back-link slot they served) are gone. Use a `StoryMenu` passage or `story.setMenu`, `story.setRestartDialog`, and `story.config.hint` — see [Migrating from Trialogue](#migrating-from-trialogue).
 
 ### Version 2.8.17

@@ -92,7 +92,7 @@
 	<dialog id="menu-dialog" class="chat-dialog menu-dialog" aria-labelledby="menu-dialog-title">
 		<div class="menu-dialog-header">
 			<h2 id="menu-dialog-title" class="modal-title content-container">Menu</h2>
-			<button type="button" class="photo-picker-close" data-menu-close aria-label="Close">&times;</button>
+			<button type="button" class="dialog-close" data-menu-close aria-label="Close">&times;</button>
 		</div>
 		<div id="menu-identity" class="content-container menu-identity" hidden></div>
 		<div id="menu-container" class="content-container menu-section"></div>
@@ -100,6 +100,14 @@
 			<button id="nav-link-theme" class="menu-action" type="button">
 				<span class="menu-action-icon" aria-hidden="true"></span>
 				<span class="menu-action-label">Theme</span>
+			</button>
+			<button id="nav-link-sound" class="menu-action" type="button" hidden>
+				<span class="menu-action-icon" aria-hidden="true"></span>
+				<span class="menu-action-label">Sound</span>
+			</button>
+			<button id="nav-link-share" class="menu-action" type="button" title="Copy a link to your spot in the story">
+				<span class="menu-action-icon" aria-hidden="true"></span>
+				<span class="menu-action-label">Copy link</span>
 			</button>
 			<button id="nav-link-restart" class="menu-action" type="button">
 				<span class="menu-action-icon" aria-hidden="true">&#8635;</span>
@@ -111,7 +119,7 @@
 	<dialog id="photo-picker" class="chat-dialog photo-picker" aria-labelledby="photo-picker-title">
 		<div class="photo-picker-header">
 			<h2 id="photo-picker-title" class="modal-title">Send a photo</h2>
-			<button type="button" class="photo-picker-close" data-picker-close aria-label="Close">&times;</button>
+			<button type="button" class="dialog-close" data-picker-close aria-label="Close">&times;</button>
 		</div>
 		<div id="photo-picker-grid" class="photo-picker-grid"></div>
 	</dialog>

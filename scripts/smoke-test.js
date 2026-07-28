@@ -151,22 +151,94 @@ async function run() {
 		(await page.locator('#menu-dialog #nav-link-restart').count()) === 1
 	);
 	check(
-		'theme and restart share one control-panel row',
+		'the control panel pairs its chips into compact rows',
 		await page.evaluate(() => {
 			const panel = document.querySelector('#menu-dialog .menu-actions');
-			const theme = document.getElementById('nav-link-theme');
-			const restart = document.getElementById('nav-link-restart');
-			const themeBox = theme.getBoundingClientRect();
-			const restartBox = restart.getBoundingClientRect();
+			const box = (id) =>
+				document.getElementById(id).getBoundingClientRect();
+			const theme = box('nav-link-theme');
+			const sound = box('nav-link-sound');
+			const share = box('nav-link-share');
+			const restart = box('nav-link-restart');
 
 			return (
 				panel.getAttribute('role') === 'group' &&
-				panel.contains(theme) &&
-				panel.contains(restart) &&
-				Math.abs(themeBox.top - restartBox.top) < 1 &&
-				restartBox.left > themeBox.right
+				['nav-link-theme', 'nav-link-sound', 'nav-link-share',
+					'nav-link-restart'].every(
+					(id) => panel.contains(document.getElementById(id))
+				) &&
+				Math.abs(theme.top - sound.top) < 1 &&
+				sound.left > theme.right &&
+				Math.abs(share.top - restart.top) < 1 &&
+				restart.left > share.right &&
+				share.top > theme.bottom
 			);
 		})
+	);
+	check(
+		'the mute toggle silences sounds and remembers the choice',
+		await page.evaluate(() => {
+			const button = document.getElementById('nav-link-sound');
+
+			if (button.hidden || window.story.soundMuted) {
+				return false;
+			}
+
+			button.click();
+
+			const muted =
+				window.story.soundMuted === true &&
+				button.getAttribute('aria-pressed') === 'true' &&
+				Object.keys(window.localStorage).some(
+					(key) =>
+						key.indexOf('subtext-sound-') === 0 &&
+						window.localStorage.getItem(key) === 'muted'
+				);
+
+			button.click(); // leave sounds on for the rest of the run
+
+			return muted && window.story.soundMuted === false;
+		})
+	);
+	check(
+		'Copy link saves progress into the URL and copies it',
+		await page.evaluate(() => {
+			let copied = null;
+
+			navigator.clipboard.writeText = (text) => {
+				copied = text;
+				return Promise.resolve();
+			};
+			document.getElementById('nav-link-share').click();
+
+			return (
+				copied === window.location.href &&
+				window.location.hash.length > 1 &&
+				copied.indexOf('#') > -1
+			);
+		})
+	);
+	await page.waitForFunction(
+		() =>
+			document.querySelector('#nav-link-share .menu-action-label')
+				.textContent === 'Copied!'
+	);
+	check('Copy link flashes "Copied!" feedback', true);
+	await page.waitForFunction(
+		() =>
+			document.querySelector('#nav-link-share .menu-action-label')
+				.textContent === 'Copy link'
+	);
+	// drop the save hash so later checks start from a clean URL
+	await page.evaluate(() =>
+		window.history.replaceState(null, '', window.location.pathname)
+	);
+	check(
+		'dialog close buttons share the .dialog-close class',
+		(await page.locator('#menu-dialog .dialog-close[data-menu-close]')
+			.count()) === 1 &&
+		(await page.locator('#photo-picker .dialog-close[data-picker-close]')
+			.count()) === 1
 	);
 	// theme toggle now lives in the menu
 	await page.click('#nav-link-theme');

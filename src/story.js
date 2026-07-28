@@ -65,6 +65,32 @@ var SUN_SVG =
 	'<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>' +
 	'<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
 
+/* Feather Icons volume-2, volume-x & link (MIT) */
+var VOLUME_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+	'<path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07">' +
+	'</path></svg>';
+
+var MUTED_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+	'<line x1="23" y1="9" x2="17" y2="15"></line>' +
+	'<line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+
+var LINK_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71">' +
+	'</path>' +
+	'<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71">' +
+	'</path></svg>';
+
 var PLAY_SVG =
 	'<svg viewBox="0 0 24 24" width="16" height="16" ' +
 	'fill="currentColor" aria-hidden="true">' +
@@ -386,6 +412,10 @@ var Story = function() {
 		replyIndicatorLabel: 'awaiting your reply',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
+		/* show the menu's Copy-link control — it saves progress into
+		   the URL and copies that link, so players can bookmark or
+		   share their spot (set false to hide it) */
+		saveLink: true,
 		/* show the header undo button once there is something to undo
 		   (set false for stories where choices should be final) */
 		undoButton: true,
@@ -601,6 +631,8 @@ Object.assign(Story.prototype, {
 			metaNotificationBody: byId('meta-notification-body'),
 			menuDialog: byId('menu-dialog'),
 			theme: byId('nav-link-theme'),
+			sound: byId('nav-link-sound'),
+			share: byId('nav-link-share'),
 			footer: document.querySelector('.user-response-panel'),
 			inbox: byId('inbox'),
 			inboxList: byId('inbox-list'),
@@ -901,6 +933,8 @@ Object.assign(Story.prototype, {
 		}
 
 		this.initTheme();
+		this.initSound();
+		this.initSaveLink();
 
 		if (this.dom.pickerTitle) {
 			this.dom.pickerTitle.textContent = this.config.photoPickerTitle;
@@ -3301,6 +3335,10 @@ Object.assign(Story.prototype, {
 	**/
 
 	playAudioFile: function(src) {
+		if (this.soundMuted) {
+			return;
+		}
+
 		var audio = new Audio(src);
 
 		this._cueAudio = audio; // hold a reference while it plays
@@ -3308,7 +3346,7 @@ Object.assign(Story.prototype, {
 	},
 
 	playSound: function(kind) {
-		if (!this.config.sounds) {
+		if (!this.config.sounds || this.soundMuted) {
 			return;
 		}
 
@@ -3440,6 +3478,153 @@ Object.assign(Story.prototype, {
 
 	themeKey: function() {
 		return 'subtext-theme-' + this.ifid;
+	},
+
+	/**
+	 Sets up the menu's mute toggle. Visible only in stories with
+	 config.sounds on; the player's choice is remembered per story.
+	 Muting silences the synthesized send/receive sounds and [sound …]
+	 cues — not voice memos, which the player starts by hand.
+	**/
+
+	initSound: function() {
+		var story = this;
+		var button = this.dom.sound;
+
+		try {
+			this.soundMuted =
+				window.localStorage.getItem(this.soundKey()) === 'muted';
+		}
+		catch (e) { /* storage unavailable */ }
+
+		if (!button) {
+			return;
+		}
+
+		if (!this.config.sounds) {
+			button.hidden = true;
+			return;
+		}
+
+		button.hidden = false;
+
+		var iconSlot = button.querySelector('.menu-action-icon') || button;
+
+		var updateIcon = function() {
+			var label = story.soundMuted ? 'Unmute sounds' : 'Mute sounds';
+
+			iconSlot.innerHTML = story.soundMuted ? MUTED_SVG : VOLUME_SVG;
+			button.setAttribute('title', label);
+			button.setAttribute('aria-label', label);
+			button.setAttribute(
+				'aria-pressed',
+				story.soundMuted ? 'true' : 'false'
+			);
+		};
+
+		button.addEventListener('click', function() {
+			story.soundMuted = !story.soundMuted;
+
+			try {
+				window.localStorage.setItem(
+					story.soundKey(),
+					story.soundMuted ? 'muted' : 'on'
+				);
+			}
+			catch (e) { /* storage unavailable */ }
+
+			updateIcon();
+		});
+
+		updateIcon();
+	},
+
+	soundKey: function() {
+		return 'subtext-sound-' + this.ifid;
+	},
+
+	/**
+	 Sets up the menu's Copy-link control: one tap saves progress into
+	 the URL (story.save()) and copies that link, so players can
+	 bookmark or share their spot. config.saveLink = false hides it.
+	**/
+
+	initSaveLink: function() {
+		var story = this;
+		var button = this.dom.share;
+
+		if (!button) {
+			return;
+		}
+
+		if (!this.config.saveLink) {
+			button.hidden = true;
+			return;
+		}
+
+		var iconSlot = button.querySelector('.menu-action-icon');
+
+		if (iconSlot) {
+			iconSlot.innerHTML = LINK_SVG;
+		}
+
+		var labelSlot = button.querySelector('.menu-action-label');
+		var restLabel = labelSlot ? labelSlot.textContent : '';
+		var flipTimer = null;
+
+		var flipLabel = function(text) {
+			if (!labelSlot) {
+				return;
+			}
+
+			labelSlot.textContent = text;
+			window.clearTimeout(flipTimer);
+			flipTimer = window.setTimeout(function() {
+				labelSlot.textContent = restLabel;
+			}, 1600);
+		};
+
+		var copyText = function(text) {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				return navigator.clipboard.writeText(text);
+			}
+
+			return new Promise(function(resolve, reject) {
+				var scratch = document.createElement('textarea');
+
+				scratch.value = text;
+				scratch.setAttribute('readonly', '');
+				scratch.style.position = 'absolute';
+				scratch.style.left = '-9999px';
+				document.body.appendChild(scratch);
+				scratch.select();
+
+				try {
+					if (document.execCommand('copy')) {
+						resolve();
+					}
+					else {
+						reject(new Error('copy refused'));
+					}
+				}
+				finally {
+					scratch.remove();
+				}
+			});
+		};
+
+		button.addEventListener('click', function() {
+			story.save();
+			copyText(window.location.href).then(
+				function() {
+					flipLabel('Copied!');
+				},
+				function() {
+					// the link is still in the address bar
+					flipLabel('Link in URL');
+				}
+			);
+		});
 	},
 
 	/**
