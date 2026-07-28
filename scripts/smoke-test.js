@@ -140,7 +140,7 @@ async function run() {
 	await page.click('#nav-link-menu');
 	await page.waitForSelector('#menu-dialog[open]');
 	check(
-		'menu opens as a modal with injected content',
+		'StoryMenu passage fills the menu dialog',
 		(await page
 			.locator('#menu-dialog #menu-container h3')
 			.textContent()) === 'Welcome'
@@ -149,6 +149,24 @@ async function run() {
 		'theme and restart controls moved into the menu',
 		(await page.locator('#menu-dialog #nav-link-theme').count()) === 1 &&
 		(await page.locator('#menu-dialog #nav-link-restart').count()) === 1
+	);
+	check(
+		'theme and restart share one control-panel row',
+		await page.evaluate(() => {
+			const panel = document.querySelector('#menu-dialog .menu-actions');
+			const theme = document.getElementById('nav-link-theme');
+			const restart = document.getElementById('nav-link-restart');
+			const themeBox = theme.getBoundingClientRect();
+			const restartBox = restart.getBoundingClientRect();
+
+			return (
+				panel.getAttribute('role') === 'group' &&
+				panel.contains(theme) &&
+				panel.contains(restart) &&
+				Math.abs(themeBox.top - restartBox.top) < 1 &&
+				restartBox.left > themeBox.right
+			);
+		})
 	);
 	// theme toggle now lives in the menu
 	await page.click('#nav-link-theme');
@@ -2381,26 +2399,22 @@ async function run() {
 		window.story.applyIdentity();
 	});
 
-	// the menu dialog itself is renameable
-	await page.evaluate(() =>
-		window.inject_menu('<p>about this story</p>', 'About')
-	);
 	check(
-		'inject_menu can retitle the menu dialog',
-		(await page.textContent('#menu-dialog-title')) === 'About'
-	);
-
-	check(
-		'Trialogue sidebar helpers are gone',
+		'legacy Trialogue helpers are gone',
 		await page.evaluate(
 			() =>
+				typeof window.inject_menu === 'undefined' &&
+				typeof window.inject_modal === 'undefined' &&
+				typeof window.inject_hint === 'undefined' &&
+				typeof window.inject_nav_menu === 'undefined' &&
+				typeof window.inject_nav_back === 'undefined' &&
 				typeof window.inject_left_sidebar === 'undefined' &&
 				typeof window.inject_right_sidebar === 'undefined' &&
 				typeof window.fade_in_content_containers === 'undefined'
 		)
 	);
 
-	// canonical chrome methods, with inject_* as aliases
+	// canonical chrome methods
 	await page.evaluate(() =>
 		window.story.setRestartDialog('Leave?', '<p>All will be lost.</p>')
 	);
@@ -2409,7 +2423,7 @@ async function run() {
 		(await page.textContent('#exit-dialog .modal-title')) === 'Leave?'
 	);
 	check(
-		'setMenu is the canonical menu API (inject_menu delegates)',
+		'setMenu fills the menu and can retitle the dialog',
 		await page.evaluate(() => {
 			window.story.setMenu('<p>via setMenu</p>', 'Info');
 			return (

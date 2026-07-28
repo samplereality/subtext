@@ -11,11 +11,11 @@ Subtext Demo
 :: StorySubtitle
 an interactive chat story
 
+:: StoryMenu
+<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/subtext">Subtext</a>.</p><p>Anything in your <span style="font-family: monospace;">StoryMenu</span> passage appears here.</p>
+
 :: Story JavaScript [script]
 
-var menuContent = '<h3>Welcome</h3><p>Thanks for trying out <a href="https://github.com/samplereality/subtext">Subtext</a>.</p><p>Anything passed to <span style="font-family: monospace;">story.setMenu()</span> in your Story JavaScript appears here.</p>';
-
-story.setMenu(menuContent);
 story.config.hint = 'Choose an option to continue the conversation';
 
 // different helper text above the free-text composer, and stop

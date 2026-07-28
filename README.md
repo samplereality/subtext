@@ -134,6 +134,7 @@ A handful of passage *names* have special meaning (the Twine convention). Most a
 | `StorySubtitle` | Subtitle shown with the story title (place via [`titlePlacement`](#page-chrome-and-menus)) |
 | `StoryAuthor` | Author credit shown with the subtitle (same placement) |
 | `StoryColophon` | Appended as a meta message when a passage tagged `End` is shown |
+| `StoryMenu` | Fills the Menu modal — see [Page chrome and menus](#page-chrome-and-menus) |
 | `StorySpeakers` | Speaker display names, avatars, and colors — see [Speaker profiles](#speaker-profiles) |
 | `StoryImages` | The photo gallery — see [Photo messages](#photo-messages) |
 | `StoryThreads` | Conversation list; its presence enables [Multiple conversations](#multiple-conversations) |
@@ -823,7 +824,16 @@ A complete example is [`docs/subtext-inbox-demo.twee`](docs/subtext-inbox-demo.t
 
 ### Page chrome and menus
 
-The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via `--t-chat-width`). Supplementary content lives in a Menu modal; fill it from your story JavaScript:
+The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via `--t-chat-width`). Supplementary content lives in a Menu modal. The simplest way to fill it is a **`StoryMenu` special passage** — whatever it contains becomes the menu, no JavaScript required:
+
+```
+:: StoryMenu
+<h3>About</h3>
+
+A story about missed connections. Content warnings: [[link->https://example.com/cw]].
+```
+
+The same content can be set (or replaced mid-story) from JavaScript:
 
 ```js
 story.setMenu('<h3>About</h3><p>…</p>');          // content of the Menu modal
@@ -832,11 +842,9 @@ story.setRestartDialog('Leave?', '<p>Progress will be lost.</p>');
 story.config.hint = 'Choose an option to continue';  // text above the choices
 ```
 
-The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. Two hint refinements: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` stops showing helper text once the player has made that many moves (`null` keeps hints forever; `0` never shows them).
+`setMenu` called from your Story JavaScript wins over a `StoryMenu` passage. The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. Two hint refinements: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` stops showing helper text once the player has made that many moves (`null` keeps hints forever; `0` never shows them).
 
-The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.
-
-> **Legacy helpers.** The Trialogue-era globals still work as aliases: `inject_menu(html, title)` → `setMenu`, `inject_modal(title, body, footer)` → `setRestartDialog`, `inject_hint(text)` → `config.hint`, plus `inject_nav_menu(label)` (custom label for the ☰ button) and `inject_nav_back(html)` (a back link in the header). `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` are gone — they served a page layout that no longer exists.
+The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final). At the bottom of the menu sits a compact control panel — one row with the light/dark theme toggle and a Restart button that asks for confirmation.
 
 **Where the story's identity lives.** By default `StoryTitle`, `StorySubtitle`, and `StoryAuthor` render in the chat header. `story.config.titlePlacement` moves them:
 
@@ -1329,15 +1337,21 @@ What authors should still do: write alt text in image HTML (`<img src="…" alt=
 
 ## Migrating from Trialogue
 
-Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
+Stories authored for Trialogue mostly work unchanged — speaker tags, links, special passages, templates, and the old CSS variable names are all still supported. Differences to be aware of:
 
 - jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works, and the Snowman utility functions `either()`, `hasVisited()`, `visited()`, `renderToSelector()`, and `getStyles()` are built in.)
-- `inject_left_sidebar()` / `inject_right_sidebar()` / `fade_in_content_containers()` were removed — they served a desktop page layout that no longer exists. Move sidebar content into the menu with `story.setMenu()`. The other `inject_*` helpers still work as aliases for the `story.*` methods (see [Page chrome and menus](#page-chrome-and-menus)).
+- The `inject_*` helpers were removed. Their replacements: `inject_menu(html, title)` → a [`StoryMenu` passage](#page-chrome-and-menus) or `story.setMenu(html, title)`; `inject_modal(title, body, footer)` → `story.setRestartDialog(title, body, footer)`; `inject_hint(text)` → `story.config.hint`; `inject_nav_menu` / `inject_nav_back` / `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` → gone, they served a desktop page layout that no longer exists (move sidebar content into the menu).
 - Story events are now plain DOM `CustomEvent`s on `window` — see [Events](#events). The Snowman 2 event-name aliases are dispatched too.
 - Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **A `StoryMenu` special passage fills the Menu modal** — the same content `story.setMenu(html)` takes, declared as a passage instead of JavaScript. `setMenu` called from Story JavaScript still wins, and can retitle or replace the menu mid-story. See [Page chrome and menus](#page-chrome-and-menus).
+- **The menu's theme and restart controls are now a control panel** — one compact row of buttons at the foot of the menu dialog instead of stacked full-width lines.
+- **Removed: the legacy Trialogue `inject_*` helpers.** `inject_menu`, `inject_modal`, `inject_hint`, `inject_nav_menu`, and `inject_nav_back` (and the header back-link slot they served) are gone. Use a `StoryMenu` passage or `story.setMenu`, `story.setRestartDialog`, and `story.config.hint` — see [Migrating from Trialogue](#migrating-from-trialogue).
 
 ### Version 2.8.17
 

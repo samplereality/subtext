@@ -407,10 +407,10 @@ var Story = function() {
 		timerLabel: 'You have %s seconds to reply',
 		/* accessible label on the free-text send button */
 		inputSendLabel: 'Send',
-		/* helper text under the chat: `hint` above choice chips (also
-		   set via inject_hint()), `inputHint` above the free-text
-		   composer, and hintFadeAfter retires both once the player has
-		   made that many moves (null = never fade, 0 = never show) */
+		/* helper text under the chat: `hint` above choice chips,
+		   `inputHint` above the free-text composer, and hintFadeAfter
+		   retires both once the player has made that many moves
+		   (null = never fade, 0 = never show) */
 		hint: '',
 		inputHint: '',
 		hintFadeAfter: null,
@@ -431,7 +431,7 @@ var Story = function() {
 		   'none' (handle them yourself, e.g. via setHeader) */
 		titlePlacement: 'header',
 		/* heading of the menu dialog (also settable per call via
-		   inject_menu(content, title)) */
+		   setMenu(content, title)) */
 		menuTitle: 'Menu',
 		/* force debug mode on (Twine's Test button, `tweego -t`, and a
 		   ?debug URL switch enable it too) */
@@ -589,7 +589,6 @@ Object.assign(Story.prototype, {
 			author: byId('pauthor'),
 			undo: byId('nav-link-undo'),
 			restart: byId('nav-link-restart'),
-			back: byId('nav-link-back'),
 			menu: byId('nav-link-menu'),
 			dialog: byId('exit-dialog'),
 			picker: byId('photo-picker'),
@@ -696,7 +695,6 @@ Object.assign(Story.prototype, {
 		};
 
 		this.dom.restart.addEventListener('click', openDialog);
-		this.dom.back.addEventListener('click', openDialog);
 
 		this.dom.dialog.addEventListener('click', function(event) {
 			var action = event.target.closest('[data-dialog-action]');
@@ -841,6 +839,25 @@ Object.assign(Story.prototype, {
 			styleEl.textContent = style;
 			document.body.appendChild(styleEl);
 		});
+
+		/* a StoryMenu special passage fills the menu dialog without any
+		   JavaScript; story.setMenu() in Story JavaScript still wins
+		   because user scripts run afterwards */
+
+		var menuPassage = this.passage('StoryMenu');
+
+		if (menuPassage) {
+			try {
+				this.setMenu(menuPassage.render());
+			}
+			catch (error) {
+				if (!story.ignoreErrors) {
+					story.showError(
+						story.errorMessage.replace('%s', error.message)
+					);
+				}
+			}
+		}
 
 		// run user scripts
 
@@ -3385,17 +3402,15 @@ Object.assign(Story.prototype, {
 		};
 
 		var iconSlot = button.querySelector('.menu-action-icon') || button;
-		var labelSlot = button.querySelector('.menu-action-label');
+
+		/* the visible label stays a compact "Theme" — the full
+		   direction lives in the title / aria-label */
 
 		var updateIcon = function() {
 			var dark = effectiveTheme() === 'dark';
 			var label = dark ? 'Switch to light mode' : 'Switch to dark mode';
 
 			iconSlot.innerHTML = dark ? SUN_SVG : MOON_SVG;
-
-			if (labelSlot) {
-				labelSlot.textContent = label;
-			}
 
 			button.setAttribute('title', label);
 			button.setAttribute('aria-label', label);
@@ -3431,7 +3446,7 @@ Object.assign(Story.prototype, {
 	 Places the story's identity (StoryTitle / StorySubtitle /
 	 StoryAuthor) according to config.titlePlacement: in the chat
 	 header (default), tucked into the menu dialog ('menu'), or
-	 nowhere ('none' — style your own via setHeader and inject_menu).
+	 nowhere ('none' — style your own via setHeader and setMenu).
 	**/
 
 	applyIdentity: function() {
@@ -3545,7 +3560,8 @@ Object.assign(Story.prototype, {
 
 	   story.setMenu('<h3>About</h3><p>…</p>', 'About');
 
-	 (inject_menu() is the legacy Trialogue-era alias.)
+	 A StoryMenu special passage does the same thing declaratively;
+	 setMenu() called from Story JavaScript overrides it.
 	**/
 
 	setMenu: function(html, title) {
@@ -3572,8 +3588,8 @@ Object.assign(Story.prototype, {
 
 	/**
 	 Rewords the restart-confirmation dialog — its title, body HTML,
-	 and footer buttons. (inject_modal() is the legacy alias; the
-	 default buttons carry data-dialog-action="cancel" / "restart".)
+	 and footer buttons. (The default buttons carry
+	 data-dialog-action="cancel" / "restart".)
 	**/
 
 	setRestartDialog: function(title, body, footer) {

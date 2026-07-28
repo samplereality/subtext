@@ -1689,46 +1689,44 @@ img[role="button"] {
 	margin-bottom: 0;
 }
 
-/* app controls (theme, restart) live at the bottom of the menu */
+/* the control panel: one compact row of story controls (theme,
+   restart) at the bottom of the menu */
 
 .menu-actions {
 	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
+	gap: 0.5rem;
 	margin-top: 0.85rem;
-	padding-top: 0.6rem;
+	padding-top: 0.85rem;
 	border-top: 1px solid var(--t-border);
 }
 
 .menu-action {
+	flex: 1;
 	display: flex;
 	align-items: center;
-	gap: 0.75rem;
-	width: 100%;
+	justify-content: center;
+	gap: 0.45rem;
 	appearance: none;
-	border: 0;
-	background: none;
+	border: 1px solid var(--t-border);
+	background: color-mix(in srgb, var(--t-muted) 7%, transparent);
 	font: inherit;
-	font-size: 0.95rem;
+	font-size: 0.88rem;
 	color: var(--t-text);
-	text-align: left;
-	padding: 0.6rem 0.5rem;
+	padding: 0.5rem 0.6rem;
 	border-radius: 0.6rem;
 	cursor: pointer;
 }
 
 .menu-action:hover {
-	background: color-mix(in srgb, var(--t-muted) 12%, transparent);
+	background: color-mix(in srgb, var(--t-muted) 15%, transparent);
 }
 
 .menu-action-icon {
 	flex: none;
-	width: 1.5rem;
-	height: 1.5rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 1.2rem;
+	font-size: 1.05rem;
 	line-height: 1;
 	color: var(--t-accent);
 }
