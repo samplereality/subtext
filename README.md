@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.17"
+  "format-version": "2.8.18"
 }
 ```
 
@@ -1353,7 +1353,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.18
 
 - **Fixed: markdown links and images inflated the typing delay.** The "typing…" time paces by the readable reply, but `[link text](https://…)` counted every character of the URL — a four-word message linking to an article "typed" for the maximum. Links and images now pace by their display text (alt text for images); the word counter reads them the same way. A *raw* pasted URL still counts in full — the player sees all of it.
 - **Fixed: time travel lost state that was recorded outside passages.** Replays rebuild state by re-running passage templates, but state written by event listeners — a `threadopened` exploration tracker, say — isn't in any template, so a rewind, jump-adjacent replay, reload, or undo-after-reload rebuilt without it, and pills gated on it never rendered (the story sat frozen with no way forward). Every choice now records a snapshot of the state as it stood at that moment, and replays true the state up at each choice — so gated passages re-render the branch the player actually saw, with their pills. Saves made before this release replay as they did before.
