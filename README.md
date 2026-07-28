@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.17"
+  "format-version": "2.8.18"
 }
 ```
 
@@ -134,6 +134,7 @@ A handful of passage *names* have special meaning (the Twine convention). Most a
 | `StorySubtitle` | Subtitle shown with the story title (place via [`titlePlacement`](#page-chrome-and-menus)) |
 | `StoryAuthor` | Author credit shown with the subtitle (same placement) |
 | `StoryColophon` | Appended as a meta message when a passage tagged `End` is shown |
+| `StoryMenu` | Fills the Menu modal — see [Page chrome and menus](#page-chrome-and-menus) |
 | `StorySpeakers` | Speaker display names, avatars, and colors — see [Speaker profiles](#speaker-profiles) |
 | `StoryImages` | The photo gallery — see [Photo messages](#photo-messages) |
 | `StoryThreads` | Conversation list; its presence enables [Multiple conversations](#multiple-conversations) |
@@ -606,7 +607,7 @@ Override CSS variables from your story stylesheet:
 }
 ```
 
-Dark mode follows the player's system preference until they pick a side with the header's sun/moon toggle — their choice is remembered per story (hide the toggle with `story.config.themeToggle = false`). Authors can force a scheme with `<html data-theme="dark">` (or `light`). The Trialogue 1.x variable names (`--bg-color`, `--user-color`, `--passage-bg-color`, `--passage-text-color`, `--navbar-bg-color`, `--speaker-color`) are still honored, and `--t-page-bg` themes the page behind the phone frame.
+Dark mode follows the player's system preference until they pick a side with the menu's sun/moon toggle — their choice is remembered per story (hide the toggle with `story.config.themeToggle = false`). Authors can force a scheme with `<html data-theme="dark">` (or `light`). The Trialogue 1.x variable names (`--bg-color`, `--user-color`, `--passage-bg-color`, `--passage-text-color`, `--navbar-bg-color`, `--speaker-color`) are still honored, and `--t-page-bg` themes the page behind the phone frame.
 
 Style an individual speaker by targeting its `data-speaker` attribute:
 
@@ -811,19 +812,28 @@ A complete example is [`docs/subtext-inbox-demo.twee`](docs/subtext-inbox-demo.t
 
 ### Saving
 
-- `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation.
+- `story.save()` writes progress into the URL hash — players can bookmark or share it, and loading that URL replays the whole conversation. The menu's **Copy link** control puts this in the player's hands: one tap saves and copies the link (`story.config.saveLink = false` removes it).
 - `story.config.autosave = true` additionally saves after every message and resumes automatically on the next visit. Restart clears the autosave.
 
 ## Interface
 
 ### Notifications
 
-- `story.config.sounds = true` enables subtle synthesized send/receive sounds (no audio files needed). An incoming speaker's message plays the receive sound; the send sound plays when the player taps a reply **and** when a `speaker-you` passage shows or delivers — the player-character texting sounds like sending, which keeps a montage that mixes speakers audible on every beat. Replays, seeds, and `quiet` deliveries stay silent. Browsers allow sound only after the player's first interaction, so the very first messages are always silent.
+- `story.config.sounds = true` enables subtle synthesized send/receive sounds (no audio files needed). An incoming speaker's message plays the receive sound; the send sound plays when the player taps a reply **and** when a `speaker-you` passage shows or delivers — the player-character texting sounds like sending, which keeps a montage that mixes speakers audible on every beat. Replays, seeds, and `quiet` deliveries stay silent. Browsers allow sound only after the player's first interaction, so the very first messages are always silent. Turning sounds on also puts a mute toggle in the menu's [control panel](#page-chrome-and-menus), so the choice ultimately belongs to the player.
 - While the tab is hidden, incoming messages update the title to `(2) Your Story Name` and it resets when the player returns (`story.config.titleNotifications`, on by default).
 
 ### Page chrome and menus
 
-The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via `--t-chat-width`). Supplementary content lives in a Menu modal; fill it from your story JavaScript:
+The story presents as a phone — a single chat column, full-bleed on small screens and a framed phone-width card on larger ones (width via `--t-chat-width`). Supplementary content lives in a Menu modal. The simplest way to fill it is a **`StoryMenu` special passage** — whatever it contains becomes the menu, no JavaScript required:
+
+```
+:: StoryMenu
+<h3>About</h3>
+
+A story about missed connections. Content warnings: [[link->https://example.com/cw]].
+```
+
+The same content can be set (or replaced mid-story) from JavaScript:
 
 ```js
 story.setMenu('<h3>About</h3><p>…</p>');          // content of the Menu modal
@@ -832,11 +842,14 @@ story.setRestartDialog('Leave?', '<p>Progress will be lost.</p>');
 story.config.hint = 'Choose an option to continue';  // text above the choices
 ```
 
-The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. Two hint refinements: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` stops showing helper text once the player has made that many moves (`null` keeps hints forever; `0` never shows them).
+`setMenu` called from your Story JavaScript wins over a `StoryMenu` passage. The menu dialog's heading defaults to "Menu"; set it with `story.config.menuTitle` or `setMenu`'s second argument. Two hint refinements: `story.config.inputHint` shows different text while a free-text composer is up (e.g. *"Type your reply to continue"*), and `story.config.hintFadeAfter = 4` stops showing helper text once the player has made that many moves (`null` keeps hints forever; `0` never shows them).
 
-The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final) and the menu holds the light/dark toggle and a Restart button that asks for confirmation.
+The Menu button (☰) only appears once the menu has content. The header includes an Undo button (↩, appears once there is something to undo — disable it with `story.config.undoButton = false` for stories where choices are final). At the bottom of the menu sits a compact control panel — rows of small chips holding the story's controls:
 
-> **Legacy helpers.** The Trialogue-era globals still work as aliases: `inject_menu(html, title)` → `setMenu`, `inject_modal(title, body, footer)` → `setRestartDialog`, `inject_hint(text)` → `config.hint`, plus `inject_nav_menu(label)` (custom label for the ☰ button) and `inject_nav_back(html)` (a back link in the header). `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` are gone — they served a page layout that no longer exists.
+- **Theme** — the light/dark toggle (hide with `story.config.themeToggle = false`).
+- **Sound** — a mute toggle, shown only when `story.config.sounds` is on. The player's choice is remembered per story; muting silences the send/receive sounds and `[sound …]` cues, but not voice memos (the player starts those by hand).
+- **Copy link** — saves progress into the URL (the same mechanism as `story.save()`) and copies that link to the clipboard, so players can bookmark or share their spot. Hide it with `story.config.saveLink = false` — for instance in stories where a shareable mid-story link would spoil.
+- **Restart** — asks for confirmation before clearing the conversation.
 
 **Where the story's identity lives.** By default `StoryTitle`, `StorySubtitle`, and `StoryAuthor` render in the chat header. `story.config.titlePlacement` moves them:
 
@@ -871,7 +884,7 @@ A `🐛 debug` button appears in the corner; it opens a panel that stays open un
 
 - **Where you are** — current passage, thread, turn count, and the current passage's word count, always in view.
 - **Variables** — a live table of everything in `s`, refreshed as passages show, plus a console line that runs any JavaScript (`s.suspicion = 9`, `story.markRead()`, …). As a story's state grows, the **watch** box above the table filters it: comma-separated terms, each matching any variable name that contains it (blank shows all). Unmatched variables fold into an `(+N unwatched)` count, and the watchlist survives reloads.
-- **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in). Rewinding to a player move ("you: …") lands just *before* the reply is sent — pills up, move un-made — so continuing from there, by tap or by play-to, never sends the same reply twice. A rewind into the middle of a chain lands with no pills and nothing in flight — that's the pause, not a bug — and the **▶ resume** button beside rewind is its play button. A rewind keeps everything it cut off, and each press of resume steps the next beat of it back in — the choice, its bubbles, the next message — exactly as it originally played, so chains fired from computed or random template names (`either(…)`) step forward correctly instead of stranding the story. Tap any pill instead and the kept future is discarded: you've diverged, and the story continues live. After a jump (which keeps nothing), resume falls back to re-arming the latest message's written chain edges. Also callable as `story.debugResume()`.
+- **Timeline** — a dropdown of every moment so far; pick one and **rewind** to it. The conversation rebuilds up to that point by replaying it — then *pauses right there*, even mid-`showDelayed`-chain (pending chain timers are dropped, so the future doesn't immediately play itself back in). Rewinding to a player move ("you: …") lands just *before* the reply is sent — pills up, move un-made — so continuing from there, by tap or by play-to, never sends the same reply twice. A rewind into the middle of a chain lands with no pills and nothing in flight — that's the pause, not a bug — and the **▶ resume** button beside rewind is its play button. A rewind keeps everything it cut off, and each press of resume steps the next beat of it back in — the choice, its bubbles, the next message — exactly as it originally played, so chains fired from computed or random template names (`either(…)`) step forward correctly instead of stranding the story. Tap any pill instead and the kept future is discarded: you've diverged, and the story continues live. After a jump (which keeps nothing), resume falls back to re-arming the latest message's written chain edges. Also callable as `story.debugResume()`. Replays are faithful to state, too: every choice records a snapshot of `s` as it stood at that moment, and rewinds (like reloads) restore it — so state written outside passages, by a `threadopened` listener for instance, survives time travel, and passages whose pills are gated on it re-render the branch the player actually saw.
 - **Jump to passage** — a dropdown of every passage (alphabetical, current one selected; type while it's open to seek by name), with two ways to get there. **Play to** fast-forwards: it finds a route through the story's written link graph and plays it instantly — at each fork the pill that leads toward the target is tapped for you, so bubbles, state trackers, events, checkpoints, and history all fill in like a real playthrough (undo even steps back through the auto-made choices). **Jump** teleports instead: a clean transcript at the target with `s` kept. In multi-conversation stories both land you in the target's own thread — a thread tag is honored directly, and an untagged passage's thread is inferred from the nearest tagged passage that links to it. Play-to's route follows links as written — template conditions aren't evaluated when picking it, typed-input gates get a placeholder answer, and photo pills send the first image they offer — and when no written route exists it falls back to a jump and says so. A route that crosses a `[deliver]` renders the delivered message once, by the passage that sends it, and both jump and play-to land the view in the target's own conversation — even when the target is a delivery or side narration that never takes the story cursor. Also callable as `story.debugFastForward(name)`.
 - **Story check** — a static lint of the whole story: pill links to passages that don't exist, `[deliver]`/`[then]` and `showDelayed()`/`show()` names that don't resolve, `speaker-*` tags with no `StorySpeakers` profile, `thread-*` tags never declared in `StoryThreads`, passages nothing points to, and **dead ends** — passages that take the story cursor but offer no way forward (no reply pills, and no chain or delivery that eventually reaches choices). A dead end at the far end of a `showDelayed` chain is reported once, at the passage where the chain stops. Tag an intentional ending `End` and the dead-end check skips it; seeds and side content (linkless narration, delivery-only side texts) are exempt automatically. It also notes any passage that arms a raw `setTimeout`/`setInterval` — time travel can't cancel those, so prefer `story.showDelayed()` or `story.after()`. Each finding links to the offending passage. The check reads source without running it, so dynamic names (`<% %>`) are skipped rather than guessed at, and a link inside a template condition counts as an escape even if the condition could be false at runtime; a passage reached only through dynamic means can opt out of the orphan check with the `unlinked` tag. Also callable as `story.lint()` — it returns the findings as an array. The section opens with the piece's size: total words across all content passages. Counts cover what a player reads — message and narration prose, pill labels, `(send: …)` text — and skip code, comments, directive lines, and markup; text printed by templates at runtime can't be counted from source, so treat totals as close rather than exact. Also callable as `story.wordCount()` (the whole piece, as `{ words, passages }`) or `story.wordCount('passage name')` (one passage's count).
 - **Transcript** — one click flattens the visible conversation (every thread, chips and narration included) to a Markdown file and downloads it, useful for proofreading the story as prose. Also callable as `story.exportTranscript()`, which returns the Markdown string.
@@ -971,7 +984,8 @@ story.config.autosave = true;
 | `inboxTitle` | `'Messages'` | The header title while the inbox screen is up |
 | `replyIndicator` | `true` | Mark the inbox row of the conversation awaiting a reply (accent edge + tint) |
 | `replyIndicatorLabel` | `'awaiting your reply'` | Its screen-reader label |
-| `themeToggle` | `true` | Show the light/dark toggle in the header |
+| `themeToggle` | `true` | Show the light/dark toggle in the menu's control panel |
+| `saveLink` | `true` | Show the menu's Copy link control (saves progress into the URL and copies it) |
 | `undoButton` | `true` | Show the header undo button (set `false` to make choices final) |
 | `inboxButton` | `true` | Show the inbox chevron; reveal later with `story.showInboxButton()` |
 | `titlePlacement` | `'header'` | Where StoryTitle/Subtitle/Author render: `header`, `menu`, or `none` |
@@ -1329,15 +1343,26 @@ What authors should still do: write alt text in image HTML (`<img src="…" alt=
 
 ## Migrating from Trialogue
 
-Stories authored for Trialogue work unchanged in most cases — speaker tags, links, special passages, templates, `inject_*` helpers, and the old CSS variable names are all still supported. Differences to be aware of:
+Stories authored for Trialogue mostly work unchanged — speaker tags, links, special passages, templates, and the old CSS variable names are all still supported. Differences to be aware of:
 
 - jQuery and Underscore are no longer bundled. Story JavaScript that used `$(…)` or `_.…` directly needs to be rewritten in plain JavaScript. (The `$` helper *inside passages* — `<% $(function() { … }) %>` — still works, and the Snowman utility functions `either()`, `hasVisited()`, `visited()`, `renderToSelector()`, and `getStyles()` are built in.)
-- `inject_left_sidebar()` / `inject_right_sidebar()` / `fade_in_content_containers()` were removed — they served a desktop page layout that no longer exists. Move sidebar content into the menu with `story.setMenu()`. The other `inject_*` helpers still work as aliases for the `story.*` methods (see [Page chrome and menus](#page-chrome-and-menus)).
+- The `inject_*` helpers were removed. Their replacements: `inject_menu(html, title)` → a [`StoryMenu` passage](#page-chrome-and-menus) or `story.setMenu(html, title)`; `inject_modal(title, body, footer)` → `story.setRestartDialog(title, body, footer)`; `inject_hint(text)` → `story.config.hint`; `inject_nav_menu` / `inject_nav_back` / `inject_left_sidebar` / `inject_right_sidebar` / `fade_in_content_containers` → gone, they served a desktop page layout that no longer exists (move sidebar content into the menu).
 - Story events are now plain DOM `CustomEvent`s on `window` — see [Events](#events). The Snowman 2 event-name aliases are dispatched too.
 - Passages are one bubble per paragraph by default; set `story.config.splitBubbles = false` for the old one-bubble-per-passage behavior.
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.8.18
+
+- **Fixed: markdown links and images inflated the typing delay.** The "typing…" time paces by the readable reply, but `[link text](https://…)` counted every character of the URL — a four-word message linking to an article "typed" for the maximum. Links and images now pace by their display text (alt text for images); the word counter reads them the same way. A *raw* pasted URL still counts in full — the player sees all of it.
+- **Fixed: time travel lost state that was recorded outside passages.** Replays rebuild state by re-running passage templates, but state written by event listeners — a `threadopened` exploration tracker, say — isn't in any template, so a rewind, jump-adjacent replay, reload, or undo-after-reload rebuilt without it, and pills gated on it never rendered (the story sat frozen with no way forward). Every choice now records a snapshot of the state as it stood at that moment, and replays true the state up at each choice — so gated passages re-render the branch the player actually saw, with their pills. Saves made before this release replay as they did before.
+- **A `StoryMenu` special passage fills the Menu modal** — the same content `story.setMenu(html)` takes, declared as a passage instead of JavaScript. `setMenu` called from Story JavaScript still wins, and can retitle or replace the menu mid-story. See [Page chrome and menus](#page-chrome-and-menus).
+- **The menu's theme and restart controls are now a control panel** — compact rows of buttons at the foot of the menu dialog instead of stacked full-width lines.
+- **A mute toggle joins the control panel** when `config.sounds` is on. The player's choice persists per story and silences the synthesized sounds and `[sound …]` cues (voice memos, being player-started, still play). See [Notifications](#notifications).
+- **A Copy link control joins the control panel** — one tap saves progress into the URL (`story.save()`) and copies the link, making bookmarkable progress a player feature instead of an author API. `story.config.saveLink = false` hides it. See [Saving](#saving).
+- **Breaking (CSS only): the dialog close button class is now `.dialog-close`.** The menu and photo-picker close buttons shared the class `.photo-picker-close`; restyle against `.dialog-close` instead.
+- **Removed: the legacy Trialogue `inject_*` helpers.** `inject_menu`, `inject_modal`, `inject_hint`, `inject_nav_menu`, and `inject_nav_back` (and the header back-link slot they served) are gone. Use a `StoryMenu` passage or `story.setMenu`, `story.setRestartDialog`, and `story.config.hint` — see [Migrating from Trialogue](#migrating-from-trialogue).
 
 ### Version 2.8.17
 

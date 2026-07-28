@@ -65,6 +65,32 @@ var SUN_SVG =
 	'<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>' +
 	'<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
 
+/* Feather Icons volume-2, volume-x & link (MIT) */
+var VOLUME_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+	'<path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07">' +
+	'</path></svg>';
+
+var MUTED_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+	'<line x1="23" y1="9" x2="17" y2="15"></line>' +
+	'<line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+
+var LINK_SVG =
+	'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+	'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+	'stroke-linejoin="round" aria-hidden="true">' +
+	'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71">' +
+	'</path>' +
+	'<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71">' +
+	'</path></svg>';
+
 var PLAY_SVG =
 	'<svg viewBox="0 0 24 24" width="16" height="16" ' +
 	'fill="currentColor" aria-hidden="true">' +
@@ -137,6 +163,13 @@ function readableText(source, keepLinkText) {
 
 			return ' ' + inner.replace(/\(send:([^)]*)\)/gi, ' $1 ') + ' ';
 		})
+
+		// markdown links and images: the player reads the link text
+		// (or alt text) — the URL is markup, however long it runs.
+		// Applied twice for an image nested inside a link.
+
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, ' $1 ')
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, ' $1 ')
 
 		// directive lines are chrome, not prose
 
@@ -386,6 +419,10 @@ var Story = function() {
 		replyIndicatorLabel: 'awaiting your reply',
 		/* show the light/dark toggle in the header */
 		themeToggle: true,
+		/* show the menu's Copy-link control — it saves progress into
+		   the URL and copies that link, so players can bookmark or
+		   share their spot (set false to hide it) */
+		saveLink: true,
 		/* show the header undo button once there is something to undo
 		   (set false for stories where choices should be final) */
 		undoButton: true,
@@ -407,10 +444,10 @@ var Story = function() {
 		timerLabel: 'You have %s seconds to reply',
 		/* accessible label on the free-text send button */
 		inputSendLabel: 'Send',
-		/* helper text under the chat: `hint` above choice chips (also
-		   set via inject_hint()), `inputHint` above the free-text
-		   composer, and hintFadeAfter retires both once the player has
-		   made that many moves (null = never fade, 0 = never show) */
+		/* helper text under the chat: `hint` above choice chips,
+		   `inputHint` above the free-text composer, and hintFadeAfter
+		   retires both once the player has made that many moves
+		   (null = never fade, 0 = never show) */
 		hint: '',
 		inputHint: '',
 		hintFadeAfter: null,
@@ -431,7 +468,7 @@ var Story = function() {
 		   'none' (handle them yourself, e.g. via setHeader) */
 		titlePlacement: 'header',
 		/* heading of the menu dialog (also settable per call via
-		   inject_menu(content, title)) */
+		   setMenu(content, title)) */
 		menuTitle: 'Menu',
 		/* force debug mode on (Twine's Test button, `tweego -t`, and a
 		   ?debug URL switch enable it too) */
@@ -589,7 +626,6 @@ Object.assign(Story.prototype, {
 			author: byId('pauthor'),
 			undo: byId('nav-link-undo'),
 			restart: byId('nav-link-restart'),
-			back: byId('nav-link-back'),
 			menu: byId('nav-link-menu'),
 			dialog: byId('exit-dialog'),
 			picker: byId('photo-picker'),
@@ -602,6 +638,8 @@ Object.assign(Story.prototype, {
 			metaNotificationBody: byId('meta-notification-body'),
 			menuDialog: byId('menu-dialog'),
 			theme: byId('nav-link-theme'),
+			sound: byId('nav-link-sound'),
+			share: byId('nav-link-share'),
 			footer: document.querySelector('.user-response-panel'),
 			inbox: byId('inbox'),
 			inboxList: byId('inbox-list'),
@@ -696,7 +734,6 @@ Object.assign(Story.prototype, {
 		};
 
 		this.dom.restart.addEventListener('click', openDialog);
-		this.dom.back.addEventListener('click', openDialog);
 
 		this.dom.dialog.addEventListener('click', function(event) {
 			var action = event.target.closest('[data-dialog-action]');
@@ -842,6 +879,25 @@ Object.assign(Story.prototype, {
 			document.body.appendChild(styleEl);
 		});
 
+		/* a StoryMenu special passage fills the menu dialog without any
+		   JavaScript; story.setMenu() in Story JavaScript still wins
+		   because user scripts run afterwards */
+
+		var menuPassage = this.passage('StoryMenu');
+
+		if (menuPassage) {
+			try {
+				this.setMenu(menuPassage.render());
+			}
+			catch (error) {
+				if (!story.ignoreErrors) {
+					story.showError(
+						story.errorMessage.replace('%s', error.message)
+					);
+				}
+			}
+		}
+
 		// run user scripts
 
 		this.userScripts.forEach(function(script) {
@@ -884,6 +940,8 @@ Object.assign(Story.prototype, {
 		}
 
 		this.initTheme();
+		this.initSound();
+		this.initSaveLink();
 
 		if (this.dom.pickerTitle) {
 			this.dom.pickerTitle.textContent = this.config.photoPickerTitle;
@@ -988,6 +1046,12 @@ Object.assign(Story.prototype, {
 		this.clearUserResponses();
 		this.focusResponses();
 
+		// the state as it stands at the moment of the move — including
+		// anything event listeners (threadopened, say) recorded, which
+		// replaying passages alone can never rebuild
+
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = false;
 
 		var chosen =
@@ -1000,11 +1064,16 @@ Object.assign(Story.prototype, {
 		}
 
 		// the choice itself is a timeline moment: replaying it restores
-		// lastChoice and timedOut mid-replay (templates that captured
-		// them re-run with the right values), and an empty (send:)
-		// choice keeps its undo checkpoint across reloads
+		// lastChoice, timedOut, and the snapshot state mid-replay
+		// (templates that captured them re-run with the right values),
+		// and an empty (send:) choice keeps its undo checkpoint across
+		// reloads
 
-		this.timeline.push(chosen !== '' ? { t: 'c', l: chosen } : { t: 'c' });
+		this.timeline.push(
+			chosen !== ''
+				? { t: 'c', l: chosen, s: moveState }
+				: { t: 'c', s: moveState }
+		);
 
 		/**
 		 Triggered whenever the player picks a reply pill (or code calls
@@ -2347,8 +2416,10 @@ Object.assign(Story.prototype, {
 		this.hideMeta();
 		this.clearUserResponses();
 
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = true;
-		this.timeline.push({ t: 'c', to: 1 });
+		this.timeline.push({ t: 'c', to: 1, s: moveState });
 
 		if (offer.text) {
 			this.showUserBubble(offer.text);
@@ -3284,6 +3355,10 @@ Object.assign(Story.prototype, {
 	**/
 
 	playAudioFile: function(src) {
+		if (this.soundMuted) {
+			return;
+		}
+
 		var audio = new Audio(src);
 
 		this._cueAudio = audio; // hold a reference while it plays
@@ -3291,7 +3366,7 @@ Object.assign(Story.prototype, {
 	},
 
 	playSound: function(kind) {
-		if (!this.config.sounds) {
+		if (!this.config.sounds || this.soundMuted) {
 			return;
 		}
 
@@ -3385,17 +3460,15 @@ Object.assign(Story.prototype, {
 		};
 
 		var iconSlot = button.querySelector('.menu-action-icon') || button;
-		var labelSlot = button.querySelector('.menu-action-label');
+
+		/* the visible label stays a compact "Theme" — the full
+		   direction lives in the title / aria-label */
 
 		var updateIcon = function() {
 			var dark = effectiveTheme() === 'dark';
 			var label = dark ? 'Switch to light mode' : 'Switch to dark mode';
 
 			iconSlot.innerHTML = dark ? SUN_SVG : MOON_SVG;
-
-			if (labelSlot) {
-				labelSlot.textContent = label;
-			}
 
 			button.setAttribute('title', label);
 			button.setAttribute('aria-label', label);
@@ -3428,10 +3501,157 @@ Object.assign(Story.prototype, {
 	},
 
 	/**
+	 Sets up the menu's mute toggle. Visible only in stories with
+	 config.sounds on; the player's choice is remembered per story.
+	 Muting silences the synthesized send/receive sounds and [sound …]
+	 cues — not voice memos, which the player starts by hand.
+	**/
+
+	initSound: function() {
+		var story = this;
+		var button = this.dom.sound;
+
+		try {
+			this.soundMuted =
+				window.localStorage.getItem(this.soundKey()) === 'muted';
+		}
+		catch (e) { /* storage unavailable */ }
+
+		if (!button) {
+			return;
+		}
+
+		if (!this.config.sounds) {
+			button.hidden = true;
+			return;
+		}
+
+		button.hidden = false;
+
+		var iconSlot = button.querySelector('.menu-action-icon') || button;
+
+		var updateIcon = function() {
+			var label = story.soundMuted ? 'Unmute sounds' : 'Mute sounds';
+
+			iconSlot.innerHTML = story.soundMuted ? MUTED_SVG : VOLUME_SVG;
+			button.setAttribute('title', label);
+			button.setAttribute('aria-label', label);
+			button.setAttribute(
+				'aria-pressed',
+				story.soundMuted ? 'true' : 'false'
+			);
+		};
+
+		button.addEventListener('click', function() {
+			story.soundMuted = !story.soundMuted;
+
+			try {
+				window.localStorage.setItem(
+					story.soundKey(),
+					story.soundMuted ? 'muted' : 'on'
+				);
+			}
+			catch (e) { /* storage unavailable */ }
+
+			updateIcon();
+		});
+
+		updateIcon();
+	},
+
+	soundKey: function() {
+		return 'subtext-sound-' + this.ifid;
+	},
+
+	/**
+	 Sets up the menu's Copy-link control: one tap saves progress into
+	 the URL (story.save()) and copies that link, so players can
+	 bookmark or share their spot. config.saveLink = false hides it.
+	**/
+
+	initSaveLink: function() {
+		var story = this;
+		var button = this.dom.share;
+
+		if (!button) {
+			return;
+		}
+
+		if (!this.config.saveLink) {
+			button.hidden = true;
+			return;
+		}
+
+		var iconSlot = button.querySelector('.menu-action-icon');
+
+		if (iconSlot) {
+			iconSlot.innerHTML = LINK_SVG;
+		}
+
+		var labelSlot = button.querySelector('.menu-action-label');
+		var restLabel = labelSlot ? labelSlot.textContent : '';
+		var flipTimer = null;
+
+		var flipLabel = function(text) {
+			if (!labelSlot) {
+				return;
+			}
+
+			labelSlot.textContent = text;
+			window.clearTimeout(flipTimer);
+			flipTimer = window.setTimeout(function() {
+				labelSlot.textContent = restLabel;
+			}, 1600);
+		};
+
+		var copyText = function(text) {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				return navigator.clipboard.writeText(text);
+			}
+
+			return new Promise(function(resolve, reject) {
+				var scratch = document.createElement('textarea');
+
+				scratch.value = text;
+				scratch.setAttribute('readonly', '');
+				scratch.style.position = 'absolute';
+				scratch.style.left = '-9999px';
+				document.body.appendChild(scratch);
+				scratch.select();
+
+				try {
+					if (document.execCommand('copy')) {
+						resolve();
+					}
+					else {
+						reject(new Error('copy refused'));
+					}
+				}
+				finally {
+					scratch.remove();
+				}
+			});
+		};
+
+		button.addEventListener('click', function() {
+			story.save();
+			copyText(window.location.href).then(
+				function() {
+					flipLabel('Copied!');
+				},
+				function() {
+					// the link is still in the address bar
+					flipLabel('Link in URL');
+				}
+			);
+		});
+	},
+
+	/**
 	 Places the story's identity (StoryTitle / StorySubtitle /
 	 StoryAuthor) according to config.titlePlacement: in the chat
 	 header (default), tucked into the menu dialog ('menu'), or
-	 nowhere ('none' — style your own via setHeader and inject_menu).
+	 nowhere ('none' — style your own via setHeader and setMenu).
 	**/
 
 	applyIdentity: function() {
@@ -3545,7 +3765,8 @@ Object.assign(Story.prototype, {
 
 	   story.setMenu('<h3>About</h3><p>…</p>', 'About');
 
-	 (inject_menu() is the legacy Trialogue-era alias.)
+	 A StoryMenu special passage does the same thing declaratively;
+	 setMenu() called from Story JavaScript overrides it.
 	**/
 
 	setMenu: function(html, title) {
@@ -3572,8 +3793,8 @@ Object.assign(Story.prototype, {
 
 	/**
 	 Rewords the restart-confirmation dialog — its title, body HTML,
-	 and footer buttons. (inject_modal() is the legacy alias; the
-	 default buttons carry data-dialog-action="cancel" / "restart".)
+	 and footer buttons. (The default buttons carry
+	 data-dialog-action="cancel" / "restart".)
 	**/
 
 	setRestartDialog: function(title, body, footer) {
@@ -6360,6 +6581,17 @@ Object.assign(Story.prototype, {
 		var story = this;
 
 		if (entry.t === 'c') {
+			// a choice recorded the state as it stood when the move was
+			// made — including anything event listeners (threadopened,
+			// say) wrote there, which replaying passages alone can never
+			// rebuild. Truing the state up here means everything that
+			// renders after this point re-runs against what the player
+			// actually had, and the rebuilt undo checkpoint matches too.
+
+			if (entry.s) {
+				this.state = deepClone(entry.s);
+			}
+
 			this.pushCheckpoint();
 			this.state.timedOut = !!entry.to;
 
@@ -6367,13 +6599,17 @@ Object.assign(Story.prototype, {
 				this.state.lastChoice = entry.l;
 			}
 
-			this.timeline.push(
-				entry.l
-					? { t: 'c', l: entry.l }
-					: entry.to
-						? { t: 'c', to: 1 }
-						: { t: 'c' }
-			);
+			var replayed = entry.l
+				? { t: 'c', l: entry.l }
+				: entry.to
+					? { t: 'c', to: 1 }
+					: { t: 'c' };
+
+			if (entry.s) {
+				replayed.s = entry.s;
+			}
+
+			this.timeline.push(replayed);
 			return;
 		}
 
@@ -7190,6 +7426,9 @@ Object.assign(Story.prototype, {
 		this.pushCheckpoint();
 		this.hideMeta();
 		this.clearUserResponses();
+
+		var moveState = deepClone(this.state);
+
 		this.state.timedOut = edge.kind === 'timeout';
 
 		var story = this;
@@ -7255,10 +7494,10 @@ Object.assign(Story.prototype, {
 
 		this.timeline.push(
 			edge.kind === 'timeout'
-				? { t: 'c', to: 1 }
+				? { t: 'c', to: 1, s: moveState }
 				: edge.display.trim() !== ''
-					? { t: 'c', l: edge.display.trim() }
-					: { t: 'c' }
+					? { t: 'c', l: edge.display.trim(), s: moveState }
+					: { t: 'c', s: moveState }
 		);
 
 		if (edge.kind === 'timeout') {

@@ -140,7 +140,7 @@ async function run() {
 	await page.click('#nav-link-menu');
 	await page.waitForSelector('#menu-dialog[open]');
 	check(
-		'menu opens as a modal with injected content',
+		'StoryMenu passage fills the menu dialog',
 		(await page
 			.locator('#menu-dialog #menu-container h3')
 			.textContent()) === 'Welcome'
@@ -149,6 +149,96 @@ async function run() {
 		'theme and restart controls moved into the menu',
 		(await page.locator('#menu-dialog #nav-link-theme').count()) === 1 &&
 		(await page.locator('#menu-dialog #nav-link-restart').count()) === 1
+	);
+	check(
+		'the control panel pairs its chips into compact rows',
+		await page.evaluate(() => {
+			const panel = document.querySelector('#menu-dialog .menu-actions');
+			const box = (id) =>
+				document.getElementById(id).getBoundingClientRect();
+			const theme = box('nav-link-theme');
+			const sound = box('nav-link-sound');
+			const share = box('nav-link-share');
+			const restart = box('nav-link-restart');
+
+			return (
+				panel.getAttribute('role') === 'group' &&
+				['nav-link-theme', 'nav-link-sound', 'nav-link-share',
+					'nav-link-restart'].every(
+					(id) => panel.contains(document.getElementById(id))
+				) &&
+				Math.abs(theme.top - sound.top) < 1 &&
+				sound.left > theme.right &&
+				Math.abs(share.top - restart.top) < 1 &&
+				restart.left > share.right &&
+				share.top > theme.bottom
+			);
+		})
+	);
+	check(
+		'the mute toggle silences sounds and remembers the choice',
+		await page.evaluate(() => {
+			const button = document.getElementById('nav-link-sound');
+
+			if (button.hidden || window.story.soundMuted) {
+				return false;
+			}
+
+			button.click();
+
+			const muted =
+				window.story.soundMuted === true &&
+				button.getAttribute('aria-pressed') === 'true' &&
+				Object.keys(window.localStorage).some(
+					(key) =>
+						key.indexOf('subtext-sound-') === 0 &&
+						window.localStorage.getItem(key) === 'muted'
+				);
+
+			button.click(); // leave sounds on for the rest of the run
+
+			return muted && window.story.soundMuted === false;
+		})
+	);
+	check(
+		'Copy link saves progress into the URL and copies it',
+		await page.evaluate(() => {
+			let copied = null;
+
+			navigator.clipboard.writeText = (text) => {
+				copied = text;
+				return Promise.resolve();
+			};
+			document.getElementById('nav-link-share').click();
+
+			return (
+				copied === window.location.href &&
+				window.location.hash.length > 1 &&
+				copied.indexOf('#') > -1
+			);
+		})
+	);
+	await page.waitForFunction(
+		() =>
+			document.querySelector('#nav-link-share .menu-action-label')
+				.textContent === 'Copied!'
+	);
+	check('Copy link flashes "Copied!" feedback', true);
+	await page.waitForFunction(
+		() =>
+			document.querySelector('#nav-link-share .menu-action-label')
+				.textContent === 'Copy link'
+	);
+	// drop the save hash so later checks start from a clean URL
+	await page.evaluate(() =>
+		window.history.replaceState(null, '', window.location.pathname)
+	);
+	check(
+		'dialog close buttons share the .dialog-close class',
+		(await page.locator('#menu-dialog .dialog-close[data-menu-close]')
+			.count()) === 1 &&
+		(await page.locator('#photo-picker .dialog-close[data-picker-close]')
+			.count()) === 1
 	);
 	// theme toggle now lives in the menu
 	await page.click('#nav-link-theme');
@@ -1595,6 +1685,60 @@ async function run() {
 		})
 	);
 
+	// markdown links and images pace by their display text — the URL
+	// (or a data URI) is markup, however long it runs
+	check(
+		'typing delay ignores markdown URLs and image sources',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+			const url =
+				'https://example.com/a/very/long/path?utm_source=x' +
+				'&utm_campaign=y&fbclid=' + 'z'.repeat(120);
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'delay-linked',
+				['speaker-2'],
+				'read [this piece](' + url + ')\n\n![a snapshot](data:image/gif;base64,' +
+					'R0lGODlhAQABAIAAAP'.repeat(30) + ')'
+			);
+			window.story.passages[len + 2] = new P(
+				len + 2,
+				'delay-plain',
+				['speaker-2'],
+				'read this piece\n\na snapshot'
+			);
+
+			const linked = window.story.getPassageDelay('delay-linked');
+			const plain = window.story.getPassageDelay('delay-plain');
+
+			window.story.passages.length = len;
+
+			return linked === plain;
+		})
+	);
+	check(
+		'word count reads markdown links as their display text',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'wc-linked',
+				['speaker-2'],
+				'read [this piece](https://example.com/' + 'x'.repeat(200) + ')'
+			);
+
+			const words = window.story.wordCount('wc-linked');
+
+			window.story.passages.length = len;
+
+			return words === 3;
+		})
+	);
+
 	// `||` splits passage text into separate bubbles, matching the
 	// (send: a || b) grammar — a mirrored reply renders the way it
 	// was sent
@@ -2049,6 +2193,100 @@ async function run() {
 		)
 	);
 
+	// a choice records the state as it stood when the move was made —
+	// including what event listeners wrote there, which replaying
+	// passages can never rebuild. Rewinding to a passage whose pills
+	// are gated on that state must re-render the gate open.
+	check(
+		'rewind restores listener-written state from the choice snapshot',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 90;
+					const P = window.Passage;
+					const log = () =>
+						document.querySelector('#phistory').textContent;
+					const pills = () =>
+						Array.from(
+							document.querySelectorAll('.user-response')
+						).map((b) => b.textContent.trim());
+
+					window.story.passages[base] = new P(
+						base,
+						'snap-pre',
+						['speaker-2'],
+						'peek around\n\n[[done looking->snap-gate]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'snap-gate',
+						['speaker-2'],
+						'<% if (s.snapSeen) { %>\nyou saw it\n\n' +
+							'[[i did->snap-after]]\n<% } else { %>\n' +
+							'nothing yet\n<% } %>'
+					);
+					window.story.passages[base + 2] = new P(
+						base + 2,
+						'snap-after',
+						['speaker-2', 'End'],
+						'fin-snap'
+					);
+
+					window.story.show('snap-pre');
+
+					// what a threadopened (or any event) listener does:
+					// write state OUTSIDE any passage template
+					window.story.state.snapSeen = true;
+
+					window.story.choose(
+						'snap-gate', 'done looking', 'done looking'
+					);
+
+					const pollGate = window.setInterval(() => {
+						if (log().indexOf('you saw it') === -1) {
+							return;
+						}
+
+						window.clearInterval(pollGate);
+						window.story.choose('snap-after', 'i did', 'i did');
+
+						const pollEnd = window.setInterval(() => {
+							if (log().indexOf('fin-snap') === -1) {
+								return;
+							}
+
+							window.clearInterval(pollEnd);
+
+							const idx = window.story.timeline.findIndex(
+								(e) =>
+									e.t === 'p' &&
+									(window.story.passage(e.id) || {}).name ===
+										'snap-gate'
+							);
+
+							window.story.debugRewind(idx + 1);
+
+							const gateOpen =
+								log().indexOf('you saw it') > -1 &&
+								log().indexOf('nothing yet') === -1;
+							const pillBack = pills().some(
+								(t) => t.indexOf('i did') > -1
+							);
+							const stateBack =
+								window.story.state.snapSeen === true;
+
+							window.story.restore(preHash);
+							window.story.passages.length = preLen;
+
+							resolve(gateOpen && pillBack && stateBack);
+						}, 100);
+					}, 100);
+				})
+		)
+	);
+
 	check(
 		'timeline section sits above the jump section',
 		await debugPage.evaluate(() => {
@@ -2381,26 +2619,22 @@ async function run() {
 		window.story.applyIdentity();
 	});
 
-	// the menu dialog itself is renameable
-	await page.evaluate(() =>
-		window.inject_menu('<p>about this story</p>', 'About')
-	);
 	check(
-		'inject_menu can retitle the menu dialog',
-		(await page.textContent('#menu-dialog-title')) === 'About'
-	);
-
-	check(
-		'Trialogue sidebar helpers are gone',
+		'legacy Trialogue helpers are gone',
 		await page.evaluate(
 			() =>
+				typeof window.inject_menu === 'undefined' &&
+				typeof window.inject_modal === 'undefined' &&
+				typeof window.inject_hint === 'undefined' &&
+				typeof window.inject_nav_menu === 'undefined' &&
+				typeof window.inject_nav_back === 'undefined' &&
 				typeof window.inject_left_sidebar === 'undefined' &&
 				typeof window.inject_right_sidebar === 'undefined' &&
 				typeof window.fade_in_content_containers === 'undefined'
 		)
 	);
 
-	// canonical chrome methods, with inject_* as aliases
+	// canonical chrome methods
 	await page.evaluate(() =>
 		window.story.setRestartDialog('Leave?', '<p>All will be lost.</p>')
 	);
@@ -2409,7 +2643,7 @@ async function run() {
 		(await page.textContent('#exit-dialog .modal-title')) === 'Leave?'
 	);
 	check(
-		'setMenu is the canonical menu API (inject_menu delegates)',
+		'setMenu fills the menu and can retitle the dialog',
 		await page.evaluate(() => {
 			window.story.setMenu('<p>via setMenu</p>', 'Info');
 			return (
