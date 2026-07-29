@@ -1685,6 +1685,39 @@ async function run() {
 		})
 	);
 
+	// an inline if/else group renders ONE branch — the delay paces by
+	// the longest branch, never the sum of all of them
+	check(
+		'typing delay counts one branch of an if/else, not all of them',
+		await page.evaluate(() => {
+			const P = window.Passage;
+			const len = window.story.passages.length;
+
+			window.story.passages[len + 1] = new P(
+				len + 1,
+				'delay-branchy',
+				['speaker-2'],
+				'<% if (s.mood === "sharp") { %> fine, be that way ' +
+					'<% } else { %> honestly this is the longer of the two ' +
+					'branches by a good stretch <% } %>\n\nand one shared line'
+			);
+			window.story.passages[len + 2] = new P(
+				len + 2,
+				'delay-longest',
+				['speaker-2'],
+				' honestly this is the longer of the two branches by a ' +
+					'good stretch \n\nand one shared line'
+			);
+
+			const branchy = window.story.getPassageDelay('delay-branchy');
+			const longest = window.story.getPassageDelay('delay-longest');
+
+			window.story.passages.length = len;
+
+			return branchy === longest;
+		})
+	);
+
 	// markdown links and images pace by their display text — the URL
 	// (or a data URI) is markup, however long it runs
 	check(

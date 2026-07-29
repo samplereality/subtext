@@ -123,14 +123,130 @@ function unquoteName(name) {
 	return name;
 }
 
+/* Text authored between the blocks of an inline template branch group —
+     <% if (…) { %> A <% } else { %> B <% } %>
+   renders as ONE branch, never all of them. For pacing, collapse each
+   group to its longest branch (the most the sender might type). The
+   linter reads source without running it, so which branch would really
+   render can't be known here. Word counts keep every branch: that's
+   authored prose. Unbalanced or nested-beyond-recognition groups are
+   left alone and fall through to the normal code stripping. */
+
+function collapseBranchText(source) {
+	var parts = source.split(/(<%[\s\S]*?%>)/);
+	var code = function(block) {
+		return block
+			.replace(/^<%[-=]?/, '')
+			.replace(/%>$/, '')
+			.trim();
+	};
+	var out = '';
+	var i = 0;
+
+	while (i < parts.length) {
+		var part = parts[i];
+
+		if (part.indexOf('<%') !== 0) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		var c = code(part);
+		var isOpen = /\{$/.test(c) && c.charAt(0) !== '}';
+
+		if (!isOpen) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		// scan ahead for the group's branches: text runs separated by
+		// "} else {" blocks, ended by the matching "}" block
+
+		var branches = [];
+		var current = '';
+		var depth = 1;
+		var closed = false;
+		var j;
+
+		for (j = i + 1; j < parts.length; j++) {
+			var piece = parts[j];
+
+			if (piece.indexOf('<%') !== 0) {
+				current += piece;
+				continue;
+			}
+
+			var pc = code(piece);
+			var opens = /\{$/.test(pc);
+			var closes = pc.charAt(0) === '}';
+
+			if (closes && opens) {
+				// "} else {" / "} else if (…) {"
+				if (depth === 1) {
+					branches.push(current);
+					current = '';
+				}
+				else {
+					current += ' ';
+				}
+			}
+			else if (opens) {
+				depth += 1;
+				current += ' ';
+			}
+			else if (closes) {
+				depth -= 1;
+
+				if (depth === 0) {
+					branches.push(current);
+					closed = true;
+					break;
+				}
+
+				current += ' ';
+			}
+			else {
+				current += ' ';
+			}
+		}
+
+		if (!closed) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		var longest = '';
+
+		branches.forEach(function(branch) {
+			if (branch.trim().length > longest.trim().length) {
+				longest = branch;
+			}
+		});
+
+		out += ' ' + longest + ' ';
+		i = j + 1;
+	}
+
+	return out;
+}
+
 /* the readable text of passage source — code, comments, directive
    lines, and markup stripped. Links either contribute their pill label
    and (send: ...) text (what the player reads — word counts want this)
    or nothing at all (they're the player's options, not the sender's
-   message — typing delays want that). An approximation: text a
-   template prints at runtime isn't counted. */
+   message — typing delays want that). Branch groups either collapse to
+   their longest branch (typing delays: the sender types one branch)
+   or keep every branch (word counts: it's all authored prose). An
+   approximation: text a template prints at runtime isn't counted. */
 
-function readableText(source, keepLinkText) {
+function readableText(source, keepLinkText, longestBranch) {
+	if (longestBranch) {
+		source = collapseBranchText(source);
+	}
+
 	return source
 		.replace(/\/\*[\s\S]*?\*\//g, ' ')
 		.replace(/^[ \t]*\/\/.*$/gm, ' ')
@@ -6323,11 +6439,13 @@ Object.assign(Story.prototype, {
 
 		// the "typing…" time reflects the message the sender is
 		// actually writing: template code, comments, directives, and
-		// reply pills don't count — only the readable reply does
+		// reply pills don't count — only the readable reply does, and
+		// an if/else group counts one branch (its longest), because
+		// only one of them ever renders
 
 		var probe = document.createElement('div');
 
-		probe.innerHTML = readableText(target.source, false);
+		probe.innerHTML = readableText(target.source, false, true);
 
 		var length = probe.textContent.replace(/\s+/g, ' ').trim().length;
 
