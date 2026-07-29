@@ -123,14 +123,130 @@ function unquoteName(name) {
 	return name;
 }
 
+/* Text authored between the blocks of an inline template branch group —
+     <% if (…) { %> A <% } else { %> B <% } %>
+   renders as ONE branch, never all of them. For pacing, collapse each
+   group to its longest branch (the most the sender might type). The
+   linter reads source without running it, so which branch would really
+   render can't be known here. Word counts keep every branch: that's
+   authored prose. Unbalanced or nested-beyond-recognition groups are
+   left alone and fall through to the normal code stripping. */
+
+function collapseBranchText(source) {
+	var parts = source.split(/(<%[\s\S]*?%>)/);
+	var code = function(block) {
+		return block
+			.replace(/^<%[-=]?/, '')
+			.replace(/%>$/, '')
+			.trim();
+	};
+	var out = '';
+	var i = 0;
+
+	while (i < parts.length) {
+		var part = parts[i];
+
+		if (part.indexOf('<%') !== 0) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		var c = code(part);
+		var isOpen = /\{$/.test(c) && c.charAt(0) !== '}';
+
+		if (!isOpen) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		// scan ahead for the group's branches: text runs separated by
+		// "} else {" blocks, ended by the matching "}" block
+
+		var branches = [];
+		var current = '';
+		var depth = 1;
+		var closed = false;
+		var j;
+
+		for (j = i + 1; j < parts.length; j++) {
+			var piece = parts[j];
+
+			if (piece.indexOf('<%') !== 0) {
+				current += piece;
+				continue;
+			}
+
+			var pc = code(piece);
+			var opens = /\{$/.test(pc);
+			var closes = pc.charAt(0) === '}';
+
+			if (closes && opens) {
+				// "} else {" / "} else if (…) {"
+				if (depth === 1) {
+					branches.push(current);
+					current = '';
+				}
+				else {
+					current += ' ';
+				}
+			}
+			else if (opens) {
+				depth += 1;
+				current += ' ';
+			}
+			else if (closes) {
+				depth -= 1;
+
+				if (depth === 0) {
+					branches.push(current);
+					closed = true;
+					break;
+				}
+
+				current += ' ';
+			}
+			else {
+				current += ' ';
+			}
+		}
+
+		if (!closed) {
+			out += part;
+			i += 1;
+			continue;
+		}
+
+		var longest = '';
+
+		branches.forEach(function(branch) {
+			if (branch.trim().length > longest.trim().length) {
+				longest = branch;
+			}
+		});
+
+		out += ' ' + longest + ' ';
+		i = j + 1;
+	}
+
+	return out;
+}
+
 /* the readable text of passage source — code, comments, directive
    lines, and markup stripped. Links either contribute their pill label
    and (send: ...) text (what the player reads — word counts want this)
    or nothing at all (they're the player's options, not the sender's
-   message — typing delays want that). An approximation: text a
-   template prints at runtime isn't counted. */
+   message — typing delays want that). Branch groups either collapse to
+   their longest branch (typing delays: the sender types one branch)
+   or keep every branch (word counts: it's all authored prose). An
+   approximation: text a template prints at runtime isn't counted. */
 
-function readableText(source, keepLinkText) {
+function readableText(source, keepLinkText, longestBranch) {
+	if (longestBranch) {
+		source = collapseBranchText(source);
+	}
+
 	return source
 		.replace(/\/\*[\s\S]*?\*\//g, ' ')
 		.replace(/^[ \t]*\/\/.*$/gm, ' ')
@@ -5912,7 +6028,7 @@ Object.assign(Story.prototype, {
 					? 0
 					: this.getPassageDelay(passage.id);
 
-		this.timers.push(window.setTimeout(run, delay));
+		this.trackTimer(window.setTimeout(run, delay), passage.id);
 
 		if (delay > 0 && !instant && this.multiThread) {
 			this.setThreadTyping(this.getPassageThread(passage));
@@ -6144,10 +6260,11 @@ Object.assign(Story.prototype, {
 		// chips with the message — nothing announces what's coming.)
 
 		if (speaker && delay > 0 && !instant) {
-			this.timers.push(
+			this.trackTimer(
 				window.setTimeout(function() {
 					story.preShowTimestamps(passage);
-				}, 0)
+				}, 0),
+				idOrName
 			);
 		}
 
@@ -6174,24 +6291,50 @@ Object.assign(Story.prototype, {
 		}
 
 		if (speaker && delay > 0 && !instant && this.config.typing) {
-			this.timers.push(
+			this.trackTimer(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);
-				}, Math.min(250, delay * 0.25))
+				}, Math.min(250, delay * 0.25)),
+				idOrName
 			);
 		}
 
-		this.timers.push(
+		this.trackTimer(
 			window.setTimeout(function() {
 				story.hideTyping();
 				story.show(idOrName, opts);
-			}, delay)
+			}, delay),
+			idOrName
 		);
 	},
 
+	/**
+	 Registers a pending timer with the runtime. A chain timer carries
+	 the passage it is heading for, and — while a save is replaying —
+	 the timeline position of the entry that armed it, so restore() can
+	 tell a replay echo (its target already landed later in the
+	 timeline) from a chain that was genuinely still in flight when the
+	 save was made.
+	**/
+
+	trackTimer: function(id, target) {
+		var entry = { id: id };
+
+		if (target !== undefined) {
+			entry.target = target;
+		}
+
+		if (this._replayIndex !== undefined) {
+			entry.armedAt = this._replayIndex;
+		}
+
+		this.timers.push(entry);
+		return id;
+	},
+
 	cancelTimers: function() {
-		this.timers.forEach(function(id) {
-			window.clearTimeout(id);
+		this.timers.forEach(function(t) {
+			window.clearTimeout(t && t.id !== undefined ? t.id : t);
 		});
 		this.timers = [];
 	},
@@ -6228,8 +6371,7 @@ Object.assign(Story.prototype, {
 			}
 		}, ms);
 
-		this.timers.push(id);
-		return id;
+		return this.trackTimer(id);
 	},
 
 	/**
@@ -6297,11 +6439,13 @@ Object.assign(Story.prototype, {
 
 		// the "typing…" time reflects the message the sender is
 		// actually writing: template code, comments, directives, and
-		// reply pills don't count — only the readable reply does
+		// reply pills don't count — only the readable reply does, and
+		// an if/else group counts one branch (its longest), because
+		// only one of them ever renders
 
 		var probe = document.createElement('div');
 
-		probe.innerHTML = readableText(target.source, false);
+		probe.innerHTML = readableText(target.source, false, true);
 
 		var length = probe.textContent.replace(/\s+/g, ' ').trim().length;
 
@@ -6779,18 +6923,69 @@ Object.assign(Story.prototype, {
 			var story = this;
 
 			timeline.forEach(function(entry, entryIndex) {
-				// a replayed passage's template re-runs its side effects,
-				// re-arming any story.showDelayed() chain it started. The
-				// timeline already holds everything that arrived before
-				// the save, so those echoes are dropped; only the newest
-				// entry's timers survive, to carry a chain that was still
-				// in flight when the save was made.
+				// timers armed during the replay remember which entry
+				// armed them (see trackTimer); the sweep below separates
+				// echoes from chains that were genuinely in flight
 
-				story.cancelTimers();
+				story._replayIndex = entryIndex;
 				story.replayEntry(
 					entry,
 					entryIndex === 0 ? null : timeline[entryIndex - 1].t
 				);
+			});
+
+			this._replayIndex = undefined;
+
+			// a replayed passage's template re-runs its side effects,
+			// re-arming any chain or delivery it started. A re-armed
+			// timer whose target already landed later in the timeline is
+			// an echo — the replay just showed (or is about to show) the
+			// real thing — and is dropped. A timer whose target never
+			// landed was still in flight when the save was made and
+			// carries on, no matter which entry armed it: a chain isn't
+			// forfeited just because a delivery was recorded after it.
+
+			var lastIndex = this.timeline.length - 1;
+
+			this.timers = this.timers.filter(function(t) {
+				var keep;
+
+				if (t && t.target !== undefined) {
+					var targetPassage = story.passage(t.target);
+					var echo = false;
+
+					if (targetPassage) {
+						var from = (t.armedAt == null ? -1 : t.armedAt) + 1;
+
+						for (var i = from; i < story.timeline.length; i++) {
+							var seen = story.timeline[i];
+
+							if (
+								(seen.t === 'p' || seen.t === 'd') &&
+								seen.id === targetPassage.id
+							) {
+								echo = true;
+								break;
+							}
+						}
+					}
+
+					keep = !echo;
+				}
+				else {
+					// untargeted timers (after(), cosmetic work) stay
+					// only when the newest entry armed them — the old
+					// rule, which is right for timers that carry no
+					// destination to check
+
+					keep = !!t && t.armedAt === lastIndex;
+				}
+
+				if (!keep) {
+					window.clearTimeout(t && t.id !== undefined ? t.id : t);
+				}
+
+				return keep;
 			});
 
 			// replaying re-runs template side effects; the explicitly
