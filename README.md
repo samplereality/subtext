@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.18"
+  "format-version": "2.8.19"
 }
 ```
 
@@ -1353,7 +1353,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.19
 
 - **Fixed: the typing delay counted every branch of an inline `if/else`.** Text written between the blocks of `<% if (…) { %> A <% } else { %> B <% } %>` renders as one branch, but the pacing counted A *and* B — a conditional reply "typed" for the sum of all its variants. The delay now counts a branch group's longest branch only (the most the sender might type); `else if` chains and nested groups fold the same way, and word counts still include every branch — it's all authored prose.
 - **Fixed: a reload could drop a chain that was still in flight — the frozen-pills bug's last known face.** Restoring a save (including the debug autosave that fires on every `tweego -w` rebuild) kept only the timers armed by the *newest* timeline entry. If anything was recorded after the passage that armed the chain — a `story.deliver(…)` echo into another conversation, say — the reload landed mid-chain with nothing in flight: no typing, no pills, story frozen. The replay now decides by destination instead of position: a re-armed chain whose target already landed later in the timeline is an echo and is dropped; one whose target never landed was genuinely in flight and carries on, no matter which entry armed it.
