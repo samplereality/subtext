@@ -2287,6 +2287,92 @@ async function run() {
 		)
 	);
 
+	// a reload that lands mid-chain must carry the chain onward even
+	// when something else (a delivery) was recorded after the passage
+	// that armed it — the chain's target never landed, so it was in
+	// flight, no matter which entry is newest
+	check(
+		'restore carries an in-flight chain past a trailing delivery',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 110;
+					const P = window.Passage;
+					const log = () =>
+						document.querySelector('#phistory').textContent;
+
+					window.story.passages[base] = new P(
+						base,
+						'flight-arm',
+						['speaker-2'],
+						'hold on\n\n[then flight-land in 400ms]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'flight-land',
+						['speaker-2'],
+						'made it\n\n[[carry on->flight-end]]'
+					);
+					window.story.passages[base + 2] = new P(
+						base + 2,
+						'flight-end',
+						['speaker-2', 'End'],
+						'fin-flight'
+					);
+					window.story.passages[base + 3] = new P(
+						base + 3,
+						'flight-side',
+						['speaker-2'],
+						'a side note'
+					);
+
+					window.story.show('flight-arm');
+					// a recorded delivery lands AFTER the chain was armed
+					window.story.deliver('flight-side', { instant: true });
+
+					// save while the chain is still in flight
+					const midHash = window.story.saveHash();
+
+					window.story.restore(midHash);
+
+					let settled = false;
+
+					const settle = (ok) => {
+						if (settled) {
+							return;
+						}
+
+						settled = true;
+						window.clearInterval(poll);
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+						resolve(ok);
+					};
+
+					const poll = window.setInterval(() => {
+						if (log().indexOf('made it') === -1) {
+							return;
+						}
+
+						const landedOnce =
+							log().split('made it').length === 2;
+						const pillBack = Array.from(
+							document.querySelectorAll('.user-response')
+						).some(
+							(b) => b.textContent.indexOf('carry on') > -1
+						);
+
+						settle(landedOnce && pillBack);
+					}, 100);
+
+					// fail rather than hang if the chain was dropped
+					window.setTimeout(() => settle(false), 4000);
+				})
+		)
+	);
+
 	check(
 		'timeline section sits above the jump section',
 		await debugPage.evaluate(() => {

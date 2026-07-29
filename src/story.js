@@ -5912,7 +5912,7 @@ Object.assign(Story.prototype, {
 					? 0
 					: this.getPassageDelay(passage.id);
 
-		this.timers.push(window.setTimeout(run, delay));
+		this.trackTimer(window.setTimeout(run, delay), passage.id);
 
 		if (delay > 0 && !instant && this.multiThread) {
 			this.setThreadTyping(this.getPassageThread(passage));
@@ -6144,10 +6144,11 @@ Object.assign(Story.prototype, {
 		// chips with the message — nothing announces what's coming.)
 
 		if (speaker && delay > 0 && !instant) {
-			this.timers.push(
+			this.trackTimer(
 				window.setTimeout(function() {
 					story.preShowTimestamps(passage);
-				}, 0)
+				}, 0),
+				idOrName
 			);
 		}
 
@@ -6174,24 +6175,50 @@ Object.assign(Story.prototype, {
 		}
 
 		if (speaker && delay > 0 && !instant && this.config.typing) {
-			this.timers.push(
+			this.trackTimer(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);
-				}, Math.min(250, delay * 0.25))
+				}, Math.min(250, delay * 0.25)),
+				idOrName
 			);
 		}
 
-		this.timers.push(
+		this.trackTimer(
 			window.setTimeout(function() {
 				story.hideTyping();
 				story.show(idOrName, opts);
-			}, delay)
+			}, delay),
+			idOrName
 		);
 	},
 
+	/**
+	 Registers a pending timer with the runtime. A chain timer carries
+	 the passage it is heading for, and — while a save is replaying —
+	 the timeline position of the entry that armed it, so restore() can
+	 tell a replay echo (its target already landed later in the
+	 timeline) from a chain that was genuinely still in flight when the
+	 save was made.
+	**/
+
+	trackTimer: function(id, target) {
+		var entry = { id: id };
+
+		if (target !== undefined) {
+			entry.target = target;
+		}
+
+		if (this._replayIndex !== undefined) {
+			entry.armedAt = this._replayIndex;
+		}
+
+		this.timers.push(entry);
+		return id;
+	},
+
 	cancelTimers: function() {
-		this.timers.forEach(function(id) {
-			window.clearTimeout(id);
+		this.timers.forEach(function(t) {
+			window.clearTimeout(t && t.id !== undefined ? t.id : t);
 		});
 		this.timers = [];
 	},
@@ -6228,8 +6255,7 @@ Object.assign(Story.prototype, {
 			}
 		}, ms);
 
-		this.timers.push(id);
-		return id;
+		return this.trackTimer(id);
 	},
 
 	/**
@@ -6779,18 +6805,69 @@ Object.assign(Story.prototype, {
 			var story = this;
 
 			timeline.forEach(function(entry, entryIndex) {
-				// a replayed passage's template re-runs its side effects,
-				// re-arming any story.showDelayed() chain it started. The
-				// timeline already holds everything that arrived before
-				// the save, so those echoes are dropped; only the newest
-				// entry's timers survive, to carry a chain that was still
-				// in flight when the save was made.
+				// timers armed during the replay remember which entry
+				// armed them (see trackTimer); the sweep below separates
+				// echoes from chains that were genuinely in flight
 
-				story.cancelTimers();
+				story._replayIndex = entryIndex;
 				story.replayEntry(
 					entry,
 					entryIndex === 0 ? null : timeline[entryIndex - 1].t
 				);
+			});
+
+			this._replayIndex = undefined;
+
+			// a replayed passage's template re-runs its side effects,
+			// re-arming any chain or delivery it started. A re-armed
+			// timer whose target already landed later in the timeline is
+			// an echo — the replay just showed (or is about to show) the
+			// real thing — and is dropped. A timer whose target never
+			// landed was still in flight when the save was made and
+			// carries on, no matter which entry armed it: a chain isn't
+			// forfeited just because a delivery was recorded after it.
+
+			var lastIndex = this.timeline.length - 1;
+
+			this.timers = this.timers.filter(function(t) {
+				var keep;
+
+				if (t && t.target !== undefined) {
+					var targetPassage = story.passage(t.target);
+					var echo = false;
+
+					if (targetPassage) {
+						var from = (t.armedAt == null ? -1 : t.armedAt) + 1;
+
+						for (var i = from; i < story.timeline.length; i++) {
+							var seen = story.timeline[i];
+
+							if (
+								(seen.t === 'p' || seen.t === 'd') &&
+								seen.id === targetPassage.id
+							) {
+								echo = true;
+								break;
+							}
+						}
+					}
+
+					keep = !echo;
+				}
+				else {
+					// untargeted timers (after(), cosmetic work) stay
+					// only when the newest entry armed them — the old
+					// rule, which is right for timers that carry no
+					// destination to check
+
+					keep = !!t && t.armedAt === lastIndex;
+				}
+
+				if (!keep) {
+					window.clearTimeout(t && t.id !== undefined ? t.id : t);
+				}
+
+				return keep;
 			});
 
 			// replaying re-runs template side effects; the explicitly

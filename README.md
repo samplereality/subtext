@@ -1353,6 +1353,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
+### Unreleased
+
+- **Fixed: a reload could drop a chain that was still in flight — the frozen-pills bug's last known face.** Restoring a save (including the debug autosave that fires on every `tweego -w` rebuild) kept only the timers armed by the *newest* timeline entry. If anything was recorded after the passage that armed the chain — a `story.deliver(…)` echo into another conversation, say — the reload landed mid-chain with nothing in flight: no typing, no pills, story frozen. The replay now decides by destination instead of position: a re-armed chain whose target already landed later in the timeline is an echo and is dropped; one whose target never landed was genuinely in flight and carries on, no matter which entry armed it.
+
 ### Version 2.8.18
 
 - **Fixed: markdown links and images inflated the typing delay.** The "typing…" time paces by the readable reply, but `[link text](https://…)` counted every character of the URL — a four-word message linking to an article "typed" for the maximum. Links and images now pace by their display text (alt text for images); the word counter reads them the same way. A *raw* pasted URL still counts in full — the player sees all of it.
