@@ -755,6 +755,20 @@ async function run() {
 	console.log('axe accessibility audit');
 	await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
 
+	// let entrance animations (t-pop, 0.3s) finish — axe samples the
+	// paint, and a bubble mid-fade-in reads as low-contrast text
+	await page.evaluate(() =>
+		Promise.all(
+			document.getAnimations().map((a) => {
+				const timing = a.effect && a.effect.getTiming();
+
+				return timing && timing.iterations === Infinity
+					? null
+					: a.finished.catch(() => {});
+			})
+		)
+	);
+
 	const axeViolations = await page.evaluate(async () => {
 		const results = await window.axe.run(document, {
 			resultTypes: ['violations']
@@ -763,7 +777,9 @@ async function run() {
 		return results.violations.map((v) => ({
 			id: v.id,
 			impact: v.impact,
-			nodes: v.nodes.length
+			nodes: v.nodes.length,
+			targets: v.nodes.map((n) => n.target.join(' ')).slice(0, 5),
+			summary: (v.nodes[0] && v.nodes[0].failureSummary) || ''
 		}));
 	});
 	const axeSerious = axeViolations.filter((v) =>
