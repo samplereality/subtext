@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.19"
+  "format-version": "2.8.20"
 }
 ```
 
@@ -1357,7 +1357,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.20
 
 - **`titlePlacement = 'menu'` makes the story title the menu's heading.** The dialog used to keep its "Menu" label with the title tucked below as a line of content; now the title *is* the heading, with the subtitle and author credit beneath it — the menu reads as the story's title page. An explicit `config.menuTitle` (or `setMenu`'s title argument) still overrides it. See [Page chrome and menus](#page-chrome-and-menus).
 - **Fixed: control-panel chips hidden by config still rendered.** The chips' flex layout beat the `hidden` attribute, so a story with sounds off showed a blank, iconless Sound chip (and `saveLink = false` wouldn't have removed Copy link). Hidden chips now actually disappear and the row re-flows around them.
