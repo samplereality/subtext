@@ -2792,15 +2792,36 @@ async function run() {
 		window.story.applyIdentity();
 	});
 	check(
-		'titlePlacement "menu" tucks the identity into the menu',
+		'titlePlacement "menu" retitles the dialog with the story title',
 		(await page.textContent('#ptitle')) === '' &&
+			(await page.textContent('#menu-dialog-title')) ===
+				'Subtext Demo' &&
+			(await page.textContent('#menu-identity')).indexOf(
+				'an interactive chat story'
+			) > -1 &&
 			(await page.textContent('#menu-identity')).indexOf(
 				'Subtext Demo'
-			) > -1
+			) === -1
+	);
+	check(
+		'an explicit menuTitle beats the menu-placed story title',
+		await page.evaluate(() => {
+			const heading = document.getElementById('menu-dialog-title');
+
+			heading.textContent = 'Menu';
+			window.story.config.menuTitle = 'About';
+			window.story.applyIdentity();
+
+			const kept = heading.textContent === 'Menu';
+
+			window.story.config.menuTitle = 'Menu';
+			return kept;
+		})
 	);
 	await page.evaluate(() => {
 		window.story.config.titlePlacement = 'header';
 		window.story.applyIdentity();
+		document.getElementById('menu-dialog-title').textContent = 'Menu';
 	});
 
 	check(
@@ -2923,6 +2944,19 @@ async function run() {
 	check(
 		'one log per declared thread',
 		(await inboxPage.locator('.thread-log').count()) === 5
+	);
+	check(
+		'the sound chip is invisible when sounds are off',
+		await inboxPage.evaluate(() => {
+			const chip = document.getElementById('nav-link-sound');
+
+			// hidden attribute AND actually not rendered — display:flex
+			// on .menu-action must not beat [hidden]
+			return (
+				chip.hidden &&
+				window.getComputedStyle(chip).display === 'none'
+			);
+		})
 	);
 
 	// seed-tagged passages are already in Mom's thread — old and read

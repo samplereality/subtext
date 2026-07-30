@@ -1043,13 +1043,17 @@ Object.assign(Story.prototype, {
 			this.enableDebug();
 		}
 
-		this.applyIdentity();
+		// the configured heading first, then applyIdentity — with
+		// titlePlacement 'menu' the story title takes the heading over
+		// the untouched default
 
 		var menuTitle = byId('menu-dialog-title');
 
 		if (menuTitle) {
 			menuTitle.textContent = this.config.menuTitle;
 		}
+
+		this.applyIdentity();
 
 		if (this.config.lang) {
 			document.documentElement.lang = this.config.lang;
@@ -3775,10 +3779,18 @@ Object.assign(Story.prototype, {
 			var identity = byId('menu-identity');
 
 			if (identity) {
-				var html =
-					'<div class="menu-identity-title">' +
-					template.escapeHtml(this.name) +
-					'</div>';
+				// the story title takes the dialog heading itself — a
+				// "Menu" label would just displace it. An explicit
+				// config.menuTitle (or setMenu's title argument, which
+				// sets it) still wins over this default.
+
+				var heading = byId('menu-dialog-title');
+
+				if (heading && this.config.menuTitle === 'Menu') {
+					heading.textContent = this.name;
+				}
+
+				var html = '';
 				var subtitle = this.passage('StorySubtitle');
 				var author = this.passage('StoryAuthor');
 
@@ -3797,7 +3809,7 @@ Object.assign(Story.prototype, {
 				}
 
 				identity.innerHTML = html;
-				identity.hidden = false;
+				identity.hidden = html === '';
 				this.dom.menu.hidden = false;
 			}
 		}

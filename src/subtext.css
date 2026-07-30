@@ -1632,9 +1632,11 @@ img[role="button"] {
 	font-size: 1.05rem;
 }
 
-/* story identity, when config.titlePlacement = 'menu' */
+/* story identity, when config.titlePlacement = 'menu' — the title
+   takes the dialog heading; this block holds subtitle and author */
 
 .menu-identity {
+	margin-top: -0.5rem;
 	padding-bottom: 0.75rem;
 	margin-bottom: 0.75rem;
 	border-bottom: 1px solid var(--t-border);
@@ -1642,11 +1644,6 @@ img[role="button"] {
 
 .menu-identity[hidden] {
 	display: none;
-}
-
-.menu-identity-title {
-	font-weight: 700;
-	font-size: 1.05rem;
 }
 
 .menu-identity-sub {
@@ -1719,6 +1716,12 @@ img[role="button"] {
 	padding: 0.5rem 0.6rem;
 	border-radius: 0.6rem;
 	cursor: pointer;
+}
+
+/* display: flex above would beat the hidden attribute's default */
+
+.menu-action[hidden] {
+	display: none;
 }
 
 .menu-action:hover {
