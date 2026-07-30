@@ -315,6 +315,28 @@ function countWords(source) {
 	return count;
 }
 
+/* true when a passage's source renders no visible message — only
+   side-effect directives ([react], [deliver], [sound], [then]), code,
+   comments, and reply pills. Such a passage is a beat of pure effect:
+   typing dots before it would announce a message that never arrives.
+   An output template (<%= … %>, <%- … %>) promises printed text, so
+   it counts as content; plain <% … %> code blocks don't. */
+
+function rendersNothing(source) {
+	return (
+		source
+			.replace(/\/\*[\s\S]*?\*\//g, '')
+			.replace(/^[ \t]*\/\/.*$/gm, '')
+			.replace(/<%(?![-=])[\s\S]*?%>/g, '')
+			.replace(/\[\[[\s\S]*?\]\]/g, '')
+			.replace(
+				/^[ \t]*\[(?:react|deliver|sound|then)\b[^\]]*\][ \t]*$/gim,
+				''
+			)
+			.trim() === ''
+	);
+}
+
 function deepClone(value) {
 	try {
 		return JSON.parse(JSON.stringify(value));
@@ -1359,12 +1381,34 @@ Object.assign(Story.prototype, {
 			this.clearThread(threadId);
 		}
 
-		// apply [react …] directives to the player's last message
+		// apply [react …] directives to the player's last message. A
+		// reaction that is its own beat — a react-only passage, or one
+		// with an explicit delay — pins with a sprightly cue of its
+		// own; one embedded in a message shares the message's sound.
+
+		var phantom = rendersNothing(passage.source);
 
 		html = html.replace(
-			/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
-			function(match, emoji) {
-				story.react(template.unescapeHtml(emoji), 'out');
+			/<div class="chat-react" data-emoji="([^"]*)" data-delay="([^"]*)"><\/div>/g,
+			function(match, emoji, delayStr) {
+				var tapback = template.unescapeHtml(emoji);
+				var wait = parseInt(delayStr, 10) || 0;
+				var solo = phantom || wait > 0;
+				var apply = function() {
+					story.react(tapback, 'out');
+
+					if (solo && !opts.instant) {
+						story.playSound('react');
+					}
+				};
+
+				if (wait > 0 && !opts.instant) {
+					story.after(wait, apply);
+				}
+				else {
+					apply();
+				}
+
 				return '';
 			}
 		);
@@ -1500,9 +1544,11 @@ Object.assign(Story.prototype, {
 		// message-arrival effects (skipped while replaying a save):
 		// an incoming speaker sounds like receiving; a speaker-you
 		// passage is the player-character texting, so it sounds like
-		// sending — same as a tapped reply
+		// sending — same as a tapped reply. A passage that renders no
+		// message (a react-only beat, say) has nothing arriving: its
+		// effect brings its own cue.
 
-		if (!opts.instant && speaker) {
+		if (!opts.instant && speaker && !phantom) {
 			if (speaker === 'you') {
 				this.playSound('send');
 			}
@@ -3498,6 +3544,29 @@ Object.assign(Story.prototype, {
 
 		try {
 			var t = ctx.currentTime;
+
+			// a reaction pin: two quick ascending blips, brighter and
+			// lighter than a message arriving
+
+			if (kind === 'react') {
+				[1318.5, 1760].forEach(function(freq, i) {
+					var at = t + i * 0.07;
+					var blip = ctx.createOscillator();
+					var level = ctx.createGain();
+
+					blip.type = 'sine';
+					blip.frequency.setValueAtTime(freq, at);
+					level.gain.setValueAtTime(0.0001, at);
+					level.gain.exponentialRampToValueAtTime(0.08, at + 0.012);
+					level.gain.exponentialRampToValueAtTime(0.0001, at + 0.09);
+					blip.connect(level);
+					level.connect(ctx.destination);
+					blip.start(at);
+					blip.stop(at + 0.12);
+				});
+				return;
+			}
+
 			var osc = ctx.createOscillator();
 			var gain = ctx.createGain();
 
@@ -5159,7 +5228,7 @@ Object.assign(Story.prototype, {
 
 		html = html
 			.replace(
-				/<div class="chat-react" data-emoji="([^"]*)"><\/div>/g,
+				/<div class="chat-react" data-emoji="([^"]*)" data-delay="[^"]*"><\/div>/g,
 				function(match, emoji) {
 					reactions.push(template.unescapeHtml(emoji));
 					return '';
@@ -6043,13 +6112,15 @@ Object.assign(Story.prototype, {
 		this.trackTimer(window.setTimeout(run, delay), passage.id);
 
 		// the inbox "typing…" preview — but never for the player
-		// character's own outgoing messages
+		// character's own outgoing messages, nor for a delivery that
+		// renders no message
 
 		if (
 			delay > 0 &&
 			!instant &&
 			this.multiThread &&
-			this.getPassageSpeaker(passage) !== 'you'
+			this.getPassageSpeaker(passage) !== 'you' &&
+			!rendersNothing(passage.source)
 		) {
 			this.setThreadTyping(this.getPassageThread(passage));
 		}
@@ -6310,7 +6381,16 @@ Object.assign(Story.prototype, {
 			}
 		}
 
-		if (speaker && delay > 0 && !instant && this.config.typing) {
+		// no dots for a passage that renders no message (a react-only
+		// beat): typing would announce a text that never arrives
+
+		if (
+			speaker &&
+			delay > 0 &&
+			!instant &&
+			this.config.typing &&
+			!rendersNothing(passage.source)
+		) {
 			this.trackTimer(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);

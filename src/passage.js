@@ -137,12 +137,26 @@ function render(source) {
 	);
 
 	// [react ❤️] on its own line reacts to the player's last message
-	// with a tapback badge (extracted and applied when the passage shows)
+	// with a tapback badge (extracted and applied when the passage
+	// shows). A trailing clause delays the tapback — the sender read
+	// it, sat with it, then reacted: [react ❤️ in 2s]
 
 	result = result.replace(
-		/^[ \t]*\[react[ \t]+([^\]]+)\][ \t]*$/gim,
-		function(match, emoji) {
-			return '<div class="chat-react" data-emoji="' + template.escapeHtml(emoji.trim()) + '"></div>';
+		/^[ \t]*\[react[ \t]+(.+?)(?:[ \t]+in[ \t]+(\d*\.?\d+)(ms|s))?[ \t]*\][ \t]*$/gim,
+		function(match, emoji, amount, unit) {
+			var delay = '';
+
+			if (amount) {
+				delay = String(Math.round(
+					unit === 's' ? parseFloat(amount) * 1000 : parseFloat(amount)
+				));
+			}
+
+			return (
+				'<div class="chat-react" data-emoji="' +
+				template.escapeHtml(emoji.trim()) +
+				'" data-delay="' + delay + '"></div>'
+			);
 		}
 	);
 

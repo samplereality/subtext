@@ -916,7 +916,9 @@ a {
 .chat-reaction {
 	position: absolute;
 	z-index: 2;
-	transform: translate(-50%, -50%);
+	/* mostly above the bubble's edge — dipping halfway in covered
+	   the tops of the first line of text */
+	transform: translate(-50%, -72%);
 	background: var(--t-elevated);
 	border: 2px solid var(--t-bg);
 	border-radius: 999px;

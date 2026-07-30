@@ -371,7 +371,7 @@ The receipt can be controlled directly:
 
 Tapback badges, in both directions:
 
-- **A speaker reacts to the player.** Put `[react ❤️]` on its own line in a passage and the emoji pops onto the corner of the player's last message when that passage shows. (From code: `story.react('❤️')`, or `story.react('😂', 'in')` to react to the speaker's own last message.)
+- **A speaker reacts to the player.** Put `[react ❤️]` on its own line in a passage and the emoji pops onto the corner of the player's last message when that passage shows. A trailing clause delays the tapback — they read it, sat with it, then reacted: `[react ❤️ in 2s]` (`ms` works too, and the timer participates in time travel and save/restore). A reaction that arrives as its own beat — a react-only passage, or any delayed reaction — pins with a bright two-note cue (when [sounds](#notifications) are on) instead of the receive sound, and never shows a typing indicator: nobody is typing, they're just reacting. (From code: `story.react('❤️')`, or `story.react('😂', 'in')` to react to the speaker's own last message.)
 - **The player reacts as a choice.** A `[[react:👍->Target]]` link renders as an emoji chip with the other responses. Choosing it sends *no bubble* — the tapback lands on the speaker's message, `s.lastReaction` records the emoji for branching, a `reaction` event fires, and the story continues to the target:
 
 ```
@@ -1356,6 +1356,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **Reactions are their own beat.** A react-only passage flashed the typing indicator before the tapback pinned — dots announcing a message that never arrives. No more: a passage that renders no message (only `[react]`, `[deliver]`, `[sound]`, or `[then]` directives) never shows typing, in the chat or in the inbox row. A reaction that lands as its own beat pins with a bright two-note cue instead of the receive sound, `[react ❤️ in 2s]` delays the tapback (time-travel- and save-aware), and the badge now rides the bubble's top edge instead of dipping into the first line of text. See [Reactions](#reactions).
 
 ### Version 2.8.20
 
