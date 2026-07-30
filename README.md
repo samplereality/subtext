@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.19"
+  "format-version": "2.8.20"
 }
 ```
 
@@ -449,6 +449,8 @@ update: the ukulele is now decorative
 
 [[and then?(send:)->Hobby 3]]
 ```
+
+`speaker-you` passages never show typing dots either — on a real phone you don't watch your own dots bounce. The player character's messages wait out their delay silently (no indicator in the chat, no "typing…" in the inbox row), then send, with the send sound. Pace them with an explicit `in` clause when the beat matters.
 
 The `instant` tag means the passage never shows typing dots, however it is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — the delay passes with no typing indicator, then the message appears. Without the tag, the same call shows the speaker typing for the whole delay. `story.deliver()` follows the same rules: it paces by message length (with a "typing…" state in the inbox), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('name', 2000)` — sets an explicit delay.
 
@@ -855,9 +857,11 @@ The Menu button (☰) only appears once the menu has content. The header include
 
 ```js
 story.config.titlePlacement = 'header';  // default
-story.config.titlePlacement = 'menu';    // tucked at the top of the menu dialog
+story.config.titlePlacement = 'menu';    // the menu dialog becomes the title page
 story.config.titlePlacement = 'none';    // handled by you
 ```
+
+With `'menu'`, the story title *becomes* the dialog's heading — no "Menu" label — with the subtitle and author credit beneath it. An explicit `story.config.menuTitle` (or `setMenu`'s title argument) still wins over the title if you want the dialog named something else.
 
 **Repurposing the header.** `story.setHeader()` changes the header mid-story — chapter titles, in-fiction app names:
 
@@ -1352,6 +1356,12 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.8.20
+
+- **`titlePlacement = 'menu'` makes the story title the menu's heading.** The dialog used to keep its "Menu" label with the title tucked below as a line of content; now the title *is* the heading, with the subtitle and author credit beneath it — the menu reads as the story's title page. An explicit `config.menuTitle` (or `setMenu`'s title argument) still overrides it. See [Page chrome and menus](#page-chrome-and-menus).
+- **Fixed: control-panel chips hidden by config still rendered.** The chips' flex layout beat the `hidden` attribute, so a story with sounds off showed a blank, iconless Sound chip (and `saveLink = false` wouldn't have removed Copy link). Hidden chips now actually disappear and the row re-flows around them.
+- **Fixed: chained `speaker-you` passages showed the player's own typing indicator.** A `[then …]` (or `showDelayed`) into a `speaker-you` passage rendered an incoming-style dots bubble — avatar and all — for a message that then landed outgoing, and multi-conversation stories showed a "typing…" preview on the thread's inbox row. The player character now types silently everywhere: the delay still paces the beat, then the message just sends. See [Message chains and montages](#message-chains-and-montages).
 
 ### Version 2.8.19
 

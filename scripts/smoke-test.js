@@ -2336,6 +2336,55 @@ async function run() {
 		)
 	);
 
+	// the player character types silently: a chained speaker-you
+	// passage waits out its delay with no dots, then just sends
+	check(
+		'speaker-you passages never show the typing indicator',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 130;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'self-typed',
+						['speaker-you'],
+						'on my way'
+					);
+
+					let sawTyping = false;
+					const typing =
+						document.getElementById('animation-container');
+					const watcher = new MutationObserver(() => {
+						if (!typing.hidden) {
+							sawTyping = true;
+						}
+					});
+
+					watcher.observe(typing, { attributes: true });
+					window.story.showDelayed('self-typed', 500);
+
+					window.setTimeout(() => {
+						watcher.disconnect();
+
+						const landed = Array.from(
+							document.querySelectorAll(
+								'.chat-passage-wrapper[data-speaker="you"] .chat-passage'
+							)
+						).some((el) => el.textContent.indexOf('on my way') > -1);
+
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+
+						resolve(!sawTyping && landed);
+					}, 1100);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
@@ -2743,15 +2792,36 @@ async function run() {
 		window.story.applyIdentity();
 	});
 	check(
-		'titlePlacement "menu" tucks the identity into the menu',
+		'titlePlacement "menu" retitles the dialog with the story title',
 		(await page.textContent('#ptitle')) === '' &&
+			(await page.textContent('#menu-dialog-title')) ===
+				'Subtext Demo' &&
+			(await page.textContent('#menu-identity')).indexOf(
+				'an interactive chat story'
+			) > -1 &&
 			(await page.textContent('#menu-identity')).indexOf(
 				'Subtext Demo'
-			) > -1
+			) === -1
+	);
+	check(
+		'an explicit menuTitle beats the menu-placed story title',
+		await page.evaluate(() => {
+			const heading = document.getElementById('menu-dialog-title');
+
+			heading.textContent = 'Menu';
+			window.story.config.menuTitle = 'About';
+			window.story.applyIdentity();
+
+			const kept = heading.textContent === 'Menu';
+
+			window.story.config.menuTitle = 'Menu';
+			return kept;
+		})
 	);
 	await page.evaluate(() => {
 		window.story.config.titlePlacement = 'header';
 		window.story.applyIdentity();
+		document.getElementById('menu-dialog-title').textContent = 'Menu';
 	});
 
 	check(
@@ -2874,6 +2944,19 @@ async function run() {
 	check(
 		'one log per declared thread',
 		(await inboxPage.locator('.thread-log').count()) === 5
+	);
+	check(
+		'the sound chip is invisible when sounds are off',
+		await inboxPage.evaluate(() => {
+			const chip = document.getElementById('nav-link-sound');
+
+			// hidden attribute AND actually not rendered — display:flex
+			// on .menu-action must not beat [hidden]
+			return (
+				chip.hidden &&
+				window.getComputedStyle(chip).display === 'none'
+			);
+		})
 	);
 
 	// seed-tagged passages are already in Mom's thread — old and read
