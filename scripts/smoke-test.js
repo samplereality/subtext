@@ -2336,6 +2336,55 @@ async function run() {
 		)
 	);
 
+	// the player character types silently: a chained speaker-you
+	// passage waits out its delay with no dots, then just sends
+	check(
+		'speaker-you passages never show the typing indicator',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 130;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'self-typed',
+						['speaker-you'],
+						'on my way'
+					);
+
+					let sawTyping = false;
+					const typing =
+						document.getElementById('animation-container');
+					const watcher = new MutationObserver(() => {
+						if (!typing.hidden) {
+							sawTyping = true;
+						}
+					});
+
+					watcher.observe(typing, { attributes: true });
+					window.story.showDelayed('self-typed', 500);
+
+					window.setTimeout(() => {
+						watcher.disconnect();
+
+						const landed = Array.from(
+							document.querySelectorAll(
+								'.chat-passage-wrapper[data-speaker="you"] .chat-passage'
+							)
+						).some((el) => el.textContent.indexOf('on my way') > -1);
+
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+
+						resolve(!sawTyping && landed);
+					}, 1100);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in

@@ -450,6 +450,8 @@ update: the ukulele is now decorative
 [[and then?(send:)->Hobby 3]]
 ```
 
+`speaker-you` passages never show typing dots either — on a real phone you don't watch your own dots bounce. The player character's messages wait out their delay silently (no indicator in the chat, no "typing…" in the inbox row), then send, with the send sound. Pace them with an explicit `in` clause when the beat matters.
+
 The `instant` tag means the passage never shows typing dots, however it is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — the delay passes with no typing indicator, then the message appears. Without the tag, the same call shows the speaker typing for the whole delay. `story.deliver()` follows the same rules: it paces by message length (with a "typing…" state in the inbox), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('name', 2000)` — sets an explicit delay.
 
 ## Narration
@@ -1352,6 +1354,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **Fixed: chained `speaker-you` passages showed the player's own typing indicator.** A `[then …]` (or `showDelayed`) into a `speaker-you` passage rendered an incoming-style dots bubble — avatar and all — for a message that then landed outgoing, and multi-conversation stories showed a "typing…" preview on the thread's inbox row. The player character now types silently everywhere: the delay still paces the beat, then the message just sends. See [Message chains and montages](#message-chains-and-montages).
 
 ### Version 2.8.19
 

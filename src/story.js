@@ -6030,7 +6030,15 @@ Object.assign(Story.prototype, {
 
 		this.trackTimer(window.setTimeout(run, delay), passage.id);
 
-		if (delay > 0 && !instant && this.multiThread) {
+		// the inbox "typing…" preview — but never for the player
+		// character's own outgoing messages
+
+		if (
+			delay > 0 &&
+			!instant &&
+			this.multiThread &&
+			this.getPassageSpeaker(passage) !== 'you'
+		) {
 			this.setThreadTyping(this.getPassageThread(passage));
 		}
 	},
@@ -6457,13 +6465,16 @@ Object.assign(Story.prototype, {
 
 	/**
 	 Shows the typing indicator, styled for the passage's speaker.
+	 Never for the player character: on a real phone you don't watch
+	 your own dots bounce — a speaker-you passage waits out its delay
+	 silently, then the message just sends.
 	**/
 
 	showTyping: function(idOrName) {
 		var passage = this.passage(idOrName);
 		var speaker = passage ? this.getPassageSpeaker(passage) : null;
 
-		if (!speaker) {
+		if (!speaker || speaker === 'you') {
 			return;
 		}
 
