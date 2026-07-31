@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.20"
+  "format-version": "2.8.21"
 }
 ```
 
@@ -1357,7 +1357,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.8.21
 
 - **Reactions are their own beat.** A react-only passage flashed the typing indicator before the tapback pinned — dots announcing a message that never arrives. No more: a passage that renders no message (only `[react]`, `[deliver]`, `[sound]`, or `[then]` directives) never shows typing, in the chat or in the inbox row. A reaction that lands as its own beat pins with a bright two-note cue instead of the receive sound, `[react ❤️ in 2s]` delays the tapback (time-travel- and save-aware), and the badge now rides the bubble's top edge instead of dipping into the first line of text. See [Reactions](#reactions).
 
