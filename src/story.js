@@ -6113,7 +6113,8 @@ Object.assign(Story.prototype, {
 
 		// the inbox "typing…" preview — but never for the player
 		// character's own outgoing messages, nor for a delivery that
-		// renders no message
+		// renders no message. Like the in-chat dots, it occupies only
+		// the composing tail of an explicit delay.
 
 		if (
 			delay > 0 &&
@@ -6122,7 +6123,15 @@ Object.assign(Story.prototype, {
 			this.getPassageSpeaker(passage) !== 'you' &&
 			!rendersNothing(passage.source)
 		) {
-			this.setThreadTyping(this.getPassageThread(passage));
+			var composing = Math.min(this.getPassageDelay(passage.id), delay);
+			var typingAt = Math.max(0, delay - composing);
+
+			this.trackTimer(
+				window.setTimeout(function() {
+					story.setThreadTyping(story.getPassageThread(passage));
+				}, typingAt),
+				passage.id
+			);
 		}
 	},
 
@@ -6382,7 +6391,13 @@ Object.assign(Story.prototype, {
 		}
 
 		// no dots for a passage that renders no message (a react-only
-		// beat): typing would announce a text that never arrives
+		// beat): typing would announce a text that never arrives.
+		// The delay says WHEN the message arrives; the dots say the
+		// sender is COMPOSING — which takes only as long as the words
+		// do. Under a long explicit delay the dots occupy the tail of
+		// the wait, leaving the front quiet (room for a [react] beat,
+		// a pause before the reply); a length-paced delay is all
+		// composing, so the dots run from (nearly) the start as ever.
 
 		if (
 			speaker &&
@@ -6391,10 +6406,16 @@ Object.assign(Story.prototype, {
 			this.config.typing &&
 			!rendersNothing(passage.source)
 		) {
+			var composing = Math.min(this.getPassageDelay(idOrName), delay);
+			var dotsAt = Math.max(
+				Math.min(250, delay * 0.25),
+				delay - composing
+			);
+
 			this.trackTimer(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);
-				}, Math.min(250, delay * 0.25)),
+				}, dotsAt),
 				idOrName
 			);
 		}

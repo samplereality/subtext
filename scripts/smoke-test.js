@@ -2498,6 +2498,60 @@ async function run() {
 		)
 	);
 
+	// an explicit delay wears typing dots only for its composing tail:
+	// quiet first, then length-paced typing, then the message
+	check(
+		'explicit-delay dots occupy only the composing tail',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 170;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'tail-msg',
+						['speaker-2'],
+						'quick note'
+					);
+
+					const typing =
+						document.getElementById('animation-container');
+
+					// composing ≈ minTypingDelay (500ms) → dots due at
+					// ~1000ms into a 1500ms wait
+					window.story.showDelayed('tail-msg', 1500);
+
+					window.setTimeout(() => {
+						const quietUpFront = typing.hidden;
+
+						window.setTimeout(() => {
+							const dotsInTail = !typing.hidden;
+
+							window.setTimeout(() => {
+								const landed = Array.from(
+									document.querySelectorAll('.chat-passage')
+								).some(
+									(el) =>
+										el.textContent.indexOf('quick note') >
+										-1
+								);
+
+								window.story.restore(preHash);
+								window.story.passages.length = preLen;
+
+								resolve(
+									quietUpFront && dotsInTail && landed
+								);
+							}, 500);
+						}, 600);
+					}, 600);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in

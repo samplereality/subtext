@@ -452,7 +452,7 @@ update: the ukulele is now decorative
 
 `speaker-you` passages never show typing dots either — on a real phone you don't watch your own dots bounce. The player character's messages wait out their delay silently (no indicator in the chat, no "typing…" in the inbox row), then send, with the send sound. Pace them with an explicit `in` clause when the beat matters.
 
-The `instant` tag means the passage never shows typing dots, however it is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — the delay passes with no typing indicator, then the message appears. Without the tag, the same call shows the speaker typing for the whole delay. `story.deliver()` follows the same rules: it paces by message length (with a "typing…" state in the inbox), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('name', 2000)` — sets an explicit delay.
+The `instant` tag means the passage never shows typing dots, however it is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — the delay passes with no typing indicator, then the message appears. Without the tag, the dots occupy only the **composing tail** of the wait: the sender is quiet, then types for as long as the words take, then the message lands — `[then reply in 10s]` on a short reply is eight quiet seconds and two of typing, which leaves the front of a long delay clear for other beats (a `[react … in 2s]`, say). `story.deliver()` follows the same rules: it paces by message length (with a "typing…" state in the inbox, also confined to the composing tail), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('name', 2000)` — sets an explicit delay.
 
 ## Narration
 
@@ -1356,6 +1356,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **Typing dots occupy only the composing tail of an explicit delay.** `[then reply in 3s]` used to show the speaker typing for the whole three seconds — so a `[react … in 2s]` sharing the passage got stepped on by dots that started immediately. The delay says *when* the message arrives; the dots now say the sender is *composing*, which takes only as long as the words do: quiet first, then length-paced typing, then the message. Length-paced delays (no `in` clause) are all composing and behave as before; `instant` still means no dots at all. The inbox's "typing…" preview follows the same rule. See [Message chains and montages](#message-chains-and-montages).
 
 ### Version 2.8.21
 
