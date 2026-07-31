@@ -337,6 +337,47 @@ function rendersNothing(source) {
 	);
 }
 
+/* A machine-readable timestamp label: [timestamp @2021-01-06 8:12].
+   The @ opts in; everything else stays author-formatted prose. The
+   date is parsed as local time; a dateless clock rolls to noon so a
+   bare @2021-01-06 never drifts a day across timezones. Impossible
+   dates (Feb 30) are rejected — the literal label renders instead,
+   so the mistake is visible. */
+
+var STAMP_PATTERN =
+	/^@(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?$/;
+
+function parseStamp(label) {
+	var m = STAMP_PATTERN.exec(String(label).trim());
+
+	if (!m) {
+		return null;
+	}
+
+	var hasTime = m[4] !== undefined;
+	var date = new Date(
+		+m[1],
+		+m[2] - 1,
+		+m[3],
+		hasTime ? +m[4] : 12,
+		hasTime ? +m[5] : 0
+	);
+
+	if (
+		isNaN(date.getTime()) ||
+		date.getMonth() !== +m[2] - 1 ||
+		date.getDate() !== +m[3]
+	) {
+		return null;
+	}
+
+	return {
+		date: date,
+		hasTime: hasTime,
+		when: String(label).trim().slice(1)
+	};
+}
+
 function deepClone(value) {
 	try {
 		return JSON.parse(JSON.stringify(value));
@@ -574,6 +615,10 @@ var Story = function() {
 		/* screen-reader announcement while a speaker is typing;
 		   %s is replaced with the speaker's display name */
 		typingLabel: '%s is typing',
+		/* custom formatter for @-timestamps: a function
+		   (date, stale, clock, hasTime) returning the chip text
+		   (null = the built-in Apple Messages style) */
+		formatTimestamp: null,
 		/* honor [[timeout:...]] links; set false to give every player
 		   unlimited time (an accessibility affordance) */
 		timers: true,
@@ -2087,11 +2132,182 @@ Object.assign(Story.prototype, {
 
 	buildTimestamp: function(text) {
 		var chip = document.createElement('div');
+		var stamp = parseStamp(text);
 
 		chip.className = 'chat-timestamp';
-		chip.textContent = text;
+
+		if (stamp) {
+			this.advanceClock(stamp.date);
+			chip.setAttribute('data-when', stamp.when);
+			chip.textContent = this.formatStampDate(stamp);
+		}
+		else {
+			chip.textContent = text;
+		}
 
 		return chip;
+	},
+
+	/**
+	 The story's fictional "now": the newest @-timestamp rendered so
+	 far, stored in state so undo, save/restore, and rewinds carry it.
+	 story.setClock('2022-03-15 10:00') moves it by hand — forward or
+	 back — for scenes that carry no stamp of their own.
+	**/
+
+	clockDate: function() {
+		return this.state._clock ? new Date(this.state._clock) : null;
+	},
+
+	advanceClock: function(date) {
+		if (!this.state._clock || date.getTime() > this.state._clock) {
+			this.state._clock = date.getTime();
+			this.sweepStamps();
+		}
+	},
+
+	setClock: function(when) {
+		var stamp =
+			when instanceof Date
+				? { date: when }
+				: parseStamp('@' + String(when).replace(/^@/, ''));
+
+		if (!stamp) {
+			return;
+		}
+
+		this.state._clock = stamp.date.getTime();
+		this.sweepStamps();
+		this.persist();
+	},
+
+	/**
+	 Formats a parsed stamp against the story clock, the way Apple's
+	 Messages does: within a year of "now" the weekday leads —
+	 "Wed, Jan 6 at 8:12 AM" — and anything older drops the weekday
+	 and gains the year — "Jan 6, 2021 at 8:12 AM". Override with
+	 story.config.formatTimestamp(date, stale, clock, hasTime).
+	**/
+
+	formatStampDate: function(stamp) {
+		var clock = this.clockDate();
+		var stale =
+			!!clock &&
+			clock.getTime() - stamp.date.getTime() > 365 * 24 * 3600 * 1000;
+
+		if (typeof this.config.formatTimestamp === 'function') {
+			return String(
+				this.config.formatTimestamp(
+					stamp.date,
+					stale,
+					clock,
+					stamp.hasTime !== false
+				)
+			);
+		}
+
+		var d = stamp.date;
+		var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+		var months = [
+			'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+			'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+		];
+		var date = stale
+			? months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear()
+			: days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
+
+		if (stamp.hasTime === false) {
+			return date;
+		}
+
+		var h = d.getHours();
+		var ampm = h >= 12 ? 'PM' : 'AM';
+
+		h = h % 12 || 12;
+
+		return (
+			date + ' at ' + h + ':' +
+			('0' + d.getMinutes()).slice(-2) + ' ' + ampm
+		);
+	},
+
+	/**
+	 Renders an @-label as chip HTML for the passage pipeline — or
+	 null when the label doesn't parse, so the literal text renders
+	 and the author can see the mistake.
+	**/
+
+	stampChipHtml: function(label) {
+		var stamp = parseStamp(label);
+
+		if (!stamp) {
+			return null;
+		}
+
+		this.advanceClock(stamp.date);
+
+		return (
+			'<div class="chat-timestamp" data-when="' +
+			template.escapeHtml(stamp.when) +
+			'">' +
+			template.escapeHtml(this.formatStampDate(stamp)) +
+			'</div>'
+		);
+	},
+
+	/**
+	 Reformats every machine-stamped chip against the current clock —
+	 crossing the one-year line restyles the scrollback the way a real
+	 phone would. Text is swapped in place (never re-inserted), with
+	 the log's live region quieted for the swap so screen readers
+	 don't re-announce old history.
+	**/
+
+	sweepStamps: function() {
+		var story = this;
+		var logs = [];
+
+		if (this.multiThread && this._threadLogs) {
+			Object.keys(this._threadLogs).forEach(function(id) {
+				logs.push(story._threadLogs[id]);
+			});
+		}
+		else if (this.dom && this.dom.history) {
+			logs.push(this.dom.history);
+		}
+
+		logs.forEach(function(log) {
+			var chips = log.querySelectorAll('.chat-timestamp[data-when]');
+
+			if (!chips.length) {
+				return;
+			}
+
+			var quieted = !log.hasAttribute('aria-live');
+
+			if (quieted) {
+				log.setAttribute('aria-live', 'off');
+			}
+
+			chips.forEach(function(chip) {
+				var when = chip.getAttribute('data-when');
+				var stamp = parseStamp('@' + when);
+
+				if (!stamp) {
+					return;
+				}
+
+				var text = story.formatStampDate(stamp);
+
+				if (chip.textContent !== text) {
+					chip.textContent = text;
+				}
+			});
+
+			if (quieted) {
+				log.removeAttribute('aria-live');
+			}
+		});
 	},
 
 	/**
@@ -4583,6 +4799,11 @@ Object.assign(Story.prototype, {
 			.filter(function(entry) { return entry.t === 'p'; })
 			.map(function(entry) { return entry.id; });
 
+		// the story clock rewound with the state — surviving chips
+		// reformat against it (a stale chip un-stales)
+
+		this.sweepStamps();
+
 		var passage = this.passage(checkpoint.passageId);
 
 		if (passage) {
@@ -6113,7 +6334,8 @@ Object.assign(Story.prototype, {
 
 		// the inbox "typing…" preview — but never for the player
 		// character's own outgoing messages, nor for a delivery that
-		// renders no message
+		// renders no message. Like the in-chat dots, it occupies only
+		// the composing tail of an explicit delay.
 
 		if (
 			delay > 0 &&
@@ -6122,7 +6344,15 @@ Object.assign(Story.prototype, {
 			this.getPassageSpeaker(passage) !== 'you' &&
 			!rendersNothing(passage.source)
 		) {
-			this.setThreadTyping(this.getPassageThread(passage));
+			var composing = Math.min(this.getPassageDelay(passage.id), delay);
+			var typingAt = Math.max(0, delay - composing);
+
+			this.trackTimer(
+				window.setTimeout(function() {
+					story.setThreadTyping(story.getPassageThread(passage));
+				}, typingAt),
+				passage.id
+			);
 		}
 	},
 
@@ -6382,7 +6612,13 @@ Object.assign(Story.prototype, {
 		}
 
 		// no dots for a passage that renders no message (a react-only
-		// beat): typing would announce a text that never arrives
+		// beat): typing would announce a text that never arrives.
+		// The delay says WHEN the message arrives; the dots say the
+		// sender is COMPOSING — which takes only as long as the words
+		// do. Under a long explicit delay the dots occupy the tail of
+		// the wait, leaving the front quiet (room for a [react] beat,
+		// a pause before the reply); a length-paced delay is all
+		// composing, so the dots run from (nearly) the start as ever.
 
 		if (
 			speaker &&
@@ -6391,10 +6627,16 @@ Object.assign(Story.prototype, {
 			this.config.typing &&
 			!rendersNothing(passage.source)
 		) {
+			var composing = Math.min(this.getPassageDelay(idOrName), delay);
+			var dotsAt = Math.max(
+				Math.min(250, delay * 0.25),
+				delay - composing
+			);
+
 			this.trackTimer(
 				window.setTimeout(function() {
 					story.showTyping(idOrName);
-				}, Math.min(250, delay * 0.25)),
+				}, dotsAt),
 				idOrName
 			);
 		}
@@ -7097,6 +7339,12 @@ Object.assign(Story.prototype, {
 			if (save.state) {
 				this.state = save.state;
 			}
+
+			// the rebuilt scrollback reformats against the final clock
+			// — year-old chips come back stale, the way a real phone
+			// would show them
+
+			this.sweepStamps();
 
 			this.applyHeader();
 
@@ -8021,6 +8269,27 @@ Object.assign(Story.prototype, {
 						'story.showDelayed() or story.after()',
 					passage: p.name
 				});
+			}
+		});
+
+		// an @-label that doesn't parse renders literally — usually a
+		// typo in a machine timestamp, worth flagging
+
+		content.forEach(function(p) {
+			var stampLine = /^[ \t]*\[timestamp[ \t]+(@[^\]]+)\][ \t]*$/gim;
+			var found;
+
+			while ((found = stampLine.exec(p.source))) {
+				if (!parseStamp(found[1].trim())) {
+					findings.push({
+						level: 'warn',
+						message:
+							'"' + p.name + '" has a machine timestamp that ' +
+							'doesn\'t parse: [timestamp ' + found[1].trim() +
+							'] — expected @YYYY-MM-DD or @YYYY-MM-DD HH:MM',
+						passage: p.name
+					});
+				}
 			}
 		});
 

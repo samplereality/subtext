@@ -2498,6 +2498,153 @@ async function run() {
 		)
 	);
 
+	// an explicit delay wears typing dots only for its composing tail:
+	// quiet first, then length-paced typing, then the message
+	check(
+		'explicit-delay dots occupy only the composing tail',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 170;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'tail-msg',
+						['speaker-2'],
+						'quick note'
+					);
+
+					const typing =
+						document.getElementById('animation-container');
+
+					// composing ≈ minTypingDelay (500ms) → dots due at
+					// ~1000ms into a 1500ms wait
+					window.story.showDelayed('tail-msg', 1500);
+
+					window.setTimeout(() => {
+						const quietUpFront = typing.hidden;
+
+						window.setTimeout(() => {
+							const dotsInTail = !typing.hidden;
+
+							window.setTimeout(() => {
+								const landed = Array.from(
+									document.querySelectorAll('.chat-passage')
+								).some(
+									(el) =>
+										el.textContent.indexOf('quick note') >
+										-1
+								);
+
+								window.story.restore(preHash);
+								window.story.passages.length = preLen;
+
+								resolve(
+									quietUpFront && dotsInTail && landed
+								);
+							}, 500);
+						}, 600);
+					}, 600);
+				})
+		)
+	);
+
+	// @-timestamps: Apple-style formatting against the story clock,
+	// retro-formatting when the clock crosses the one-year line
+	check(
+		'machine timestamps format and re-format against the story clock',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 190;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'clock-early',
+						['speaker-2'],
+						'[timestamp @2020-01-06 8:12]\n\nremember this?'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'clock-late',
+						['speaker-2'],
+						'[timestamp @2022-03-15 9:05]\n\nyears later'
+					);
+
+					const chipFor = (when) =>
+						document.querySelector(
+							'.chat-timestamp[data-when="' + when + '"]'
+						);
+
+					window.story.show('clock-early');
+
+					const fresh =
+						chipFor('2020-01-06 8:12') &&
+						chipFor('2020-01-06 8:12').textContent ===
+							'Mon, Jan 6 at 8:12 AM';
+
+					window.story.show('clock-late');
+
+					const staled =
+						chipFor('2020-01-06 8:12').textContent ===
+							'Jan 6, 2020 at 8:12 AM' &&
+						chipFor('2022-03-15 9:05').textContent ===
+							'Tue, Mar 15 at 9:05 AM';
+
+					// the clock can be moved by hand, both directions
+					window.story.setClock('2020-06-01 12:00');
+
+					const unstaled =
+						chipFor('2020-01-06 8:12').textContent ===
+						'Mon, Jan 6 at 8:12 AM';
+
+					const clockInState =
+						typeof window.story.state._clock === 'number';
+
+					window.story.restore(preHash);
+					window.story.passages.length = preLen;
+
+					resolve(fresh && staled && unstaled && clockInState);
+				})
+		)
+	);
+	check(
+		'a malformed machine timestamp renders literally and lints',
+		await debugPage.evaluate(() => {
+			const preLen = window.story.passages.length;
+			const base = preLen + 195;
+			const P = window.Passage;
+
+			window.story.passages[base] = new P(
+				base,
+				'clock-typo',
+				['speaker-2'],
+				'[timestamp @2020-13-45]\n\noops'
+			);
+
+			const literal =
+				window.Passage.render('[timestamp @2020-13-45]').indexOf(
+					'@2020-13-45'
+				) > -1;
+			const linted = window.story
+				.lint()
+				.some(
+					(f) =>
+						f.passage === 'clock-typo' &&
+						f.message.indexOf('machine timestamp') > -1
+				);
+
+			window.story.passages.length = preLen;
+			return literal && linted;
+		})
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
