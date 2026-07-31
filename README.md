@@ -309,6 +309,16 @@ any progress on the case?
 
 A `[timestamp …]` line at the start of any passage renders as a chip above the message (it also resets message grouping, as a time gap should). Alternatively, tag a whole passage `timestamp` to render its text as chips. Timestamps are purely presentational — write whatever fits your story's clock. When a chip leads a speaker's reply, it appears the moment the reply starts "typing," the way it would on a real phone.
 
+**Machine timestamps and the story clock.** For a story that stretches across years, an `@`-label makes the timestamp *data* instead of prose:
+
+```
+[timestamp @2021-01-06 8:12]
+```
+
+The runtime formats it the way a real phone does, relative to the story's fictional "now": within a year of now it reads `Wed, Jan 6 at 8:12 AM`; older than a year it drops the weekday and gains the year — `Jan 6, 2021 at 8:12 AM`. "Now" is the **story clock**: the newest `@`-timestamp rendered so far (seeds included), advancing automatically as the story moves. And when the clock crosses a year past messages already on screen, the scrollback *re-formats in place* — reading a thread years later in story time, its old chips have gone stale, exactly like Messages. The clock lives in story state, so saves, undo, and the debugger's time travel all keep chips and clock in step.
+
+Details: dates are `@YYYY-MM-DD` (chip shows just the date) or `@YYYY-MM-DD HH:MM` (24-hour, displayed as 12-hour); a label that doesn't parse renders literally and the [story check](#debug-mode) flags it; `story.setClock('2022-03-15 10:00')` moves the clock by hand — forward or back — for scenes with no stamp of their own; and `story.config.formatTimestamp = function(date, stale, clock, hasTime) { … }` replaces the built-in en-US Apple style with your own wording. Plain prose labels are untouched by any of this — mix the two freely.
+
 ### System messages
 
 Messaging-app events — departures, joins, missed calls, group renames — get their own centered chip:
@@ -996,6 +1006,7 @@ story.config.autosave = true;
 | `menuTitle` | `'Menu'` | Heading of the menu dialog |
 | `lang` | `''` | Interface language, applied to `<html lang>` (empty = `en`) |
 | `typingLabel` | `'%s is typing'` | Screen-reader announcement while a speaker types |
+| `formatTimestamp` | `null` | Custom formatter for `@`-timestamps: `(date, stale, clock, hasTime)` returning chip text |
 | `autosave` | `false` | Persist progress to `localStorage` after every message |
 | `debug` | `false` | Force [debug mode](#debug-mode) on (Twine Test, `tweego -t`, and `?debug` also enable it) |
 
@@ -1061,6 +1072,7 @@ Every public `story.*` method, alphabetically — each links to the section that
 | `concealThread(id)` | Remove a conversation from the inbox entirely (not the Trash) | [Multiple conversations](#multiple-conversations) |
 | `reseedThread(id)` | Re-render a thread's seeded history with current state | [Disposable intro conversations](#disposable-intro-conversations) |
 | `save()` / `restore(hash)` | Write progress to the URL / replay a save | [Saving](#saving) |
+| `setClock(when)` | Move the story clock by hand — `'2022-03-15 10:00'`, forward or back | [Timestamps](#timestamps) |
 | `setHeader(title, subtitle)` | Repurpose the header mid-story | [Page chrome and menus](#page-chrome-and-menus) |
 | `setMenu(html, title)` | Fill (and retitle) the menu dialog | [Page chrome and menus](#page-chrome-and-menus) |
 | `setRestartDialog(html)` | Reword the restart confirmation | [Page chrome and menus](#page-chrome-and-menus) |
@@ -1358,6 +1370,8 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 ## Changelog
 
 ### Unreleased
+
+- **Machine timestamps and the story clock.** `[timestamp @2021-01-06 8:12]` formats itself the way Messages does, relative to the story's fictional "now": fresh within a year (`Wed, Jan 6 at 8:12 AM`), weekday dropped and year added beyond it (`Jan 6, 2021 at 8:12 AM`). The clock is the newest `@`-stamp rendered (or `story.setClock(…)`), it rides story state through saves, undo, and time travel — and when it crosses a year past chips already on screen, the scrollback re-formats in place, screen-reader-quietly. Malformed `@`-labels render literally and the story check flags them; `config.formatTimestamp` overrides the wording. Plain prose timestamps are untouched. See [Timestamps](#timestamps).
 
 - **Typing dots occupy only the composing tail of an explicit delay.** `[then reply in 3s]` used to show the speaker typing for the whole three seconds — so a `[react … in 2s]` sharing the passage got stepped on by dots that started immediately. The delay says *when* the message arrives; the dots now say the sender is *composing*, which takes only as long as the words do: quiet first, then length-paced typing, then the message. Length-paced delays (no `in` clause) are all composing and behave as before; `instant` still means no dots at all. The inbox's "typing…" preview follows the same rule. See [Message chains and montages](#message-chains-and-montages).
 

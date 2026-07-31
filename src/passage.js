@@ -72,12 +72,29 @@ function render(source) {
 	result = result.replace(/^\/\/.*(\r\n?|\n)/gm, '');
 
 	// [timestamp Today 9:41 AM] on its own line becomes a centered
-	// timestamp chip above the message
+	// timestamp chip above the message. An @-label is a machine
+	// timestamp — [timestamp @2021-01-06 8:12] — formatted against
+	// the story clock (and reformatted if the clock later crosses
+	// the one-year line); one that doesn't parse renders literally.
 
 	result = result.replace(
 		/^[ \t]*\[timestamp[ \t]+([^\]]+)\][ \t]*$/gim,
 		function(match, label) {
-			return '<div class="chat-timestamp">' + template.escapeHtml(label.trim()) + '</div>';
+			label = label.trim();
+
+			if (
+				label.charAt(0) === '@' &&
+				window.story &&
+				typeof window.story.stampChipHtml === 'function'
+			) {
+				var chip = window.story.stampChipHtml(label);
+
+				if (chip) {
+					return chip;
+				}
+			}
+
+			return '<div class="chat-timestamp">' + template.escapeHtml(label) + '</div>';
 		}
 	);
 
