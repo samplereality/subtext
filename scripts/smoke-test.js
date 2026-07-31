@@ -2385,6 +2385,119 @@ async function run() {
 		)
 	);
 
+	// a reaction is its own beat: a react-only passage never shows
+	// typing dots, pins with the react cue instead of the receive
+	// sound, and [react x in Ns] delays the pin
+	check(
+		'[react] parses an optional delay clause',
+		await debugPage.evaluate(
+			() =>
+				window.Passage.render('[react ❤️ in 2s]').indexOf(
+					'data-delay="2000"'
+				) > -1 &&
+				window.Passage.render('[react ❤️]').indexOf(
+					'data-delay=""'
+				) > -1
+		)
+	);
+	check(
+		'a react-only beat pins without dots, with its own cue',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 150;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'beat-msg',
+						['speaker-2'],
+						'here is a message\n\n[[right (send: right)->beat-react]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'beat-react',
+						['speaker-2'],
+						'[react 😢]'
+					);
+
+					const badges = () =>
+						document.querySelectorAll('.chat-reaction').length;
+					const before = badges();
+
+					window.story.show('beat-msg');
+
+					// spy AFTER the setup message — its receive sound is
+					// legitimate; the react beat's would not be
+
+					const kinds = [];
+					const realPlay = window.story.playSound;
+
+					window.story.playSound = (kind) => kinds.push(kind);
+
+					let sawTyping = false;
+					const typing =
+						document.getElementById('animation-container');
+					const watcher = new MutationObserver(() => {
+						if (!typing.hidden) {
+							sawTyping = true;
+						}
+					});
+
+					watcher.observe(typing, { attributes: true });
+					window.story.choose('beat-react', 'right', 'right');
+
+					window.setTimeout(() => {
+						const pinned = badges() === before + 1;
+						const cueNotReceive =
+							kinds.indexOf('react') > -1 &&
+							kinds.indexOf('receive') === -1;
+
+						// a delayed react embedded in a message: it lands
+						// on the same outgoing bubble, so the badge's
+						// emoji swaps only after the delay elapses
+
+						window.story.passages[base + 2] = new P(
+							base + 2,
+							'beat-delayed',
+							['speaker-2'],
+							'one more thing\n\n[react 👍 in 300ms]'
+						);
+						window.story.show('beat-delayed');
+
+						const badgeEls =
+							document.querySelectorAll('.chat-reaction');
+						const atLanding =
+							badgeEls[badgeEls.length - 1].textContent;
+
+						window.setTimeout(() => {
+							watcher.disconnect();
+							window.story.playSound = realPlay;
+
+							const nowEls =
+								document.querySelectorAll('.chat-reaction');
+							const delayedSwap =
+								nowEls[nowEls.length - 1].textContent ===
+								'👍';
+
+							window.story.restore(preHash);
+							window.story.passages.length = preLen;
+
+							resolve(
+								pinned &&
+									cueNotReceive &&
+									!sawTyping &&
+									atLanding === '😢' &&
+									delayedSwap
+							);
+						}, 700);
+					}, 1200);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
