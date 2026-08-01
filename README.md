@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.8.21"
+  "format-version": "2.9.0"
 }
 ```
 
@@ -1369,7 +1369,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.9.0
 
 - **Machine timestamps and the story clock.** `[timestamp @2021-01-06 8:12]` formats itself the way Messages does, relative to the story's fictional "now": fresh within a year (`Wed, Jan 6 at 8:12 AM`), weekday dropped and year added beyond it (`Jan 6, 2021 at 8:12 AM`). The clock is the newest `@`-stamp rendered (or `story.setClock(…)`), it rides story state through saves, undo, and time travel — and when it crosses a year past chips already on screen, the scrollback re-formats in place, screen-reader-quietly. Malformed `@`-labels render literally and the story check flags them; `config.formatTimestamp` overrides the wording. Plain prose timestamps are untouched. See [Timestamps](#timestamps).
 
