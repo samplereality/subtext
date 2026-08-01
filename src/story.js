@@ -5717,6 +5717,13 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
+		// story code navigating during a replay is remembered, so a
+		// rewind can land on the screen the passage itself chose
+
+		if (this._replayIndex !== undefined) {
+			this._replayNavigatedAt = this._replayIndex;
+		}
+
 		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
 			this._threadLogs[this._viewedThread].hidden = true;
 		}
@@ -5742,6 +5749,10 @@ Object.assign(Story.prototype, {
 	openTrash: function() {
 		if (!this.multiThread) {
 			return;
+		}
+
+		if (this._replayIndex !== undefined) {
+			this._replayNavigatedAt = this._replayIndex;
 		}
 
 		if (this._viewedThread && this._threadLogs[this._viewedThread]) {
@@ -7258,6 +7269,7 @@ Object.assign(Story.prototype, {
 			}
 
 			this._currentNodes = [];
+			this._replayNavigatedAt = undefined;
 			this.dom.undo.hidden = true;
 
 			// replaying a whole transcript would flood screen readers;
@@ -7367,12 +7379,31 @@ Object.assign(Story.prototype, {
 				else if (ts.screen === 'trash') {
 					this.openTrash();
 				}
+				else if (
+					this._replayNavigatedAt === this.timeline.length - 1 &&
+					(this._screen === 'inbox' || this._screen === 'trash')
+				) {
+					// no recorded screen (a rewind's synthetic save), and
+					// the FINAL replayed entry's own code navigated — an
+					// openInbox() in a ready-helper, say. That was the
+					// passage's last act; land where it left the player
+					// instead of forcing its conversation open.
+
+					if (this._screen === 'trash') {
+						this.openTrash();
+					}
+					else {
+						this.openInbox();
+					}
+				}
 				else {
 					this.openThread(
 						ts.viewed || this._hotThread || this.threadOrder[0],
 						{ silent: true }
 					);
 				}
+
+				this._replayNavigatedAt = undefined;
 			}
 
 			// the replay rebuilt the checkpoint stack — undo works
@@ -7538,9 +7569,21 @@ Object.assign(Story.prototype, {
 		this._timelineFuture = [];
 		this.dom.undo.hidden = true;
 
+		// if the shown passage's own code navigates to the inbox or
+		// Trash (a ready-helper archiving its conversation, say), the
+		// teleport lands there instead of forcing the thread open
+
+		var screenBefore = this._screen;
+
 		this.show(idOrName);
 
-		if (this.multiThread) {
+		if (
+			this.multiThread &&
+			!(
+				this._screen !== screenBefore &&
+				(this._screen === 'inbox' || this._screen === 'trash')
+			)
+		) {
 			this.openThread(this._hotThread);
 		}
 	},

@@ -1369,6 +1369,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
+### Unreleased
+
+- **Fixed: time travel fought passages that navigate.** A passage whose own code moves the player — `story.openInbox()` in a ready-helper after archiving its conversation, say — replayed correctly, but the rewind's landing then forced that conversation open anyway, stranding the player inside the archived thread on a screen live play never showed. When the final replayed entry's own code navigated to the inbox or Trash, a rewind now lands there — and a debug jump to such a passage honors its navigation the same way. All other landings are unchanged.
+
 ### Version 2.9.0
 
 - **Machine timestamps and the story clock.** `[timestamp @2021-01-06 8:12]` formats itself the way Messages does, relative to the story's fictional "now": fresh within a year (`Wed, Jan 6 at 8:12 AM`), weekday dropped and year added beyond it (`Jan 6, 2021 at 8:12 AM`). The clock is the newest `@`-stamp rendered (or `story.setClock(…)`), it rides story state through saves, undo, and time travel — and when it crosses a year past chips already on screen, the scrollback re-formats in place, screen-reader-quietly. Malformed `@`-labels render literally and the story check flags them; `config.formatTimestamp` overrides the wording. Plain prose timestamps are untouched. See [Timestamps](#timestamps).
