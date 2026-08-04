@@ -2645,6 +2645,53 @@ async function run() {
 		})
 	);
 
+	check(
+		'a player tapback chirps like a character tapback',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 210;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'chirp-msg',
+						['speaker-2'],
+						'well?\n\n[[react:👍->chirp-next]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'chirp-next',
+						['speaker-2', 'End'],
+						'knew it'
+					);
+
+					window.story.show('chirp-msg');
+
+					const kinds = [];
+					const realPlay = window.story.playSound;
+
+					window.story.playSound = (kind) => kinds.push(kind);
+					window.story.sendReaction('👍', 'chirp-next');
+
+					window.setTimeout(() => {
+						window.story.playSound = realPlay;
+
+						const chirped =
+							kinds[0] === 'react' &&
+							kinds.indexOf('send') === -1;
+
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+
+						resolve(chirped);
+					}, 300);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
@@ -4088,6 +4135,95 @@ async function run() {
 
 			return gone;
 		})
+	);
+
+	// a passage whose own code navigates (openInbox in a ready-helper,
+	// archiving its conversation) must land time travel THERE — not
+	// strand the player inside the archived thread
+	check(
+		'rewind lands on the screen the final passage itself chose',
+		await inboxPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 70;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'nav-offer',
+						['thread-pizza', 'speaker-pizza'],
+						'one last slice?\n\n[[no (send: no)->nav-archive]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'nav-archive',
+						['speaker-you', 'instant'],
+						'<% $(function() {\n' +
+							"\tstory.archiveThread('pizza');\n" +
+							'\tstory.openInbox();\n' +
+							'}) %>'
+					);
+
+					window.story.show('nav-offer');
+					window.story.choose('nav-archive', 'no', 'no');
+
+					let settled = false;
+
+					const settle = (ok) => {
+						if (settled) {
+							return;
+						}
+
+						settled = true;
+						window.clearInterval(poll);
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+						resolve(ok);
+					};
+
+					const poll = window.setInterval(() => {
+						if (window.story._screen !== 'inbox') {
+							return;
+						}
+
+						// live play ends at the inbox; now rewind to the
+						// archiving passage — and to the pill before it
+						const idx = window.story.timeline.findIndex(
+							(e) =>
+								e.t === 'p' &&
+								(window.story.passage(e.id) || {}).name ===
+									'nav-archive'
+						);
+
+						window.story.debugRewind(idx + 1);
+
+						const landedAtInbox =
+							window.story._screen === 'inbox' &&
+							window.story._threadArchived.pizza === true;
+
+						const offerIdx = window.story.timeline.findIndex(
+							(e) =>
+								e.t === 'p' &&
+								(window.story.passage(e.id) || {}).name ===
+									'nav-offer'
+						);
+
+						window.story.debugRewind(offerIdx + 1);
+
+						const backInThread =
+							window.story._screen === 'thread' &&
+							Array.from(
+								document.querySelectorAll('.user-response')
+							).some((b) => b.textContent.indexOf('no') > -1);
+
+						settle(landedAtInbox && backInThread);
+					}, 100);
+
+					window.setTimeout(() => settle(false), 5000);
+				})
+		)
 	);
 
 	check(

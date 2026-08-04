@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.9.0"
+  "format-version": "2.9.1"
 }
 ```
 
@@ -382,7 +382,7 @@ The receipt can be controlled directly:
 Tapback badges, in both directions:
 
 - **A speaker reacts to the player.** Put `[react ❤️]` on its own line in a passage and the emoji pops onto the corner of the player's last message when that passage shows. A trailing clause delays the tapback — they read it, sat with it, then reacted: `[react ❤️ in 2s]` (`ms` works too, and the timer participates in time travel and save/restore). A reaction that arrives as its own beat — a react-only passage, or any delayed reaction — pins with a bright two-note cue (when [sounds](#notifications) are on) instead of the receive sound, and never shows a typing indicator: nobody is typing, they're just reacting. (From code: `story.react('❤️')`, or `story.react('😂', 'in')` to react to the speaker's own last message.)
-- **The player reacts as a choice.** A `[[react:👍->Target]]` link renders as an emoji chip with the other responses. Choosing it sends *no bubble* — the tapback lands on the speaker's message, `s.lastReaction` records the emoji for branching, a `reaction` event fires, and the story continues to the target:
+- **The player reacts as a choice.** A `[[react:👍->Target]]` link renders as an emoji chip with the other responses. Choosing it sends *no bubble* — the tapback lands on the speaker's message with the same two-note cue a speaker's reaction plays, `s.lastReaction` records the emoji for branching, a `reaction` event fires, and the story continues to the target:
 
 ```
 :: sam-reacts [speaker-sam]
@@ -1368,6 +1368,11 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Version 2.9.1
+
+- **A player tapback chirps like a character tapback.** Choosing a `[[react:👍->…]]` pill played the ordinary send sound; it now plays the same two-note reaction cue a character's `[react …]` pins with — a tapback is a tapback, whoever taps it.
+- **Fixed: time travel fought passages that navigate.** A passage whose own code moves the player — `story.openInbox()` in a ready-helper after archiving its conversation, say — replayed correctly, but the rewind's landing then forced that conversation open anyway, stranding the player inside the archived thread on a screen live play never showed. When the final replayed entry's own code navigated to the inbox or Trash, a rewind now lands there — and a debug jump to such a passage honors its navigation the same way. All other landings are unchanged.
 
 ### Version 2.9.0
 
