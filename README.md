@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.9.0"
+  "format-version": "2.9.1"
 }
 ```
 
@@ -1369,7 +1369,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.9.1
 
 - **A player tapback chirps like a character tapback.** Choosing a `[[react:👍->…]]` pill played the ordinary send sound; it now plays the same two-note reaction cue a character's `[react …]` pins with — a tapback is a tapback, whoever taps it.
 - **Fixed: time travel fought passages that navigate.** A passage whose own code moves the player — `story.openInbox()` in a ready-helper after archiving its conversation, say — replayed correctly, but the rewind's landing then forced that conversation open anyway, stranding the player inside the archived thread on a screen live play never showed. When the final replayed entry's own code navigated to the inbox or Trash, a rewind now lands there — and a debug jump to such a passage honors its navigation the same way. All other landings are unchanged.
