@@ -3658,7 +3658,11 @@ Object.assign(Story.prototype, {
 		this.state.lastReaction = emoji;
 		this.react(emoji, 'in');
 		this.timeline.push({ t: 'r', emoji: emoji });
-		this.playSound('send');
+
+		// a tapback is a tapback: same chirp whether the player or a
+		// character pins it
+
+		this.playSound('react');
 
 		/**
 		 Triggered when the player reacts to a message.

@@ -2645,6 +2645,53 @@ async function run() {
 		})
 	);
 
+	check(
+		'a player tapback chirps like a character tapback',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 210;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'chirp-msg',
+						['speaker-2'],
+						'well?\n\n[[react:👍->chirp-next]]'
+					);
+					window.story.passages[base + 1] = new P(
+						base + 1,
+						'chirp-next',
+						['speaker-2', 'End'],
+						'knew it'
+					);
+
+					window.story.show('chirp-msg');
+
+					const kinds = [];
+					const realPlay = window.story.playSound;
+
+					window.story.playSound = (kind) => kinds.push(kind);
+					window.story.sendReaction('👍', 'chirp-next');
+
+					window.setTimeout(() => {
+						window.story.playSound = realPlay;
+
+						const chirped =
+							kinds[0] === 'react' &&
+							kinds.indexOf('send') === -1;
+
+						window.story.restore(preHash);
+						window.story.passages.length = preLen;
+
+						resolve(chirped);
+					}, 300);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
