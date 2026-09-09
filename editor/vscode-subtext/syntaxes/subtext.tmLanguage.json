@@ -84,7 +84,7 @@
 			"patterns": [{ "include": "source.js" }]
 		},
 		"directive": {
-			"match": "^[ \\t]*(\\[)(timestamp|system|voice|sound|location|react|deliver|then|tombstone)\\b[ \\t]*([^\\]]*)(\\])[ \\t]*$",
+			"match": "^[ \\t]*(\\[)(timestamp|system|voice|sound|location|react|deliver|then|tombstone|typing)\\b[ \\t]*([^\\]]*)(\\])[ \\t]*$",
 			"name": "meta.directive.subtext",
 			"captures": {
 				"1": { "name": "punctuation.definition.directive.begin.subtext" },

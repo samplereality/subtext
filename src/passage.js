@@ -130,6 +130,27 @@ function render(source) {
 		}
 	);
 
+	// [typing] on its own line is the typing fake-out: the passage's
+	// speaker types for a while — and then nothing arrives. Someone
+	// started a reply and thought better of it. An optional duration
+	// tunes the hesitation — [typing 4s], [typing 800ms] — and a bare
+	// [typing] hesitates for config.maxTypingDelay.
+
+	result = result.replace(
+		/^[ \t]*\[typing(?:[ \t]+(\d*\.?\d+)(ms|s))?[ \t]*\][ \t]*$/gim,
+		function(match, amount, unit) {
+			var duration = '';
+
+			if (amount) {
+				duration = String(Math.round(
+					unit === 's' ? parseFloat(amount) * 1000 : parseFloat(amount)
+				));
+			}
+
+			return '<div class="chat-typing-cue" data-duration="' + duration + '"></div>';
+		}
+	);
+
 	// [then passage name] on its own line chains to that passage once
 	// this one lands — the twee form of story.showDelayed(). A trailing
 	// clause sets the delay: [then reply in 4s] or [then reply in 250ms]

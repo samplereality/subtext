@@ -290,7 +290,7 @@ function readableText(source, keepLinkText, longestBranch) {
 		// directive lines are chrome, not prose
 
 		.replace(
-			/^[ \t]*\[(?:timestamp|system|voice|sound|location|react|deliver|then|tombstone)\b[^\]]*\][ \t]*$/gim,
+			/^[ \t]*\[(?:timestamp|system|voice|sound|location|react|deliver|then|tombstone|typing)\b[^\]]*\][ \t]*$/gim,
 			' '
 		)
 
@@ -330,7 +330,7 @@ function rendersNothing(source) {
 			.replace(/<%(?![-=])[\s\S]*?%>/g, '')
 			.replace(/\[\[[\s\S]*?\]\]/g, '')
 			.replace(
-				/^[ \t]*\[(?:react|deliver|sound|then)\b[^\]]*\][ \t]*$/gim,
+				/^[ \t]*\[(?:react|deliver|sound|then|typing)\b[^\]]*\][ \t]*$/gim,
 				''
 			)
 			.trim() === ''
@@ -1484,6 +1484,20 @@ Object.assign(Story.prototype, {
 			}
 		);
 
+		// run [typing …] fake-outs (never while replaying a save —
+		// dots that lead nowhere are a live moment, not history)
+
+		html = html.replace(
+			/<div class="chat-typing-cue" data-duration="([^"]*)"><\/div>/g,
+			function(match, duration) {
+				if (!opts.instant) {
+					story.phantomTyping(passage, parseInt(duration, 10) || 0);
+				}
+
+				return '';
+			}
+		);
+
 		// [then …] chains to the next passage — the directive form of
 		// showDelayed(), so replays treat it exactly like the call
 
@@ -1687,7 +1701,8 @@ Object.assign(Story.prototype, {
 			if (
 				block.nodeType === Node.ELEMENT_NODE &&
 				(block.classList.contains('chat-sound') ||
-					block.classList.contains('chat-then'))
+					block.classList.contains('chat-then') ||
+					block.classList.contains('chat-typing-cue'))
 			) {
 				return false;
 			}
@@ -6066,7 +6081,7 @@ Object.assign(Story.prototype, {
 		probe
 			.querySelectorAll(
 				'.chat-timestamp, .chat-system, .chat-react, ' +
-					'.chat-deliver, .chat-sound, .chat-then'
+					'.chat-deliver, .chat-sound, .chat-then, .chat-typing-cue'
 			)
 			.forEach(function(el) {
 				el.remove();
@@ -6422,6 +6437,21 @@ Object.assign(Story.prototype, {
 			}
 		);
 
+		// a [typing …] fake-out in a delivered passage haunts its own
+		// conversation — dots there, "typing…" on its inbox row, and
+		// then nothing. Live deliveries only.
+
+		html = html.replace(
+			/<div class="chat-typing-cue" data-duration="([^"]*)"><\/div>/g,
+			function(match, duration) {
+				if (!opts.instant && !quiet) {
+					story.phantomTyping(passage, parseInt(duration, 10) || 0);
+				}
+
+				return '';
+			}
+		);
+
 		// a [then …] chain in a delivered passage fires like a
 		// showDelayed() call in one would
 
@@ -6457,7 +6487,13 @@ Object.assign(Story.prototype, {
 			this.timeline.push({ t: 'd', id: passage.id });
 		}
 
-		if (!opts.instant && !quiet && speaker) {
+		// a delivery that renders no message — a [typing] fake-out, a
+		// [sound] cue — has nothing arriving: no receive sound, no
+		// banner, no unread badge. Its effect is its own announcement.
+
+		var deliveredNothing = nodes.length === 0;
+
+		if (!opts.instant && !quiet && speaker && !deliveredNothing) {
 			if (speaker === 'you') {
 				this.playSound('send');
 			}
@@ -6494,13 +6530,15 @@ Object.assign(Story.prototype, {
 			}
 		}
 
-		this.noteThreadMessage(
-			threadId,
-			this.previewText(html),
-			opts.instant || quietRead,
-			speaker,
-			quiet
-		);
+		if (!deliveredNothing) {
+			this.noteThreadMessage(
+				threadId,
+				this.previewText(html),
+				opts.instant || quietRead,
+				speaker,
+				quiet
+			);
+		}
 
 		if (this._viewedThread === threadId) {
 			this.scrollChatIntoView();
@@ -6514,6 +6552,13 @@ Object.assign(Story.prototype, {
 	**/
 
 	setThreadTyping: function(threadId) {
+		// starting a "typing…" preview counts as a fresh showing, so a
+		// [typing] fake-out's cleanup won't clear a delivery's preview
+
+		if (threadId !== null) {
+			this._typingShows = (this._typingShows || 0) + 1;
+		}
+
 		this._typingThread = threadId;
 
 		if (this.multiThread) {
@@ -6827,6 +6872,11 @@ Object.assign(Story.prototype, {
 			return;
 		}
 
+		// each showing bumps a token, so a [typing] fake-out's cleanup
+		// can tell whether the indicator still belongs to it
+
+		this._typingShows = (this._typingShows || 0) + 1;
+
 		if (this.multiThread) {
 			var typingThread = this.getPassageThread(passage);
 
@@ -6910,6 +6960,37 @@ Object.assign(Story.prototype, {
 		if (this._typingThread !== null) {
 			this.setThreadTyping(null);
 		}
+	},
+
+	/**
+	 The typing fake-out behind the [typing …] directive: the passage's
+	 speaker types for a while — dots in their conversation, "typing…"
+	 on its inbox row — and then stops. Nothing arrives. Deferred a
+	 tick so the cue lands after the passage's own bubbles; both timers
+	 are tracked, so time travel sweeps them, and a replayed passage
+	 re-arms a fake-out that was still running when a save was made.
+	 If a real message starts typing during the fake-out, its indicator
+	 wins — the fake-out's cleanup leaves it alone.
+	**/
+
+	phantomTyping: function(passage, ms) {
+		var story = this;
+
+		if (!ms) {
+			ms = this.config.maxTypingDelay;
+		}
+
+		this.trackTimer(window.setTimeout(function() {
+			story.showTyping(passage.id);
+
+			var token = story._typingShows;
+
+			story.trackTimer(window.setTimeout(function() {
+				if (story._typingShows === token) {
+					story.hideTyping();
+				}
+			}, ms));
+		}, 0));
 	},
 
 	/**

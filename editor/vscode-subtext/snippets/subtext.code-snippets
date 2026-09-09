@@ -1,7 +1,10 @@
 {
 	"Passage": {
 		"prefix": "passage",
-		"body": [":: ${1:passage name} [${2:speaker-1}]", "$0"],
+		"body": [
+			":: ${1:passage name} [${2:speaker-1}]",
+			"$0"
+		],
 		"description": "A passage header with tags"
 	},
 	"Reply pill": {
@@ -73,5 +76,10 @@
 		"prefix": "print",
 		"body": "<%= ${1:expression} %>$0",
 		"description": "Print an expression into the message"
+	},
+	"Typing fake-out": {
+		"prefix": "typing",
+		"body": "[typing ${1:4s}]$0",
+		"description": "Typing dots that stop without a message being sent"
 	}
 }

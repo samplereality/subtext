@@ -2692,6 +2692,78 @@ async function run() {
 		)
 	);
 
+	// [typing …] is the typing fake-out: dots that bounce and then
+	// stop, with nothing arriving
+	check(
+		'[typing] parses bare and with a duration clause',
+		await debugPage.evaluate(
+			() =>
+				window.Passage.render('[typing 2s]').indexOf(
+					'data-duration="2000"'
+				) > -1 &&
+				window.Passage.render('[typing 800ms]').indexOf(
+					'data-duration="800"'
+				) > -1 &&
+				window.Passage.render('[typing]').indexOf(
+					'data-duration=""'
+				) > -1
+		)
+	);
+	check(
+		'a typing fake-out bounces, stops, and sends nothing',
+		await debugPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 230;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'ghost-type',
+						['speaker-2'],
+						'[typing 400ms]'
+					);
+
+					const bubbles = () =>
+						document.querySelectorAll('.chat-passage-wrapper')
+							.length;
+					const before = bubbles();
+					const typing =
+						document.getElementById('animation-container');
+
+					const kinds = [];
+					const realPlay = window.story.playSound;
+
+					window.story.playSound = (kind) => kinds.push(kind);
+					window.story.show('ghost-type');
+
+					window.setTimeout(() => {
+						const dotsOn = !typing.hidden;
+
+						window.setTimeout(() => {
+							window.story.playSound = realPlay;
+
+							const dotsOffAgain = typing.hidden;
+							const nothingArrived = bubbles() === before;
+							const silent = kinds.length === 0;
+
+							window.story.restore(preHash);
+							window.story.passages.length = preLen;
+
+							resolve(
+								dotsOn &&
+									dotsOffAgain &&
+									nothingArrived &&
+									silent
+							);
+						}, 600);
+					}, 200);
+				})
+		)
+	);
+
 	// a reload that lands mid-chain must carry the chain onward even
 	// when something else (a delivery) was recorded after the passage
 	// that armed it — the chain's target never landed, so it was in
@@ -4222,6 +4294,51 @@ async function run() {
 					}, 100);
 
 					window.setTimeout(() => settle(false), 5000);
+				})
+		)
+	);
+
+	// a delivered typing fake-out haunts its thread's inbox row —
+	// "typing…" and then nothing, with no banner or unread badge
+	check(
+		'a delivered typing fake-out shows typing… and announces nothing',
+		await inboxPage.evaluate(
+			() =>
+				new Promise((resolve) => {
+					const preHash = window.story.saveHash();
+					const preLen = window.story.passages.length;
+					const base = preLen + 90;
+					const P = window.Passage;
+
+					window.story.passages[base] = new P(
+						base,
+						'ghost-pizza',
+						['thread-pizza', 'speaker-pizza', 'instant', 'unlinked'],
+						'[typing 400ms]'
+					);
+
+					const unreadBefore = window.story.unread.pizza || 0;
+
+					window.story.deliver('ghost-pizza');
+
+					window.setTimeout(() => {
+						const previewOn =
+							window.story._typingThread === 'pizza';
+
+						window.setTimeout(() => {
+							const previewOff =
+								window.story._typingThread !== 'pizza';
+							const noNoise =
+								(window.story.unread.pizza || 0) ===
+									unreadBefore &&
+								window.story._banners.length === 0;
+
+							window.story.restore(preHash);
+							window.story.passages.length = preLen;
+
+							resolve(previewOn && previewOff && noNoise);
+						}, 600);
+					}, 150);
 				})
 		)
 	);
