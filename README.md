@@ -14,7 +14,7 @@ Subtext is a successor to [Trialogue](https://github.com/phivk/trialogue) by Phi
 
 **Reference** — [Special passages](#special-passages) · [Passage tags](#passage-tags) · [The design language](#the-design-language) · [Story state](#story-state) · [Configuration](#configuration) · [Utility functions](#utility-functions) · [API index](#api-index) · [Events](#events)
 
-**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Sound cues](#sound-cues) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages)
+**Messages** — [Photo messages](#photo-messages) · [Voice memos](#voice-memos) · [Sound cues](#sound-cues) · [Location sharing](#location-sharing) · [Timestamps](#timestamps) · [System messages](#system-messages) · [Deleted messages](#deleted-messages) · [Read receipts](#read-receipts) · [Reactions](#reactions) · [Message chains and montages](#message-chains-and-montages) · [Typing without sending](#typing-without-sending)
 
 **Narration** — [Narration modes](#narration) · [Asides](#asides)
 
@@ -167,7 +167,7 @@ And a handful of passage *tags* change how a passage behaves. Tags combine freel
 
 Everything you write in a passage falls into one of three shapes, each with one job:
 
-1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[sound …]`, `[location …]`, `[react …]`, `[deliver …]`, `[then …]`, `[tombstone]`. Square brackets, lowercase, one line.
+1. **`[directive …]` on its own line** puts something *inside* a message — `[timestamp …]`, `[system …]`, `[voice …]`, `[sound …]`, `[location …]`, `[react …]`, `[deliver …]`, `[then …]`, `[tombstone]`, `[typing …]`. Square brackets, lowercase, one line.
 2. **`prefix:` at the start of a link label** makes a special *kind* of reply — `photo:`, `location:`, `react:`, `input:`, `timeout:`. (Bare `photo`, `location`, and `input` work as shorthand for the argument-less form.)
 3. **`(send: …)` at the end of a link label** *modifies* an ordinary reply — what it sends, or whether it sends anything.
 
@@ -463,6 +463,29 @@ update: the ukulele is now decorative
 `speaker-you` passages never show typing dots either — on a real phone you don't watch your own dots bounce. The player character's messages wait out their delay silently (no indicator in the chat, no "typing…" in the inbox row), then send, with the send sound. Pace them with an explicit `in` clause when the beat matters.
 
 The `instant` tag means the passage never shows typing dots, however it is reached — a pill, a chain, a `story.show()`, a `story.deliver()`. The tag and an explicit delay compose: the delay says *when* the message arrives, the tag says *how*. `<% story.showDelayed('later', 10000) %>` targeting an `instant`-tagged passage is a **silent wait** — the delay passes with no typing indicator, then the message appears. Without the tag, the dots occupy only the **composing tail** of the wait: the sender is quiet, then types for as long as the words take, then the message lands — `[then reply in 10s]` on a short reply is eight quiet seconds and two of typing, which leaves the front of a long delay clear for other beats (a `[react … in 2s]`, say). `story.deliver()` follows the same rules: it paces by message length (with a "typing…" state in the inbox, also confined to the composing tail), an `instant`-tagged target lands at once, and a numeric second argument — `story.deliver('name', 2000)` — sets an explicit delay.
+
+### Typing without sending
+
+Everyone knows the cruelest beat in texting: the dots appear, bounce for a while… and stop. The `[typing …]` directive stages it:
+
+```
+:: they saw it [speaker-marta]
+did you hear what she said about you?
+
+[[tell me (send: tell me)->hesitation]]
+
+:: hesitation [speaker-marta]
+[typing 4s]
+
+[then backpedal in 6s]
+
+:: backpedal [speaker-marta]
+actually never mind
+```
+
+When the passage carrying the directive shows, its speaker's typing indicator runs for the duration — then just stops. Nothing arrives, no sound plays, and the screen-reader announcement is the usual *"Marta is typing"* (the cruelty is faithful). The duration takes `s` or `ms` (`[typing 800ms]`, decimals fine); a bare `[typing]` hesitates for `config.maxTypingDelay`. A passage can be *only* a fake-out, as above — it renders no message of its own, so its arrival is silent — or carry text that lands first, dots after.
+
+The fake-out follows the typing indicator's usual rules: it belongs to the passage's conversation, so a `[deliver]`ed fake-out haunts another thread — dots there, **"typing…" on its inbox row**, and then nothing, with no banner, no unread badge, no receive sound. Nothing arrived, and the inbox tells no lies. A real message that starts typing mid-fake-out takes over the indicator cleanly, `speaker-you` fake-outs show nothing (you never see your own dots), and time travel sweeps the timers like any others — replays and seeds never re-run the dots, because dots that lead nowhere are a live moment, not history.
 
 ## Narration
 
@@ -1368,6 +1391,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 - Twine 1 documents are no longer supported.
 
 ## Changelog
+
+### Unreleased
+
+- **`[typing …]` — typing without sending.** The cruelest beat in texting, staged as a directive: the passage's speaker's dots bounce for the duration (`[typing 4s]`, `[typing 800ms]`; bare `[typing]` uses `maxTypingDelay`) and then just stop — nothing arrives, no sound, no receipt. A `[deliver]`ed fake-out haunts another conversation ("typing…" on its inbox row, no banner or unread badge, since nothing arrived), a real message typing mid-fake-out takes the indicator over cleanly, and replays and seeds never re-run the dots. See [Typing without sending](#typing-without-sending).
 
 ### Version 2.9.1
 
