@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.9.1"
+  "format-version": "2.9.2"
 }
 ```
 
@@ -1392,7 +1392,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.9.2
 
 - **`[typing …]` — typing without sending.** The cruelest beat in texting, staged as a directive: the passage's speaker's dots bounce for the duration (`[typing 4s]`, `[typing 800ms]`; bare `[typing]` uses `maxTypingDelay`) and then just stop — nothing arrives, no sound, no receipt. A `[deliver]`ed fake-out haunts another conversation ("typing…" on its inbox row, no banner or unread badge, since nothing arrived), a real message typing mid-fake-out takes the indicator over cleanly, and replays and seeds never re-run the dots. See [Typing without sending](#typing-without-sending).
 
