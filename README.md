@@ -88,7 +88,7 @@ tweego --list-formats
 {
   "ifid": "YOUR-STORY-IFID",
   "format": "Subtext",
-  "format-version": "2.9.2"
+  "format-version": "2.9.3"
 }
 ```
 
@@ -1392,7 +1392,7 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
-### Unreleased
+### Version 2.9.3
 
 - **Fixed: a story opening on side narration crashed the colophon check.** Side narration never becomes the current passage — but when the very FIRST passage is side narration there is no previous passage to fall back to, and the end-of-story colophon check read the tags of a passage that wasn't there, flashing an error bubble into the opening. It now tolerates the empty start.
 
