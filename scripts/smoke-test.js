@@ -2692,6 +2692,29 @@ async function run() {
 		)
 	);
 
+	// a story that OPENS on side narration has no previous passage to
+	// roll window.passage back to — the colophon check must cope
+	check(
+		'pcolophon survives an undefined window.passage',
+		await debugPage.evaluate(() => {
+			const saved = window.passage;
+
+			window.passage = undefined;
+
+			let ok = true;
+
+			try {
+				window.story.pcolophon();
+			}
+			catch (e) {
+				ok = false;
+			}
+
+			window.passage = saved;
+			return ok;
+		})
+	);
+
 	// [typing …] is the typing fake-out: dots that bounce and then
 	// stop, with nothing arriving
 	check(
