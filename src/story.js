@@ -4895,7 +4895,12 @@ Object.assign(Story.prototype, {
 	**/
 
 	pcolophon: function() {
+		// window.passage can be undefined here: side narration never
+		// becomes the current passage, and when the story OPENS on side
+		// narration there is no previous passage to roll back to
+
 		if (
+			window.passage &&
 			(window.passage.tags.indexOf('End') > -1 ||
 				window.passage.tags.indexOf('end') > -1) &&
 			this.passage('StoryColophon') !== null

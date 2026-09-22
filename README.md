@@ -1392,6 +1392,10 @@ Stories authored for Trialogue mostly work unchanged — speaker tags, links, sp
 
 ## Changelog
 
+### Unreleased
+
+- **Fixed: a story opening on side narration crashed the colophon check.** Side narration never becomes the current passage — but when the very FIRST passage is side narration there is no previous passage to fall back to, and the end-of-story colophon check read the tags of a passage that wasn't there, flashing an error bubble into the opening. It now tolerates the empty start.
+
 ### Version 2.9.2
 
 - **`[typing …]` — typing without sending.** The cruelest beat in texting, staged as a directive: the passage's speaker's dots bounce for the duration (`[typing 4s]`, `[typing 800ms]`; bare `[typing]` uses `maxTypingDelay`) and then just stop — nothing arrives, no sound, no receipt. A `[deliver]`ed fake-out haunts another conversation ("typing…" on its inbox row, no banner or unread badge, since nothing arrived), a real message typing mid-fake-out takes the indicator over cleanly, and replays and seeds never re-run the dots. See [Typing without sending](#typing-without-sending).
